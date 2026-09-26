@@ -1,310 +1,450 @@
 "use client";
 
-import { useRef, useState, useEffect } from "react";
-import { Canvas, useThree, useFrame, ThreeEvent } from "@react-three/fiber";
-import { MapControls, Line } from "@react-three/drei";
+import { useRef, useState, useCallback } from "react";
+import { Canvas, useThree, useFrame, type ThreeEvent } from "@react-three/fiber";
+import { CameraControls, ContactShadows, Environment, Line, Grid } from "@react-three/drei";
 import * as THREE from "three";
-import { EditorPlan, EditorRoom, Point, EditorFurniture, editorPalette, FurnitureKind } from "./editor-model";
+import type { EditorViewProps, EditorFurniture, EditorRoom, Point, FurnitureKind } from "./editor-model";
+import { editorPalette as c, clinicPlan } from "./editor-model";
 
-const U = 0.01;
+/* ── Scale: 1 model unit = 1 cm → divide by 100 for meters ── */
+const S = 0.01;
+const toM = (v: number) => v * S;
 
-function CameraRig({ preset }: { preset: "iso" | "top" | "front" }) {
-  const { camera, invalidate } = useThree();
-  const targetPos = useRef(new THREE.Vector3(10, 10, 10));
+/* ── Colors ── */
+const furnitureColors: Record<FurnitureKind, string> = {
+  chair: "#8a9eab",
+  desk: "#b09470",
+  cabinet: "#6b7b82",
+  plant: "#5a8a5e",
+  bench: "#a09080",
+};
 
-  useEffect(() => {
-    if (preset === "iso") targetPos.current.set(10, 10, 10);
-    else if (preset === "top") targetPos.current.set(0, 15, 0.1); 
-    else if (preset === "front") targetPos.current.set(0, 5, 15);
-    invalidate();
-  }, [preset, invalidate]);
-
-  useFrame(() => {
-    if (camera.position.distanceToSquared(targetPos.current) > 0.001) {
-      camera.position.lerp(targetPos.current, 0.1);
-      invalidate();
-    }
-  });
-  return null;
-}
-
-function FurnitureMesh({ kind, w, d }: { kind: FurnitureKind; w: number; d: number }) {
-  if (kind === "chair") {
-    return (
-      <group>
-        <mesh position={[0, 0.45 * U, 0]} castShadow receiveShadow>
-          <boxGeometry args={[w, 0.05 * U, d]} />
-          <meshStandardMaterial color={editorPalette.ink} />
-        </mesh>
-        <mesh position={[0, 0.9 * U, -d/2 + 0.05*U]} castShadow receiveShadow>
-          <boxGeometry args={[w, 0.9 * U, 0.05 * U]} />
-          <meshStandardMaterial color={editorPalette.ink} />
-        </mesh>
-        {[-1, 1].map((x) =>
-          [-1, 1].map((z) => (
-            <mesh key={`${x}-${z}`} position={[x * (w/2 - 0.05*U), 0.225 * U, z * (d/2 - 0.05*U)]} castShadow>
-              <cylinderGeometry args={[0.02 * U, 0.02 * U, 0.45 * U]} />
-              <meshStandardMaterial color={editorPalette.ink} />
-            </mesh>
-          ))
-        )}
-      </group>
-    );
-  }
-  if (kind === "desk") {
-    return (
-      <group>
-        <mesh position={[0, 0.75 * U, 0]} castShadow receiveShadow>
-          <boxGeometry args={[w, 0.05 * U, d]} />
-          <meshStandardMaterial color={editorPalette.amber} />
-        </mesh>
-        <mesh position={[0, 0.6 * U, d/2 - 0.02*U]} castShadow receiveShadow>
-          <boxGeometry args={[w * 0.9, 0.2 * U, 0.04 * U]} />
-          <meshStandardMaterial color={editorPalette.ink} />
-        </mesh>
-        {[-1, 1].map((x) =>
-          [-1, 1].map((z) => (
-            <mesh key={`${x}-${z}`} position={[x * (w/2 - 0.05*U), 0.375 * U, z * (d/2 - 0.05*U)]} castShadow>
-              <cylinderGeometry args={[0.03 * U, 0.03 * U, 0.75 * U]} />
-              <meshStandardMaterial color={editorPalette.ink} />
-            </mesh>
-          ))
-        )}
-      </group>
-    );
-  }
-  if (kind === "cabinet") {
-    return (
-      <group>
-        <mesh position={[0, 1.0 * U, 0]} castShadow receiveShadow>
-          <boxGeometry args={[w, 2.0 * U, d]} />
-          <meshStandardMaterial color={editorPalette.muted} />
-        </mesh>
-        <mesh position={[0, 1.0 * U, d/2 + 0.01*U]} castShadow receiveShadow>
-          <boxGeometry args={[w, 0.02 * U, 0.02 * U]} />
-          <meshStandardMaterial color={editorPalette.ink} />
-        </mesh>
-        <mesh position={[0, 1.0 * U, d/2 + 0.01*U]}>
-          <boxGeometry args={[0.02 * U, 2.0 * U, 0.02 * U]} />
-          <meshStandardMaterial color={editorPalette.ink} />
-        </mesh>
-      </group>
-    );
-  }
-  if (kind === "plant") {
-    return (
-      <group>
-        <mesh position={[0, 0.3 * U, 0]} castShadow receiveShadow>
-          <cylinderGeometry args={[0.2 * U, 0.15 * U, 0.6 * U]} />
-          <meshStandardMaterial color={editorPalette.amber} />
-        </mesh>
-        <mesh position={[0, 0.9 * U, 0]} castShadow receiveShadow>
-          <sphereGeometry args={[0.4 * U]} />
-          <meshStandardMaterial color={editorPalette.teal} />
-        </mesh>
-      </group>
-    );
-  }
-  if (kind === "bench") {
-    return (
-      <group>
-        <mesh position={[0, 0.45 * U, 0]} castShadow receiveShadow>
-          <boxGeometry args={[w, 0.05 * U, d]} />
-          <meshStandardMaterial color={editorPalette.amber} />
-        </mesh>
-        {[-1, 1].map((x) => (
-          <mesh key={x} position={[x * (w/2 - 0.1*U), 0.225 * U, 0]} castShadow>
-            <boxGeometry args={[0.1 * U, 0.45 * U, d * 0.8]} />
-            <meshStandardMaterial color={editorPalette.ink} />
-          </mesh>
-        ))}
-      </group>
-    );
-  }
-  
+/* ── Furniture 3D geometry ── */
+function Chair({ w, d }: { w: number; d: number }) {
+  const seatH = 0.45, legH = 0.44, backH = 0.40, t = 0.03, legR = 0.015;
   return (
-    <mesh position={[0, 0.5 * U, 0]} castShadow receiveShadow>
-      <boxGeometry args={[w, 1.0 * U, d]} />
-      <meshStandardMaterial color={editorPalette.muted} />
-    </mesh>
-  );
-}
-
-function FurnitureItem({
-  item,
-  selected,
-  onSelect,
-  onMove,
-}: {
-  item: EditorFurniture;
-  selected: boolean;
-  onSelect: (id: string) => void;
-  onMove?: (id: string, pos: Point) => void;
-}) {
-  const { invalidate } = useThree();
-  const controlsRef = useRef<{ enabled: boolean } | null>(null);
-  const isDragging = useRef(false);
-  const offset = useRef(new THREE.Vector3());
-  const plane = new THREE.Plane(new THREE.Vector3(0, 1, 0), 0);
-  const [hovered, setHovered] = useState(false);
-
-  // Grab controls ref once mounted
-  const { controls: threeControls } = useThree();
-  useEffect(() => {
-    controlsRef.current = threeControls as { enabled: boolean } | null;
-  }, [threeControls]);
-
-  const w = item.width * U;
-  const d = item.depth * U;
-
-  const onPointerDown = (e: ThreeEvent<PointerEvent>) => {
-    e.stopPropagation();
-    onSelect(item.id);
-    if (!item.movable || !onMove) return;
-    
-    (e.nativeEvent.target as HTMLElement).setPointerCapture(e.pointerId);
-    isDragging.current = true;
-    if (controlsRef.current) controlsRef.current.enabled = false;
-    
-    const intersection = new THREE.Vector3();
-    e.ray.intersectPlane(plane, intersection);
-    offset.current.copy(intersection).sub(new THREE.Vector3(item.x * U, 0, item.y * U));
-  };
-
-  const onPointerMove = (e: ThreeEvent<PointerEvent>) => {
-    if (!isDragging.current) return;
-    e.stopPropagation();
-    const intersection = new THREE.Vector3();
-    e.ray.intersectPlane(plane, intersection);
-    if (intersection) {
-      const newX = (intersection.x - offset.current.x) / U;
-      const newY = (intersection.z - offset.current.z) / U;
-      onMove?.(item.id, { x: newX, y: newY });
-      invalidate();
-    }
-  };
-
-  const onPointerUp = (e: ThreeEvent<PointerEvent>) => {
-    if (!isDragging.current) return;
-    e.stopPropagation();
-    (e.nativeEvent.target as HTMLElement).releasePointerCapture(e.pointerId);
-    isDragging.current = false;
-    if (controlsRef.current) controlsRef.current.enabled = true;
-  };
-
-  return (
-    <group
-      position={[item.x * U, 0, item.y * U]}
-      rotation={[0, -(item.rotation || 0) * (Math.PI / 180), 0]}
-      onPointerDown={onPointerDown}
-      onPointerMove={onPointerMove}
-      onPointerUp={onPointerUp}
-      onPointerOver={(e) => { e.stopPropagation(); setHovered(true); invalidate(); }}
-      onPointerOut={() => { setHovered(false); invalidate(); }}
-    >
-      <group scale={hovered ? 1.02 : 1}>
-        <FurnitureMesh kind={item.kind} w={w} d={d} />
-        {selected && (
-          <mesh position={[0, 0.01, 0]} rotation={[-Math.PI / 2, 0, 0]}>
-            <ringGeometry args={[Math.max(w, d) / 2 + 0.1, Math.max(w, d) / 2 + 0.15, 32]} />
-            <meshBasicMaterial color={editorPalette.teal} />
+    <group>
+      {/* Seat */}
+      <mesh position={[0, seatH, 0]} castShadow receiveShadow>
+        <boxGeometry args={[w, t, d]} />
+        <meshStandardMaterial color={furnitureColors.chair} roughness={0.7} />
+      </mesh>
+      {/* Back */}
+      <mesh position={[0, seatH + backH / 2, -d / 2 + t / 2]} castShadow>
+        <boxGeometry args={[w, backH, t]} />
+        <meshStandardMaterial color={furnitureColors.chair} roughness={0.7} />
+      </mesh>
+      {/* 4 legs */}
+      {([-1, 1] as const).flatMap(x =>
+        ([-1, 1] as const).map(z => (
+          <mesh key={`${x}${z}`} position={[x * (w / 2 - 0.03), legH / 2, z * (d / 2 - 0.03)]} castShadow>
+            <cylinderGeometry args={[legR, legR, legH, 8]} />
+            <meshStandardMaterial color="#5c6a70" roughness={0.6} />
           </mesh>
-        )}
-      </group>
+        ))
+      )}
     </group>
   );
 }
 
-function HeatmapLayer({ plan }: { plan: EditorPlan }) {
+function Desk({ w, d }: { w: number; d: number }) {
+  const topH = 0.75, t = 0.04, legR = 0.02, legH = topH - t;
   return (
-    <group position={[0, 0.005, 0]}>
-      {plan.furniture.map((f, i) => (
-        <mesh key={i} position={[f.x * U, 0, f.y * U]} rotation={[-Math.PI / 2, 0, 0]}>
-          <circleGeometry args={[2.0, 32]} />
-          <meshBasicMaterial color={editorPalette.red} transparent opacity={0.1} depthWrite={false} />
+    <group>
+      {/* Top */}
+      <mesh position={[0, topH, 0]} castShadow receiveShadow>
+        <boxGeometry args={[w, t, d]} />
+        <meshStandardMaterial color={furnitureColors.desk} roughness={0.5} />
+      </mesh>
+      {/* Drawer panel */}
+      <mesh position={[0, topH - 0.12, d / 2 - 0.015]} castShadow>
+        <boxGeometry args={[w * 0.85, 0.18, 0.025]} />
+        <meshStandardMaterial color="#967755" roughness={0.6} />
+      </mesh>
+      {/* 4 legs */}
+      {([-1, 1] as const).flatMap(x =>
+        ([-1, 1] as const).map(z => (
+          <mesh key={`${x}${z}`} position={[x * (w / 2 - 0.04), legH / 2, z * (d / 2 - 0.04)]} castShadow>
+            <cylinderGeometry args={[legR, legR, legH, 8]} />
+            <meshStandardMaterial color="#5c6a70" roughness={0.6} />
+          </mesh>
+        ))
+      )}
+    </group>
+  );
+}
+
+function Cabinet({ w, d }: { w: number; d: number }) {
+  const h = 1.6;
+  return (
+    <group>
+      <mesh position={[0, h / 2, 0]} castShadow receiveShadow>
+        <boxGeometry args={[w, h, d]} />
+        <meshStandardMaterial color={furnitureColors.cabinet} roughness={0.65} />
+      </mesh>
+      {/* Shelf lines */}
+      {[0.4, 0.8, 1.2].map(y => (
+        <mesh key={y} position={[0, y, d / 2 + 0.002]}>
+          <boxGeometry args={[w * 0.95, 0.008, 0.004]} />
+          <meshStandardMaterial color="#4a5a60" />
+        </mesh>
+      ))}
+      {/* Door split */}
+      <mesh position={[0, h / 2, d / 2 + 0.002]}>
+        <boxGeometry args={[0.008, h * 0.9, 0.004]} />
+        <meshStandardMaterial color="#4a5a60" />
+      </mesh>
+    </group>
+  );
+}
+
+function Plant({ w }: { w: number }) {
+  const r = w / 2;
+  return (
+    <group>
+      {/* Pot */}
+      <mesh position={[0, 0.15, 0]} castShadow>
+        <cylinderGeometry args={[r * 0.7, r * 0.55, 0.30, 16]} />
+        <meshStandardMaterial color="#8B6F4E" roughness={0.8} />
+      </mesh>
+      {/* Canopy */}
+      <mesh position={[0, 0.55, 0]} castShadow>
+        <sphereGeometry args={[r * 1.1, 16, 12]} />
+        <meshStandardMaterial color={furnitureColors.plant} roughness={0.85} />
+      </mesh>
+    </group>
+  );
+}
+
+function Bench({ w, d }: { w: number; d: number }) {
+  const seatH = 0.45, t = 0.04;
+  return (
+    <group>
+      {/* Seat */}
+      <mesh position={[0, seatH, 0]} castShadow receiveShadow>
+        <boxGeometry args={[w, t, d]} />
+        <meshStandardMaterial color={furnitureColors.bench} roughness={0.6} />
+      </mesh>
+      {/* 2 end supports */}
+      {([-1, 1] as const).map(x => (
+        <mesh key={x} position={[x * (w / 2 - 0.06), seatH / 2, 0]} castShadow>
+          <boxGeometry args={[0.06, seatH, d * 0.85]} />
+          <meshStandardMaterial color="#7a6e62" roughness={0.7} />
         </mesh>
       ))}
     </group>
   );
 }
 
-function RouteLayer({ points }: { points: Point[] }) {
-  const pts = points.map((p) => new THREE.Vector3(p.x * U, 0.01, p.y * U));
-  if (pts.length < 2) return null;
+function FurnitureShape({ kind, w, d }: { kind: FurnitureKind; w: number; d: number }) {
+  switch (kind) {
+    case "chair": return <Chair w={w} d={d} />;
+    case "desk": return <Desk w={w} d={d} />;
+    case "cabinet": return <Cabinet w={w} d={d} />;
+    case "plant": return <Plant w={w} />;
+    case "bench": return <Bench w={w} d={d} />;
+  }
+}
+
+/* ── Draggable furniture wrapper ── */
+function FurnitureItem({
+  item, selected, onSelect, onMove, controlsRef,
+}: {
+  item: EditorFurniture;
+  selected: boolean;
+  onSelect: (id: string) => void;
+  onMove?: (id: string, pos: Point) => void;
+  controlsRef: React.RefObject<CameraControls | null>;
+}) {
+  const { invalidate } = useThree();
+  const isDragging = useRef(false);
+  const offset = useRef(new THREE.Vector3());
+  const floorPlane = useRef(new THREE.Plane(new THREE.Vector3(0, 1, 0), 0));
+  const [hovered, setHovered] = useState(false);
+
+  const w = toM(item.width);
+  const d = toM(item.depth);
+  const px = toM(item.x) + w / 2; // center
+  const pz = toM(item.y) + d / 2;
+
+  const handleDown = useCallback((e: ThreeEvent<PointerEvent>) => {
+    e.stopPropagation();
+    onSelect(item.id);
+    if (!item.movable || !onMove) return;
+
+    isDragging.current = true;
+    if (controlsRef.current) controlsRef.current.enabled = false;
+
+    const hit = new THREE.Vector3();
+    e.ray.intersectPlane(floorPlane.current, hit);
+    offset.current.set(hit.x - px, 0, hit.z - pz);
+    invalidate();
+  }, [item.id, item.movable, onSelect, onMove, controlsRef, px, pz, invalidate]);
+
+  const handleMove = useCallback((e: ThreeEvent<PointerEvent>) => {
+    if (!isDragging.current) return;
+    e.stopPropagation();
+    const hit = new THREE.Vector3();
+    e.ray.intersectPlane(floorPlane.current, hit);
+    const cx = hit.x - offset.current.x;
+    const cz = hit.z - offset.current.z;
+    // Convert center back to top-left model coords
+    const mx = (cx - w / 2) / S;
+    const my = (cz - d / 2) / S;
+    onMove?.(item.id, { x: mx, y: my });
+    invalidate();
+  }, [item.id, onMove, w, d, invalidate]);
+
+  const handleUp = useCallback(() => {
+    if (!isDragging.current) return;
+    isDragging.current = false;
+    if (controlsRef.current) controlsRef.current.enabled = true;
+    invalidate();
+  }, [controlsRef, invalidate]);
+
   return (
-    <Line
-      points={pts}
-      color={editorPalette.route}
-      lineWidth={3}
-      dashed
-      dashSize={0.2}
-      gapSize={0.1}
-    />
+    <group
+      position={[px, 0, pz]}
+      rotation={[0, -(item.rotation ?? 0) * Math.PI / 180, 0]}
+      onPointerDown={handleDown}
+      onPointerMove={handleMove}
+      onPointerUp={handleUp}
+      onPointerLeave={handleUp}
+      onPointerOver={(e) => { e.stopPropagation(); setHovered(true); invalidate(); }}
+      onPointerOut={() => { setHovered(false); invalidate(); }}
+    >
+      <group scale={hovered && item.movable ? 1.03 : 1}>
+        <FurnitureShape kind={item.kind} w={w} d={d} />
+      </group>
+      {/* Selection ring */}
+      {selected && (
+        <mesh position={[0, 0.005, 0]} rotation={[-Math.PI / 2, 0, 0]}>
+          <ringGeometry args={[Math.max(w, d) * 0.65, Math.max(w, d) * 0.72, 48]} />
+          <meshBasicMaterial color={c.teal} transparent opacity={0.6} />
+        </mesh>
+      )}
+    </group>
   );
 }
 
+/* ── Room walls ── */
+function RoomWalls({ room }: { room: EditorRoom }) {
+  const x = toM(room.x), z = toM(room.y), w = toM(room.width), d = toM(room.depth);
+  const wallH = 2.6, wallT = 0.08;
+  const cx = x + w / 2, cz = z + d / 2;
+
+  // 4 walls — slightly transparent so you see interior
+  const walls: [number, number, number, number, number][] = [
+    [cx, cz - d / 2 + wallT / 2, w, wallH, wallT], // back
+    [cx, cz + d / 2 - wallT / 2, w, wallH, wallT], // front
+    [cx - w / 2 + wallT / 2, cz, wallT, wallH, d], // left
+    [cx + w / 2 - wallT / 2, cz, wallT, wallH, d], // right
+  ];
+
+  return (
+    <group>
+      {/* Floor tile per room */}
+      <mesh position={[cx, 0.002, cz]} rotation={[-Math.PI / 2, 0, 0]} receiveShadow>
+        <planeGeometry args={[w, d]} />
+        <meshStandardMaterial color="#f0f2ee" roughness={0.9} />
+      </mesh>
+      {/* Walls */}
+      {walls.map(([wx, wz, ww, wh, wd], i) => (
+        <mesh key={i} position={[wx, wh / 2, wz]} castShadow receiveShadow>
+          <boxGeometry args={[ww, wh, wd]} />
+          <meshStandardMaterial color="#e2e6e0" roughness={0.85} transparent opacity={0.55} side={THREE.DoubleSide} />
+        </mesh>
+      ))}
+    </group>
+  );
+}
+
+/* ── Heatmap overlay ── */
+function HeatmapOverlay() {
+  // Fixed risk zones matching the 2D heatmap data
+  const zones: [number, number, number, string][] = [
+    [toM(465), toM(365), 0.85, c.red],    // critical near route-chair
+    [toM(555), toM(298), 0.62, c.amber],   // moderate near corridor entry
+    [toM(300), toM(445), 0.70, "#e7b64a"], // moderate corridor
+  ];
+  return (
+    <group>
+      {zones.map(([x, z, r, color], i) => (
+        <group key={i} position={[x, 0.003, z]} rotation={[-Math.PI / 2, 0, 0]}>
+          {/* Stacked concentric circles for gradient effect */}
+          {[1, 0.7, 0.4].map((s, j) => (
+            <mesh key={j}>
+              <circleGeometry args={[r * s, 32]} />
+              <meshBasicMaterial color={color} transparent opacity={0.12 + j * 0.08} depthWrite={false} />
+            </mesh>
+          ))}
+        </group>
+      ))}
+    </group>
+  );
+}
+
+/* ── Route line ── */
+function RouteLine({ points }: { points: Point[] }) {
+  if (points.length < 2) return null;
+  const pts = points.map(p => new THREE.Vector3(toM(p.x), 0.015, toM(p.y)));
+  return (
+    <group>
+      {/* White outline */}
+      <Line points={pts} color="#ffffff" lineWidth={6} />
+      {/* Teal dashed route */}
+      <Line points={pts} color={c.route} lineWidth={3} dashed dashSize={0.12} gapSize={0.08} />
+      {/* Entry marker */}
+      <mesh position={[pts[0].x, 0.02, pts[0].z]} rotation={[-Math.PI / 2, 0, 0]}>
+        <circleGeometry args={[0.08, 16]} />
+        <meshBasicMaterial color={c.route} />
+      </mesh>
+    </group>
+  );
+}
+
+/* ── Animated camera presets ── */
+function CameraPresets({ preset, target }: { preset: string; target: [number, number, number] }) {
+  const controls = useThree(s => s.controls) as CameraControls | null;
+
+  const prevPreset = useRef(preset);
+  useFrame(() => {
+    if (!controls || prevPreset.current === preset) return;
+    prevPreset.current = preset;
+
+    const [tx, , tz] = target;
+    if (preset === "iso") controls.setLookAt(tx + 6, 7, tz + 6, tx, 0.5, tz, true);
+    else if (preset === "top") controls.setLookAt(tx, 12, tz + 0.01, tx, 0, tz, true);
+    else if (preset === "front") controls.setLookAt(tx, 3, tz + 8, tx, 1, tz, true);
+  });
+
+  return null;
+}
+
+/* ── Main component ── */
 export function Floorplan3D({
-  plan,
+  plan = clinicPlan,
   selectedId,
   onSelect,
   onFurnitureMove,
-  showHeatmap,
-  showRoute,
+  showHeatmap = true,
+  showRoute = true,
   className,
-}: import("./editor-model").EditorViewProps) {
+}: EditorViewProps) {
   const [preset, setPreset] = useState<"iso" | "top" | "front">("iso");
+  const controlsRef = useRef<CameraControls>(null);
 
-  if (!plan) return null;
+  const pw = toM(plan.width);
+  const pd = toM(plan.depth);
+  const cx = pw / 2;
+  const cz = pd / 2;
 
   return (
-    <div className={`relative w-full h-full ${className || ""}`}>
-      <div className="absolute top-4 right-4 z-10 flex gap-2">
-        <button className="px-3 py-1 bg-white shadow rounded text-sm font-medium text-slate-700 hover:bg-slate-50" onClick={() => setPreset("iso")}>Iso</button>
-        <button className="px-3 py-1 bg-white shadow rounded text-sm font-medium text-slate-700 hover:bg-slate-50" onClick={() => setPreset("top")}>Top</button>
-        <button className="px-3 py-1 bg-white shadow rounded text-sm font-medium text-slate-700 hover:bg-slate-50" onClick={() => setPreset("front")}>Front</button>
+    <div className={`relative w-full h-full min-h-[430px] ${className ?? ""}`} style={{ background: "#e8ece9" }}>
+      {/* Camera preset buttons */}
+      <div className="absolute top-3 right-3 z-10 flex gap-1 rounded-lg border border-slate-200 bg-white/95 p-1 shadow-sm backdrop-blur">
+        {(["iso", "top", "front"] as const).map(p => (
+          <button
+            key={p}
+            type="button"
+            aria-pressed={preset === p}
+            onClick={() => setPreset(p)}
+            className={`rounded-md px-3 py-1.5 text-xs font-semibold transition-colors ${
+              preset === p
+                ? "bg-teal-50 text-teal-800"
+                : "text-slate-600 hover:bg-slate-50"
+            }`}
+          >
+            {p.charAt(0).toUpperCase() + p.slice(1)}
+          </button>
+        ))}
       </div>
 
-      <Canvas frameloop="demand" dpr={[1, 1.5]} shadows camera={{ position: [10, 10, 10], fov: 50 }}>
-        <MapControls makeDefault maxPolarAngle={Math.PI / 2 - 0.05} />
-        <CameraRig preset={preset} />
-        
-        <ambientLight intensity={0.5} />
-        <directionalLight position={[10, 20, 10]} intensity={1.0} castShadow shadow-mapSize={[2048, 2048]}>
-          <orthographicCamera attach="shadow-camera" args={[-20, 20, 20, -20, 0.1, 50]} />
+      <Canvas
+        shadows
+        dpr={[1, 1.5]}
+        camera={{ position: [cx + 6, 7, cz + 6], fov: 45, near: 0.1, far: 100 }}
+        onCreated={({ gl }) => { gl.toneMapping = THREE.ACESFilmicToneMapping; gl.toneMappingExposure = 1.1; }}
+      >
+        {/* Background */}
+        <color attach="background" args={["#e8ece9"]} />
+
+        {/* Controls */}
+        <CameraControls
+          ref={controlsRef}
+          makeDefault
+          maxPolarAngle={Math.PI / 2.1}
+          minDistance={2}
+          maxDistance={20}
+          dollySpeed={0.5}
+          smoothTime={0.25}
+        />
+        <CameraPresets preset={preset} target={[cx, 0, cz]} />
+
+        {/* Lighting — Environment for professional reflections */}
+        <Environment preset="city" environmentIntensity={0.3} />
+        <ambientLight intensity={0.6} />
+        <directionalLight
+          position={[cx + 5, 12, cz + 5]}
+          intensity={1.2}
+          castShadow
+          shadow-mapSize={[2048, 2048]}
+          shadow-bias={-0.0001}
+        >
+          <orthographicCamera attach="shadow-camera" args={[-12, 12, 12, -12, 0.5, 30]} />
         </directionalLight>
 
-        <mesh 
-          rotation={[-Math.PI / 2, 0, 0]} 
-          receiveShadow 
+        {/* Ground plane + grid */}
+        <mesh
+          rotation={[-Math.PI / 2, 0, 0]}
+          position={[cx, -0.001, cz]}
+          receiveShadow
           onPointerDown={(e) => { e.stopPropagation(); onSelect?.(null); }}
         >
-          <planeGeometry args={[100, 100]} />
-          <meshStandardMaterial color={editorPalette.floor} />
+          <planeGeometry args={[30, 30]} />
+          <meshStandardMaterial color="#dde1dc" roughness={0.95} />
         </mesh>
+        <Grid
+          position={[cx, 0.001, cz]}
+          args={[30, 30]}
+          cellSize={0.5}
+          cellThickness={0.4}
+          cellColor="#c8cec8"
+          sectionSize={2.5}
+          sectionThickness={0.8}
+          sectionColor="#b0b8b0"
+          fadeDistance={18}
+          fadeStrength={1.5}
+        />
 
-        <group position={[-plan.width * U / 2, 0, -plan.depth * U / 2]}>
-          {plan.rooms.map((room: EditorRoom) => (
-            <group key={room.id} position={[room.x * U + (room.width * U)/2, 0, room.y * U + (room.depth * U)/2]}>
-              <mesh position={[0, 1.4 * U, 0]} receiveShadow castShadow>
-                <boxGeometry args={[room.width * U, 2.8 * U, room.depth * U]} />
-                <meshStandardMaterial color={editorPalette.room} transparent opacity={0.7} side={THREE.DoubleSide} />
-              </mesh>
-            </group>
-          ))}
+        {/* Contact shadows under furniture */}
+        <ContactShadows
+          position={[cx, 0.001, cz]}
+          opacity={0.35}
+          scale={15}
+          blur={2.5}
+          far={3}
+        />
 
-          {plan.furniture.map((f) => (
-            <FurnitureItem
-              key={f.id}
-              item={f}
-              selected={selectedId === f.id}
-              onSelect={(id) => onSelect?.(id)}
-              onMove={onFurnitureMove}
-            />
-          ))}
+        {/* Scene content */}
+        {plan.rooms.map(room => (
+          <RoomWalls key={room.id} room={room} />
+        ))}
 
-          {showHeatmap && <HeatmapLayer plan={plan} />}
-          {showRoute && plan.route && <RouteLayer points={plan.route} />}
-        </group>
+        {plan.furniture.map(f => (
+          <FurnitureItem
+            key={f.id}
+            item={f}
+            selected={selectedId === f.id}
+            onSelect={id => onSelect?.(id)}
+            onMove={onFurnitureMove}
+            controlsRef={controlsRef}
+          />
+        ))}
+
+        {showHeatmap && <HeatmapOverlay />}
+        {showRoute && plan.route && <RouteLine points={plan.route} />}
       </Canvas>
     </div>
   );
