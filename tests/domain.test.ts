@@ -1,0 +1,3 @@
+import test from "node:test"; import assert from "node:assert/strict"; import {mockData,demoIds} from "../src/lib/mock-data";
+test("balanced sample improves risk with two furniture moves",()=>{const current=mockData.scenarios["scenario-current"];const balanced=mockData.scenarios[demoIds.balancedScenario];assert.equal(current.riskScore,68);assert.equal(balanced.riskScore,27);assert.equal(balanced.changes.length,2);assert.ok(balanced.riskScore<current.riskScore)});
+test("walker route and hazards reference existing profile",()=>{const route=mockData.routes[demoIds.route];assert.ok(route.profileIds.every(id=>mockData.profiles[id]));for(const hazard of Object.values(mockData.hazards)) assert.ok(hazard.affectedProfileIds.every(id=>mockData.profiles[id]))});

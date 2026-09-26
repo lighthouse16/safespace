@@ -1,0 +1,1 @@
+import {AppShell} from "@/components/shell"; import {AssessmentReport} from "@/components/report"; export default function ReportPage(){return <AppShell activePath="/reports/queen-care-clinic"><AssessmentReport/></AppShell>}

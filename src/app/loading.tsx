@@ -1,0 +1,1 @@
+export default function Loading(){return <div className="grid min-h-dvh place-items-center bg-slate-50"><div className="w-72 space-y-3" aria-label="Loading"><div className="h-4 w-28 animate-pulse rounded bg-slate-200"/><div className="h-9 animate-pulse rounded bg-slate-200"/><div className="h-32 animate-pulse rounded-xl bg-slate-200"/></div></div>}
