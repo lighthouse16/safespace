@@ -1,48 +1,313 @@
 "use client";
-import { Canvas, type ThreeEvent, useThree } from "@react-three/fiber";
-import { Html, Line, MapControls, RoundedBox, Text } from "@react-three/drei";
-import { Suspense, useEffect, useRef, useState } from "react";
+
+import { useRef, useState, useEffect } from "react";
+import { Canvas, useThree, useFrame, ThreeEvent } from "@react-three/fiber";
+import { MapControls, Line } from "@react-three/drei";
 import * as THREE from "three";
-import { clinicPlan, editorPalette as c, type EditorFurniture, type EditorViewProps, type Point } from "./editor-model";
+import { EditorPlan, EditorRoom, Point, EditorFurniture, editorPalette, FurnitureKind } from "./editor-model";
+
 const U = 0.01;
 
-function PlanCamera({ preset }: { preset: "iso" | "top" | "front" }) {
+function CameraRig({ preset }: { preset: "iso" | "top" | "front" }) {
   const { camera, invalidate } = useThree();
-  useEffect(() => { const positions: Record<"iso" | "top" | "front", readonly [number, number, number]> = { iso: [6.8,7.5,7.6], top: [4.8,11,3.1], front: [4.8,4.2,8.5] }; const position = positions[preset]; camera.position.set(position[0], position[1], position[2]); camera.lookAt(4.8,0,3.1); camera.updateProjectionMatrix(); invalidate(); }, [camera, invalidate, preset]);
+  const targetPos = useRef(new THREE.Vector3(10, 10, 10));
+
+  useEffect(() => {
+    if (preset === "iso") targetPos.current.set(10, 10, 10);
+    else if (preset === "top") targetPos.current.set(0, 15, 0.1); 
+    else if (preset === "front") targetPos.current.set(0, 5, 15);
+    invalidate();
+  }, [preset, invalidate]);
+
+  useFrame(() => {
+    if (camera.position.distanceToSquared(targetPos.current) > 0.001) {
+      camera.position.lerp(targetPos.current, 0.1);
+      invalidate();
+    }
+  });
   return null;
 }
 
-function FurnitureMesh({ item, selected, onSelect, onMove }: { item: EditorFurniture; selected: boolean; onSelect: () => void; onMove: (point: Point) => void }) {
-  const [dragging, setDragging] = useState(false); const offset = useRef(new THREE.Vector3());
-  const x=(item.x+item.width/2)*U, z=(item.y+item.depth/2)*U, w=item.width*U, d=item.depth*U;
-  const move=(e:ThreeEvent<PointerEvent>)=>{ if(!dragging)return; e.stopPropagation(); const nx=e.point.x-offset.current.x-w/2, ny=e.point.z-offset.current.z-d/2; onMove({x:Math.max(0,nx/U),y:Math.max(0,ny/U)}); };
-  const down=(e:ThreeEvent<PointerEvent>)=>{e.stopPropagation();onSelect();if(item.movable!==false){offset.current.set(e.point.x-x,0,e.point.z-z);setDragging(true);(e.target as HTMLElement).setPointerCapture?.(e.pointerId);}};
-  const color=item.kind==="plant"?"#648c6f":item.kind==="desk"||item.kind==="cabinet"?"#71878a":"#91aaaa";
-  const height=item.kind==="cabinet"?1.25:item.kind==="desk"?.72:item.kind==="plant"?.65:.48;
-  return <group position={[x,0,z]} rotation={[0,-(item.rotation??0)*Math.PI/180,0]} onPointerDown={down} onPointerMove={move} onPointerUp={()=>setDragging(false)} onPointerMissed={()=>setDragging(false)}>
-    <RoundedBox args={[w,height,d]} position={[0,height/2,0]} radius={.04} smoothness={2} castShadow receiveShadow><meshStandardMaterial color={color} roughness={.75} emissive={selected?c.teal:"#000"} emissiveIntensity={selected?.22:0}/></RoundedBox>
-    {selected&&<mesh position={[0,.025,0]} rotation={[-Math.PI/2,0,0]}><ringGeometry args={[Math.max(w,d)*.7,Math.max(w,d)*.85,32]}/><meshBasicMaterial color={c.teal}/></mesh>}
-  </group>;
+function FurnitureMesh({ kind, w, d }: { kind: FurnitureKind; w: number; d: number }) {
+  if (kind === "chair") {
+    return (
+      <group>
+        <mesh position={[0, 0.45 * U, 0]} castShadow receiveShadow>
+          <boxGeometry args={[w, 0.05 * U, d]} />
+          <meshStandardMaterial color={editorPalette.ink} />
+        </mesh>
+        <mesh position={[0, 0.9 * U, -d/2 + 0.05*U]} castShadow receiveShadow>
+          <boxGeometry args={[w, 0.9 * U, 0.05 * U]} />
+          <meshStandardMaterial color={editorPalette.ink} />
+        </mesh>
+        {[-1, 1].map((x) =>
+          [-1, 1].map((z) => (
+            <mesh key={`${x}-${z}`} position={[x * (w/2 - 0.05*U), 0.225 * U, z * (d/2 - 0.05*U)]} castShadow>
+              <cylinderGeometry args={[0.02 * U, 0.02 * U, 0.45 * U]} />
+              <meshStandardMaterial color={editorPalette.ink} />
+            </mesh>
+          ))
+        )}
+      </group>
+    );
+  }
+  if (kind === "desk") {
+    return (
+      <group>
+        <mesh position={[0, 0.75 * U, 0]} castShadow receiveShadow>
+          <boxGeometry args={[w, 0.05 * U, d]} />
+          <meshStandardMaterial color={editorPalette.amber} />
+        </mesh>
+        <mesh position={[0, 0.6 * U, d/2 - 0.02*U]} castShadow receiveShadow>
+          <boxGeometry args={[w * 0.9, 0.2 * U, 0.04 * U]} />
+          <meshStandardMaterial color={editorPalette.ink} />
+        </mesh>
+        {[-1, 1].map((x) =>
+          [-1, 1].map((z) => (
+            <mesh key={`${x}-${z}`} position={[x * (w/2 - 0.05*U), 0.375 * U, z * (d/2 - 0.05*U)]} castShadow>
+              <cylinderGeometry args={[0.03 * U, 0.03 * U, 0.75 * U]} />
+              <meshStandardMaterial color={editorPalette.ink} />
+            </mesh>
+          ))
+        )}
+      </group>
+    );
+  }
+  if (kind === "cabinet") {
+    return (
+      <group>
+        <mesh position={[0, 1.0 * U, 0]} castShadow receiveShadow>
+          <boxGeometry args={[w, 2.0 * U, d]} />
+          <meshStandardMaterial color={editorPalette.muted} />
+        </mesh>
+        <mesh position={[0, 1.0 * U, d/2 + 0.01*U]} castShadow receiveShadow>
+          <boxGeometry args={[w, 0.02 * U, 0.02 * U]} />
+          <meshStandardMaterial color={editorPalette.ink} />
+        </mesh>
+        <mesh position={[0, 1.0 * U, d/2 + 0.01*U]}>
+          <boxGeometry args={[0.02 * U, 2.0 * U, 0.02 * U]} />
+          <meshStandardMaterial color={editorPalette.ink} />
+        </mesh>
+      </group>
+    );
+  }
+  if (kind === "plant") {
+    return (
+      <group>
+        <mesh position={[0, 0.3 * U, 0]} castShadow receiveShadow>
+          <cylinderGeometry args={[0.2 * U, 0.15 * U, 0.6 * U]} />
+          <meshStandardMaterial color={editorPalette.amber} />
+        </mesh>
+        <mesh position={[0, 0.9 * U, 0]} castShadow receiveShadow>
+          <sphereGeometry args={[0.4 * U]} />
+          <meshStandardMaterial color={editorPalette.teal} />
+        </mesh>
+      </group>
+    );
+  }
+  if (kind === "bench") {
+    return (
+      <group>
+        <mesh position={[0, 0.45 * U, 0]} castShadow receiveShadow>
+          <boxGeometry args={[w, 0.05 * U, d]} />
+          <meshStandardMaterial color={editorPalette.amber} />
+        </mesh>
+        {[-1, 1].map((x) => (
+          <mesh key={x} position={[x * (w/2 - 0.1*U), 0.225 * U, 0]} castShadow>
+            <boxGeometry args={[0.1 * U, 0.45 * U, d * 0.8]} />
+            <meshStandardMaterial color={editorPalette.ink} />
+          </mesh>
+        ))}
+      </group>
+    );
+  }
+  
+  return (
+    <mesh position={[0, 0.5 * U, 0]} castShadow receiveShadow>
+      <boxGeometry args={[w, 1.0 * U, d]} />
+      <meshStandardMaterial color={editorPalette.muted} />
+    </mesh>
+  );
 }
 
-function ClinicScene({ plan, selectedId, onSelect, onFurnitureMove, showHeatmap, showRoute, preset }: Required<Pick<EditorViewProps,"plan">> & EditorViewProps & { preset:"iso"|"top"|"front" }) {
-  return <>
-    <PlanCamera preset={preset}/><ambientLight intensity={1.4}/><directionalLight position={[3,8,5]} intensity={1.6} castShadow shadow-mapSize={[1024,1024]}/>
-    <mesh position={[plan.width*U/2,-.04,plan.depth*U/2]} receiveShadow onPointerDown={()=>onSelect?.(null)}><boxGeometry args={[plan.width*U,.08,plan.depth*U]}/><meshStandardMaterial color={c.floor}/></mesh>
-    {plan.rooms.map(room=><group key={room.id}><mesh position={[(room.x+room.width/2)*U,.02,(room.y+room.depth/2)*U]} receiveShadow><boxGeometry args={[room.width*U,.04,room.depth*U]}/><meshStandardMaterial color={c.room}/></mesh><Text position={[(room.x+18)*U,.07,(room.y+22)*U]} rotation={[-Math.PI/2,0,0]} fontSize={.105} color={c.muted} anchorX="left">{room.label}</Text>{[[room.x,room.y,room.width,.12],[room.x,room.y+room.depth,room.width,.12],[room.x,room.y,.12,room.depth],[room.x+room.width,room.y,.12,room.depth]].map(([x,z,w,d],i)=><mesh key={i} position={[(x+w/2)*U,.55,(z+d/2)*U]} castShadow><boxGeometry args={[Math.max(w*U,.035),1.1,Math.max(d*U,.035)]}/><meshStandardMaterial color="#d9dfdc" transparent opacity={.82}/></mesh>)}</group>)}
-    {showHeatmap&&<><mesh position={[4.65,.035,3.65]} rotation={[-Math.PI/2,0,0]}><circleGeometry args={[.85,48]}/><meshBasicMaterial color={c.red} transparent opacity={.32} depthWrite={false}/></mesh><mesh position={[5.5,.04,3]} rotation={[-Math.PI/2,0,0]}><circleGeometry args={[.62,48]}/><meshBasicMaterial color={c.amber} transparent opacity={.3} depthWrite={false}/></mesh></>}
-    {showRoute&&<Line points={plan.route.map(p=>[p.x*U,.09,p.y*U])} color={c.route} lineWidth={4}/>} 
-    {plan.furniture.map(item=><FurnitureMesh key={item.id} item={item} selected={selectedId===item.id} onSelect={()=>onSelect?.(item.id)} onMove={p=>onFurnitureMove?.(item.id,p)}/>)}
-    <MapControls makeDefault enableDamping dampingFactor={.08} minDistance={4} maxDistance={18} maxPolarAngle={Math.PI/2.05} target={[4.8,0,3.1]}/>
-  </>;
+function FurnitureItem({
+  item,
+  selected,
+  onSelect,
+  onMove,
+}: {
+  item: EditorFurniture;
+  selected: boolean;
+  onSelect: (id: string) => void;
+  onMove?: (id: string, pos: Point) => void;
+}) {
+  const { invalidate } = useThree();
+  const controlsRef = useRef<{ enabled: boolean } | null>(null);
+  const isDragging = useRef(false);
+  const offset = useRef(new THREE.Vector3());
+  const plane = new THREE.Plane(new THREE.Vector3(0, 1, 0), 0);
+  const [hovered, setHovered] = useState(false);
+
+  // Grab controls ref once mounted
+  const { controls: threeControls } = useThree();
+  useEffect(() => {
+    controlsRef.current = threeControls as { enabled: boolean } | null;
+  }, [threeControls]);
+
+  const w = item.width * U;
+  const d = item.depth * U;
+
+  const onPointerDown = (e: ThreeEvent<PointerEvent>) => {
+    e.stopPropagation();
+    onSelect(item.id);
+    if (!item.movable || !onMove) return;
+    
+    (e.nativeEvent.target as HTMLElement).setPointerCapture(e.pointerId);
+    isDragging.current = true;
+    if (controlsRef.current) controlsRef.current.enabled = false;
+    
+    const intersection = new THREE.Vector3();
+    e.ray.intersectPlane(plane, intersection);
+    offset.current.copy(intersection).sub(new THREE.Vector3(item.x * U, 0, item.y * U));
+  };
+
+  const onPointerMove = (e: ThreeEvent<PointerEvent>) => {
+    if (!isDragging.current) return;
+    e.stopPropagation();
+    const intersection = new THREE.Vector3();
+    e.ray.intersectPlane(plane, intersection);
+    if (intersection) {
+      const newX = (intersection.x - offset.current.x) / U;
+      const newY = (intersection.z - offset.current.z) / U;
+      onMove?.(item.id, { x: newX, y: newY });
+      invalidate();
+    }
+  };
+
+  const onPointerUp = (e: ThreeEvent<PointerEvent>) => {
+    if (!isDragging.current) return;
+    e.stopPropagation();
+    (e.nativeEvent.target as HTMLElement).releasePointerCapture(e.pointerId);
+    isDragging.current = false;
+    if (controlsRef.current) controlsRef.current.enabled = true;
+  };
+
+  return (
+    <group
+      position={[item.x * U, 0, item.y * U]}
+      rotation={[0, -(item.rotation || 0) * (Math.PI / 180), 0]}
+      onPointerDown={onPointerDown}
+      onPointerMove={onPointerMove}
+      onPointerUp={onPointerUp}
+      onPointerOver={(e) => { e.stopPropagation(); setHovered(true); invalidate(); }}
+      onPointerOut={() => { setHovered(false); invalidate(); }}
+    >
+      <group scale={hovered ? 1.02 : 1}>
+        <FurnitureMesh kind={item.kind} w={w} d={d} />
+        {selected && (
+          <mesh position={[0, 0.01, 0]} rotation={[-Math.PI / 2, 0, 0]}>
+            <ringGeometry args={[Math.max(w, d) / 2 + 0.1, Math.max(w, d) / 2 + 0.15, 32]} />
+            <meshBasicMaterial color={editorPalette.teal} />
+          </mesh>
+        )}
+      </group>
+    </group>
+  );
 }
 
-export function Floorplan3D({ plan=clinicPlan, selectedId, onSelect, onFurnitureMove, showHeatmap=true, showRoute=true, className }:EditorViewProps){
-  const [preset,setPreset]=useState<"iso"|"top"|"front">("iso");
-  return <div className={className} style={{position:"relative",width:"100%",height:"100%",minHeight:430,background:"#e8ece9"}}>
-    <div style={{position:"absolute",zIndex:2,top:14,right:14,display:"flex",gap:4,padding:4,background:"#fff",border:"1px solid #d4dcda",borderRadius:8}}>{(["iso","top","front"] as const).map(p=><button key={p} type="button" aria-pressed={preset===p} onClick={()=>setPreset(p)} style={{border:0,borderRadius:5,padding:"7px 10px",background:preset===p?"#dcecea":"transparent",color:"#33464b",font:"600 11px system-ui",cursor:"pointer",textTransform:"capitalize"}}>{p}</button>)}</div>
-    <Canvas shadows frameloop="demand" dpr={[1,1.5]} camera={{fov:42,near:.1,far:100}} gl={{antialias:true}}><color attach="background" args={["#e8ece9"]}/><fog attach="fog" args={["#e8ece9",11,22]}/><Suspense fallback={<Html center style={{font:"600 12px system-ui",color:c.muted}}>Preparing spatial view…</Html>}><ClinicScene plan={plan} selectedId={selectedId} onSelect={onSelect} onFurnitureMove={onFurnitureMove} showHeatmap={showHeatmap} showRoute={showRoute} preset={preset}/></Suspense></Canvas>
-  </div>;
+function HeatmapLayer({ plan }: { plan: EditorPlan }) {
+  return (
+    <group position={[0, 0.005, 0]}>
+      {plan.furniture.map((f, i) => (
+        <mesh key={i} position={[f.x * U, 0, f.y * U]} rotation={[-Math.PI / 2, 0, 0]}>
+          <circleGeometry args={[2.0, 32]} />
+          <meshBasicMaterial color={editorPalette.red} transparent opacity={0.1} depthWrite={false} />
+        </mesh>
+      ))}
+    </group>
+  );
 }
+
+function RouteLayer({ points }: { points: Point[] }) {
+  const pts = points.map((p) => new THREE.Vector3(p.x * U, 0.01, p.y * U));
+  if (pts.length < 2) return null;
+  return (
+    <Line
+      points={pts}
+      color={editorPalette.route}
+      lineWidth={3}
+      dashed
+      dashSize={0.2}
+      gapSize={0.1}
+    />
+  );
+}
+
+export function Floorplan3D({
+  plan,
+  selectedId,
+  onSelect,
+  onFurnitureMove,
+  showHeatmap,
+  showRoute,
+  className,
+}: import("./editor-model").EditorViewProps) {
+  const [preset, setPreset] = useState<"iso" | "top" | "front">("iso");
+
+  if (!plan) return null;
+
+  return (
+    <div className={`relative w-full h-full ${className || ""}`}>
+      <div className="absolute top-4 right-4 z-10 flex gap-2">
+        <button className="px-3 py-1 bg-white shadow rounded text-sm font-medium text-slate-700 hover:bg-slate-50" onClick={() => setPreset("iso")}>Iso</button>
+        <button className="px-3 py-1 bg-white shadow rounded text-sm font-medium text-slate-700 hover:bg-slate-50" onClick={() => setPreset("top")}>Top</button>
+        <button className="px-3 py-1 bg-white shadow rounded text-sm font-medium text-slate-700 hover:bg-slate-50" onClick={() => setPreset("front")}>Front</button>
+      </div>
+
+      <Canvas frameloop="demand" dpr={[1, 1.5]} shadows camera={{ position: [10, 10, 10], fov: 50 }}>
+        <MapControls makeDefault maxPolarAngle={Math.PI / 2 - 0.05} />
+        <CameraRig preset={preset} />
+        
+        <ambientLight intensity={0.5} />
+        <directionalLight position={[10, 20, 10]} intensity={1.0} castShadow shadow-mapSize={[2048, 2048]}>
+          <orthographicCamera attach="shadow-camera" args={[-20, 20, 20, -20, 0.1, 50]} />
+        </directionalLight>
+
+        <mesh 
+          rotation={[-Math.PI / 2, 0, 0]} 
+          receiveShadow 
+          onPointerDown={(e) => { e.stopPropagation(); onSelect?.(null); }}
+        >
+          <planeGeometry args={[100, 100]} />
+          <meshStandardMaterial color={editorPalette.floor} />
+        </mesh>
+
+        <group position={[-plan.width * U / 2, 0, -plan.depth * U / 2]}>
+          {plan.rooms.map((room: EditorRoom) => (
+            <group key={room.id} position={[room.x * U + (room.width * U)/2, 0, room.y * U + (room.depth * U)/2]}>
+              <mesh position={[0, 1.4 * U, 0]} receiveShadow castShadow>
+                <boxGeometry args={[room.width * U, 2.8 * U, room.depth * U]} />
+                <meshStandardMaterial color={editorPalette.room} transparent opacity={0.7} side={THREE.DoubleSide} />
+              </mesh>
+            </group>
+          ))}
+
+          {plan.furniture.map((f) => (
+            <FurnitureItem
+              key={f.id}
+              item={f}
+              selected={selectedId === f.id}
+              onSelect={(id) => onSelect?.(id)}
+              onMove={onFurnitureMove}
+            />
+          ))}
+
+          {showHeatmap && <HeatmapLayer plan={plan} />}
+          {showRoute && plan.route && <RouteLayer points={plan.route} />}
+        </group>
+      </Canvas>
+    </div>
+  );
+}
+
 export default Floorplan3D;
-

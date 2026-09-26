@@ -1,41 +1,329 @@
 "use client";
-import { useEffect, useMemo, useRef, useState } from "react";
-import { Circle, Group, Layer, Line, Rect, Stage, Text, Transformer } from "react-konva";
+
+import { useState, useRef, useEffect, useCallback } from "react";
+import { Stage, Layer, Group, Rect, Line, Circle, Text, Arrow } from "react-konva";
 import Konva from "konva";
-import { clampFurniture, clinicPlan, editorPalette as c, type EditorFurniture, type EditorViewProps } from "./editor-model";
+import {
+  type Point,
+  EditorViewProps,
+  editorPalette,
+  clampFurniture
+} from "./editor-model";
 
-function Furniture({ item, selected, scale, onSelect, onMove }: { item: EditorFurniture; selected: boolean; scale: number; onSelect: () => void; onMove: (x: number, y: number) => void }) {
-  const ref = useRef<Konva.Group>(null);
-  const transformer = useRef<Konva.Transformer>(null);
-  useEffect(() => { if (selected && ref.current && transformer.current) { transformer.current.nodes([ref.current]); transformer.current.getLayer()?.batchDraw(); } }, [selected]);
-  const fill = item.kind === "plant" ? "#7ba284" : item.kind === "desk" || item.kind === "cabinet" ? "#87979b" : "#9fb8b8";
-  return <>
-    <Group ref={ref} x={item.x * scale} y={item.y * scale} rotation={item.rotation ?? 0} draggable={item.movable !== false} onClick={(e) => { e.cancelBubble = true; onSelect(); }} onTap={(e) => { e.cancelBubble = true; onSelect(); }} onDragEnd={(e) => onMove(e.target.x() / scale, e.target.y() / scale)}>
-      {item.kind === "plant" ? <><Circle x={item.width * scale / 2} y={item.depth * scale / 2} radius={item.width * scale / 2} fill={fill} stroke="#496f56" /><Line points={[item.width*.2*scale,item.depth*.5*scale,item.width*.8*scale,item.depth*.5*scale]} stroke="#d7e7d8" /></> : <Rect width={item.width * scale} height={item.depth * scale} cornerRadius={item.kind === "chair" ? 7 : 3} fill={fill} stroke={selected ? c.teal : "#64767a"} strokeWidth={(selected ? 3 : 1) / Math.max(scale, .5)} shadowColor="#2b3838" shadowOpacity={.09} shadowBlur={4} />}
-      {item.kind === "chair" && <Line points={[8*scale,item.depth*.72*scale,(item.width-8)*scale,item.depth*.72*scale]} stroke="#657b7d" />}
-    </Group>
-    {selected && <Transformer ref={transformer} rotateEnabled enabledAnchors={[]} borderStroke={c.teal} anchorFill="#fff" anchorStroke={c.teal} />}
-  </>;
+const SNAP_SIZE = 25;
+const MAX_ZOOM = 3;
+const MIN_ZOOM = 0.3;
+
+const getSnapPos = (p: number) => Math.round(p / SNAP_SIZE) * SNAP_SIZE;
+
+const Grid = ({ width, height }: { width: number; height: number }) => {
+  const lines = [];
+  for (let i = 0; i <= width; i += SNAP_SIZE) {
+    const isMajor = i % 100 === 0;
+    lines.push(
+      <Line
+        key={`v${i}`}
+        points={[i, 0, i, height]}
+        stroke={editorPalette.line}
+        strokeWidth={isMajor ? 1.5 : 0.5}
+        dash={isMajor ? [] : [2, 4]}
+      />
+    );
+  }
+  for (let j = 0; j <= height; j += SNAP_SIZE) {
+    const isMajor = j % 100 === 0;
+    lines.push(
+      <Line
+        key={`h${j}`}
+        points={[0, j, width, j]}
+        stroke={editorPalette.line}
+        strokeWidth={isMajor ? 1.5 : 0.5}
+        dash={isMajor ? [] : [2, 4]}
+      />
+    );
+  }
+  return <Group>{lines}</Group>;
+};
+
+const FurnitureShape = ({ kind, w, d, c }: { kind: string; w: number; d: number; c: string }) => {
+  if (kind === "chair") {
+    return (
+      <Group>
+        <Rect width={w} height={d} fill={c} cornerRadius={4} />
+        <Rect width={w} height={d * 0.3} fill={editorPalette.ink} opacity={0.2} cornerRadius={4} />
+      </Group>
+    );
+  }
+  if (kind === "desk") {
+    return (
+      <Group>
+        <Rect width={w} height={d} fill={c} />
+        <Line points={[4, 4, w - 4, 4, w - 4, d - 4, 4, d - 4, 4, 4]} stroke={editorPalette.ink} strokeWidth={1} opacity={0.2} />
+        <Line points={[w * 0.2, d * 0.8, w * 0.8, d * 0.8]} stroke={editorPalette.ink} strokeWidth={1} opacity={0.3} />
+      </Group>
+    );
+  }
+  if (kind === "cabinet") {
+    return (
+      <Group>
+        <Rect width={w} height={d} fill={c} />
+        <Line points={[0, 0, w, d]} stroke={editorPalette.floor} strokeWidth={1} opacity={0.5} />
+        <Line points={[0, d, w, 0]} stroke={editorPalette.floor} strokeWidth={1} opacity={0.5} />
+      </Group>
+    );
+  }
+  if (kind === "plant") {
+    const r = Math.min(w, d) / 2;
+    return (
+      <Group x={w / 2} y={d / 2}>
+        <Circle radius={r} fill="#7cb342" />
+        <Line points={[-r, 0, r, 0]} stroke="#558b2f" strokeWidth={2} />
+        <Line points={[0, -r, 0, r]} stroke="#558b2f" strokeWidth={2} />
+        <Line points={[-r * 0.7, -r * 0.7, r * 0.7, r * 0.7]} stroke="#558b2f" strokeWidth={1} />
+        <Line points={[-r * 0.7, r * 0.7, r * 0.7, -r * 0.7]} stroke="#558b2f" strokeWidth={1} />
+      </Group>
+    );
+  }
+  if (kind === "bench") {
+    return (
+      <Group>
+        <Rect width={w} height={d} fill={c} cornerRadius={2} />
+        <Rect width={w * 0.1} height={d} fill={editorPalette.ink} opacity={0.2} cornerRadius={2} />
+        <Rect x={w * 0.9} width={w * 0.1} height={d} fill={editorPalette.ink} opacity={0.2} cornerRadius={2} />
+      </Group>
+    );
+  }
+  return <Rect width={w} height={d} fill={c} />;
+};
+
+export function Floorplan2D({
+  plan,
+  selectedId,
+  onSelect,
+  onFurnitureMove,
+  showHeatmap,
+  showRoute,
+  className = ""
+}: EditorViewProps) {
+  const containerRef = useRef<HTMLDivElement>(null);
+  const stageRef = useRef<Konva.Stage>(null);
+  const [size, setSize] = useState({ w: 0, h: 0 });
+  const [scale, setScale] = useState(1);
+  const [pos, setPos] = useState({ x: 0, y: 0 });
+  const [isSpaceDown, setIsSpaceDown] = useState(false);
+  const [dragSpaceStart, setDragSpaceStart] = useState<Point | null>(null);
+  const [stagePosStart, setStagePosStart] = useState<Point | null>(null);
+
+  useEffect(() => {
+    if (!containerRef.current) return;
+    const obs = new ResizeObserver((entries) => {
+      setSize({ w: entries[0].contentRect.width, h: entries[0].contentRect.height });
+    });
+    obs.observe(containerRef.current);
+    return () => obs.disconnect();
+  }, []);
+
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.code === "Space") {
+        if (e.type === "keydown") setIsSpaceDown(true);
+        if (e.type === "keyup") setIsSpaceDown(false);
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    window.addEventListener("keyup", onKey);
+    return () => {
+      window.removeEventListener("keydown", onKey);
+      window.removeEventListener("keyup", onKey);
+    };
+  }, []);
+
+  const handleWheel = useCallback((e: Konva.KonvaEventObject<WheelEvent>) => {
+    e.evt.preventDefault();
+    const stage = stageRef.current;
+    if (!stage) return;
+    const oldScale = stage.scaleX();
+    const pointer = stage.getPointerPosition();
+    if (!pointer) return;
+    
+    const mousePointTo = {
+      x: (pointer.x - stage.x()) / oldScale,
+      y: (pointer.y - stage.y()) / oldScale
+    };
+    
+    let newScale = e.evt.deltaY < 0 ? oldScale * 1.1 : oldScale / 1.1;
+    newScale = Math.max(MIN_ZOOM, Math.min(MAX_ZOOM, newScale));
+    
+    setScale(newScale);
+    setPos({
+      x: pointer.x - mousePointTo.x * newScale,
+      y: pointer.y - mousePointTo.y * newScale
+    });
+  }, []);
+
+  const handleStageMouseDown = (e: Konva.KonvaEventObject<MouseEvent>) => {
+    if (isSpaceDown || e.evt.button === 1) {
+      setDragSpaceStart({ x: e.evt.clientX, y: e.evt.clientY });
+      setStagePosStart(pos);
+      return;
+    }
+    const clickedOnEmpty = e.target === e.target.getStage();
+    if (clickedOnEmpty) {
+      onSelect?.(null);
+    }
+  };
+
+  const handleStageMouseMove = (e: Konva.KonvaEventObject<MouseEvent>) => {
+    if (dragSpaceStart && stagePosStart) {
+      setPos({
+        x: stagePosStart.x + (e.evt.clientX - dragSpaceStart.x),
+        y: stagePosStart.y + (e.evt.clientY - dragSpaceStart.y)
+      });
+    }
+  };
+
+  const handleStageMouseUp = () => {
+    setDragSpaceStart(null);
+    setStagePosStart(null);
+  };
+
+  if (!plan) return <div className={className}>No plan</div>;
+
+  const isPanning = !!dragSpaceStart;
+  const stageCursor = isSpaceDown ? (isPanning ? "grabbing" : "grab") : "default";
+
+  return (
+    <div ref={containerRef} className={`w-full h-full relative overflow-hidden bg-[#e0e5e7] ${className}`} style={{ cursor: stageCursor }}>
+      <Stage
+        width={size.w}
+        height={size.h}
+        scaleX={scale}
+        scaleY={scale}
+        x={pos.x}
+        y={pos.y}
+        ref={stageRef}
+        onWheel={handleWheel}
+        onMouseDown={handleStageMouseDown}
+        onMouseMove={handleStageMouseMove}
+        onMouseUp={handleStageMouseUp}
+        onMouseLeave={handleStageMouseUp}
+        draggable={false}
+      >
+        <Layer>
+          <Grid width={plan.width} height={plan.depth} />
+          
+          {plan.rooms.map(r => (
+            <Group key={r.id} x={r.x} y={r.y}>
+              <Rect width={r.width} height={r.depth} fill={editorPalette.room} stroke={editorPalette.ink} strokeWidth={4} />
+              <Text x={8} y={8} text={r.label.toUpperCase()} fontSize={14} fill={editorPalette.muted} fontFamily="sans-serif" fontStyle="bold" />
+            </Group>
+          ))}
+          
+          {plan.furniture.map(f => {
+            const isSelected = selectedId === f.id;
+            const isMovable = f.movable !== false;
+            const fc = f.kind === "cabinet" ? "#5a666e" : f.kind === "chair" ? "#8c9ba3" : "#abb7bd";
+            
+            return (
+              <Group
+                key={f.id}
+                x={f.x}
+                y={f.y}
+                rotation={f.rotation || 0}
+                draggable={isMovable && !isSpaceDown}
+                onClick={(e) => {
+                  e.cancelBubble = true;
+                  onSelect?.(f.id);
+                }}
+                onDragStart={(e) => {
+                  e.cancelBubble = true;
+                  onSelect?.(f.id);
+                }}
+                onDragEnd={(e) => {
+                  e.cancelBubble = true;
+                  if (!plan || !onFurnitureMove) return;
+                  const newP = clampFurniture(f, { x: getSnapPos(e.target.x()), y: getSnapPos(e.target.y()) }, plan);
+                  e.target.position(newP);
+                  onFurnitureMove(f.id, newP);
+                }}
+                onMouseEnter={(e) => {
+                  if (isMovable && !isSpaceDown) {
+                    const container = e.target.getStage()?.container();
+                    if (container) container.style.cursor = "grab";
+                  }
+                }}
+                onMouseLeave={(e) => {
+                  const container = e.target.getStage()?.container();
+                  if (container) container.style.cursor = stageCursor;
+                }}
+              >
+                <FurnitureShape kind={f.kind} w={f.width} d={f.depth} c={fc} />
+                
+                {scale > 1.2 && (
+                  <Text y={f.depth + 4} text={f.label} fontSize={10 / scale} fill={editorPalette.ink} align="center" width={f.width} />
+                )}
+                
+                {isSelected && (
+                  <Rect
+                    x={-3} y={-3}
+                    width={f.width + 6} height={f.depth + 6}
+                    stroke={editorPalette.teal} strokeWidth={3}
+                    shadowColor={editorPalette.teal} shadowBlur={10} shadowOpacity={0.5}
+                    listening={false}
+                  />
+                )}
+              </Group>
+            );
+          })}
+
+          {showRoute && plan.route && plan.route.length > 0 && (
+            <Group listening={false}>
+              <Line
+                points={plan.route.flatMap(p => [p.x, p.y])}
+                stroke="white"
+                strokeWidth={8}
+                lineJoin="round"
+                lineCap="round"
+              />
+              <Line
+                points={plan.route.flatMap(p => [p.x, p.y])}
+                stroke={editorPalette.route}
+                strokeWidth={4}
+                dash={[10, 10]}
+                lineJoin="round"
+                lineCap="round"
+              />
+              <Circle x={plan.route[0].x} y={plan.route[0].y} radius={8} fill={editorPalette.route} />
+              <Text x={plan.route[0].x + 12} y={plan.route[0].y - 8} text="ENTRY" fill={editorPalette.ink} fontSize={12} fontStyle="bold" />
+              {plan.route.length > 1 && (
+                <Arrow
+                  points={[
+                    plan.route[plan.route.length - 2].x, plan.route[plan.route.length - 2].y,
+                    plan.route[plan.route.length - 1].x, plan.route[plan.route.length - 1].y
+                  ]}
+                  pointerLength={10}
+                  pointerWidth={10}
+                  fill={editorPalette.route}
+                  stroke={editorPalette.route}
+                  strokeWidth={4}
+                />
+              )}
+            </Group>
+          )}
+
+          {showHeatmap && (
+            <Group listening={false}>
+              <Circle x={300} y={200} radius={150} fillRadialGradientStartPoint={{ x: 0, y: 0 }} fillRadialGradientStartRadius={0} fillRadialGradientEndPoint={{ x: 0, y: 0 }} fillRadialGradientEndRadius={150} fillRadialGradientColorStops={[0, "rgba(201,87,77,0.6)", 1, "rgba(201,87,77,0)"]} />
+              <Circle x={600} y={400} radius={200} fillRadialGradientStartPoint={{ x: 0, y: 0 }} fillRadialGradientStartRadius={0} fillRadialGradientEndPoint={{ x: 0, y: 0 }} fillRadialGradientEndRadius={200} fillRadialGradientColorStops={[0, "rgba(217,145,50,0.5)", 1, "rgba(217,145,50,0)"]} />
+            </Group>
+          )}
+        </Layer>
+      </Stage>
+      <div className="absolute bottom-4 left-4 bg-white/90 px-2 py-1 rounded text-xs font-mono border border-gray-200 pointer-events-none">
+        Scale: {Math.round(scale * 100)}%
+      </div>
+    </div>
+  );
 }
 
-export function Floorplan2D({ plan = clinicPlan, selectedId, onSelect, onFurnitureMove, showHeatmap = true, showRoute = true, className }: EditorViewProps) {
-  const host = useRef<HTMLDivElement>(null);
-  const [size, setSize] = useState({ width: 900, height: 600 });
-  useEffect(() => { if (!host.current) return; const observer = new ResizeObserver(([entry]) => setSize({ width: entry.contentRect.width, height: entry.contentRect.height })); observer.observe(host.current); return () => observer.disconnect(); }, []);
-  const scale = Math.min(size.width / plan.width, size.height / plan.depth) * .92;
-  const offset = { x: (size.width - plan.width * scale) / 2, y: (size.height - plan.depth * scale) / 2 };
-  const grid = useMemo(() => { const lines = []; for (let x=0;x<=plan.width;x+=25) lines.push(<Line key={`x${x}`} points={[x*scale,0,x*scale,plan.depth*scale]} stroke="#dfe5e3" strokeWidth={.6}/>); for(let y=0;y<=plan.depth;y+=25) lines.push(<Line key={`y${y}`} points={[0,y*scale,plan.width*scale,y*scale]} stroke="#dfe5e3" strokeWidth={.6}/>); return lines; }, [plan, scale]);
-  return <div ref={host} className={className} style={{ width: "100%", height: "100%", minHeight: 430, background: "#e8ece9", overflow: "hidden" }}>
-    <Stage width={size.width} height={size.height} onClick={() => onSelect?.(null)} onTap={() => onSelect?.(null)}>
-      <Layer x={offset.x} y={offset.y}>
-        <Rect width={plan.width*scale} height={plan.depth*scale} fill="#f7f9f6" shadowColor="#172426" shadowOpacity={.12} shadowBlur={18} shadowOffsetY={5}/>{grid}
-        {plan.rooms.map(room => <Group key={room.id}><Rect x={room.x*scale} y={room.y*scale} width={room.width*scale} height={room.depth*scale} fill={c.room} stroke={c.ink} strokeWidth={5*scale}/><Text x={(room.x+16)*scale} y={(room.y+14)*scale} text={room.label} fontSize={11} fontStyle="bold" fill={c.muted} letterSpacing={1.2}/></Group>)}
-        {showHeatmap && <Group opacity={.42} listening={false}><Circle x={465*scale} y={365*scale} radius={82*scale} fill={c.red}/><Circle x={555*scale} y={298*scale} radius={62*scale} fill={c.amber}/><Circle x={300*scale} y={445*scale} radius={70*scale} fill="#e7b64a"/></Group>}
-        {showRoute && <><Line points={plan.route.flatMap(p=>[p.x*scale,p.y*scale])} stroke="#fff" strokeWidth={15*scale} lineCap="round" lineJoin="round" opacity={.9}/><Line points={plan.route.flatMap(p=>[p.x*scale,p.y*scale])} stroke={c.route} strokeWidth={7*scale} dash={[12*scale,8*scale]} lineCap="round" lineJoin="round"/><Circle x={80*scale} y={490*scale} radius={8*scale} fill={c.route}/><Text x={92*scale} y={477*scale} text="ENTRY" fontSize={10} fontStyle="bold" fill={c.route}/></>}
-        {plan.furniture.map(item => <Furniture key={item.id} item={item} scale={scale} selected={selectedId===item.id} onSelect={()=>onSelect?.(item.id)} onMove={(x,y)=>onFurnitureMove?.(item.id,clampFurniture(item,{x,y},plan))}/>)}
-        <Line points={[60*scale,590*scale,180*scale,590*scale]} stroke={c.ink} strokeWidth={3}/><Text x={60*scale} y={596*scale} text="2 m" fontSize={10} fill={c.ink}/>
-      </Layer>
-    </Stage>
-  </div>;
-}
 export default Floorplan2D;
