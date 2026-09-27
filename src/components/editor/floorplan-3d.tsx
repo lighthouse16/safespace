@@ -1,11 +1,12 @@
 "use client";
 
-import { useRef, useState, useCallback } from "react";
+import { useRef, useState, useCallback, useEffect } from "react";
 import { Canvas, useThree, useFrame, type ThreeEvent } from "@react-three/fiber";
-import { CameraControls, ContactShadows, Environment, Line, Grid } from "@react-three/drei";
+import { CameraControls, ContactShadows, Environment, Line, Grid, useCursor } from "@react-three/drei";
 import * as THREE from "three";
 import type { EditorViewProps, EditorFurniture, EditorRoom, Point, FurnitureKind } from "./editor-model";
 import { editorPalette as c, clinicPlan } from "./editor-model";
+import { snapAndClampPosition } from "./floorplan-drag";
 
 /* ── Scale: 1 model unit = 1 cm → divide by 100 for meters ── */
 const S = 0.01;
@@ -193,79 +194,169 @@ function FurnitureShape({ kind, w, d }: { kind: FurnitureKind; w: number; d: num
 
 /* ── Draggable furniture wrapper ── */
 function FurnitureItem({
-  item, selected, onSelect, onMove, controlsRef,
+  item, selected, onSelect, onMove, controlsRef, planWidth, planDepth,
 }: {
   item: EditorFurniture;
   selected: boolean;
   onSelect: (id: string) => void;
   onMove?: (id: string, pos: Point) => void;
   controlsRef: React.RefObject<CameraControls | null>;
+  planWidth: number;
+  planDepth: number;
 }) {
-  const { invalidate } = useThree();
-  const isDragging = useRef(false);
-  const offset = useRef(new THREE.Vector3());
+  const { gl, camera } = useThree();
+  const canvasRef = useRef<HTMLCanvasElement | null>(null);
+  const dragRaycaster = useRef(new THREE.Raycaster());
+  const groupRef = useRef<THREE.Group>(null);
+  const draggingRef = useRef(false);
+  const pointerIdRef = useRef<number | null>(null);
+  const offsetRef = useRef(new THREE.Vector3());
+  const previewRef = useRef(new THREE.Vector3());
+  const finalRef = useRef<Point>({ x: item.x, y: item.y });
   const floorPlane = useRef(new THREE.Plane(new THREE.Vector3(0, 1, 0), 0));
+  const hitRef = useRef(new THREE.Vector3());
+  const pointerRef = useRef(new THREE.Vector2());
   const [hovered, setHovered] = useState(false);
+  const [dragging, setDragging] = useState(false);
 
   const w = toM(item.width);
   const d = toM(item.depth);
-  const px = toM(item.x) + w / 2; // center
+  const px = toM(item.x) + w / 2;
   const pz = toM(item.y) + d / 2;
+  useCursor(dragging || (hovered && Boolean(item.movable)), dragging ? "grabbing" : "grab");
+
+  useEffect(() => {
+    canvasRef.current = gl.domElement;
+  }, [gl]);
+
+  const restoreInteraction = useCallback(() => {
+    draggingRef.current = false;
+    pointerIdRef.current = null;
+    setDragging(false);
+    if (controlsRef.current) controlsRef.current.enabled = true;
+  }, [controlsRef]);
+
+  const projectPointer = useCallback((event: PointerEvent) => {
+    const canvas = canvasRef.current;
+    if (!canvas) return null;
+    const rect = canvas.getBoundingClientRect();
+    pointerRef.current.set(
+      ((event.clientX - rect.left) / rect.width) * 2 - 1,
+      -((event.clientY - rect.top) / rect.height) * 2 + 1,
+    );
+    dragRaycaster.current.setFromCamera(pointerRef.current, camera);
+    return dragRaycaster.current.ray.intersectPlane(floorPlane.current, hitRef.current);
+  }, [camera]);
+
+  useFrame(() => {
+    if (!draggingRef.current || !groupRef.current) return;
+    groupRef.current.position.copy(previewRef.current);
+  });
+
+  useEffect(() => {
+    if (!dragging) return;
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    const controls = controlsRef.current;
+
+    const handleMove = (event: PointerEvent) => {
+      if (!draggingRef.current || event.pointerId !== pointerIdRef.current) return;
+      event.preventDefault();
+      const hit = projectPointer(event);
+      if (!hit) return;
+
+      const centerX = hit.x - offsetRef.current.x;
+      const centerZ = hit.z - offsetRef.current.z;
+      const next = snapAndClampPosition(
+        { x: (centerX - w / 2) / S, y: (centerZ - d / 2) / S },
+        { planWidth, planDepth, itemWidth: item.width, itemDepth: item.depth, grid: 5 },
+      );
+
+      finalRef.current = next;
+      previewRef.current.set(toM(next.x) + w / 2, 0.08, toM(next.y) + d / 2);
+    };
+
+    const finish = (event?: PointerEvent) => {
+      if (!draggingRef.current) return;
+      if (event && event.pointerId !== pointerIdRef.current) return;
+
+      const pointerId = pointerIdRef.current;
+      if (pointerId !== null && canvas.hasPointerCapture(pointerId)) {
+        canvas.releasePointerCapture(pointerId);
+      }
+      const final = finalRef.current;
+      if (groupRef.current) groupRef.current.position.set(toM(final.x) + w / 2, 0, toM(final.y) + d / 2);
+      onMove?.(item.id, final);
+      restoreInteraction();
+    };
+
+    const cancel = () => {
+      if (groupRef.current) groupRef.current.position.set(px, 0, pz);
+      restoreInteraction();
+    };
+
+    window.addEventListener("pointermove", handleMove, { passive: false });
+    window.addEventListener("pointerup", finish);
+    window.addEventListener("pointercancel", cancel);
+    window.addEventListener("blur", cancel);
+
+    return () => {
+      window.removeEventListener("pointermove", handleMove);
+      window.removeEventListener("pointerup", finish);
+      window.removeEventListener("pointercancel", cancel);
+      window.removeEventListener("blur", cancel);
+      if (controls) controls.enabled = true;
+    };
+  }, [dragging, item.depth, item.id, item.width, onMove, planDepth, planWidth, projectPointer, px, pz, restoreInteraction, w, d, controlsRef]);
 
   const handleDown = useCallback((e: ThreeEvent<PointerEvent>) => {
     e.stopPropagation();
     onSelect(item.id);
-    if (!item.movable || !onMove) return;
+    if (!item.movable || !onMove || draggingRef.current) return;
 
-    isDragging.current = true;
+    const hit = e.ray.intersectPlane(floorPlane.current, hitRef.current);
+    if (!hit) return;
+
+    e.nativeEvent.preventDefault();
+    draggingRef.current = true;
+    pointerIdRef.current = e.pointerId;
+    finalRef.current = { x: item.x, y: item.y };
+    previewRef.current.set(px, 0.08, pz);
+    offsetRef.current.set(hit.x - px, 0, hit.z - pz);
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    canvas.setPointerCapture(e.pointerId);
     if (controlsRef.current) controlsRef.current.enabled = false;
-
-    const hit = new THREE.Vector3();
-    e.ray.intersectPlane(floorPlane.current, hit);
-    offset.current.set(hit.x - px, 0, hit.z - pz);
-    invalidate();
-  }, [item.id, item.movable, onSelect, onMove, controlsRef, px, pz, invalidate]);
-
-  const handleMove = useCallback((e: ThreeEvent<PointerEvent>) => {
-    if (!isDragging.current) return;
-    e.stopPropagation();
-    const hit = new THREE.Vector3();
-    e.ray.intersectPlane(floorPlane.current, hit);
-    const cx = hit.x - offset.current.x;
-    const cz = hit.z - offset.current.z;
-    // Convert center back to top-left model coords
-    const mx = (cx - w / 2) / S;
-    const my = (cz - d / 2) / S;
-    onMove?.(item.id, { x: mx, y: my });
-    invalidate();
-  }, [item.id, onMove, w, d, invalidate]);
-
-  const handleUp = useCallback(() => {
-    if (!isDragging.current) return;
-    isDragging.current = false;
-    if (controlsRef.current) controlsRef.current.enabled = true;
-    invalidate();
-  }, [controlsRef, invalidate]);
+    setDragging(true);
+  }, [controlsRef, item.id, item.movable, item.x, item.y, onMove, onSelect, px, pz]);
 
   return (
     <group
+      ref={groupRef}
       position={[px, 0, pz]}
       rotation={[0, -(item.rotation ?? 0) * Math.PI / 180, 0]}
       onPointerDown={handleDown}
-      onPointerMove={handleMove}
-      onPointerUp={handleUp}
-      onPointerLeave={handleUp}
-      onPointerOver={(e) => { e.stopPropagation(); setHovered(true); invalidate(); }}
-      onPointerOut={() => { setHovered(false); invalidate(); }}
+      onPointerOver={(e) => {
+        e.stopPropagation();
+        if (!draggingRef.current) setHovered(true);
+      }}
+      onPointerOut={() => {
+        if (!draggingRef.current) setHovered(false);
+      }}
     >
       <group scale={hovered && item.movable ? 1.03 : 1}>
         <FurnitureShape kind={item.kind} w={w} d={d} />
       </group>
-      {/* Selection ring */}
-      {selected && (
-        <mesh position={[0, 0.005, 0]} rotation={[-Math.PI / 2, 0, 0]}>
+      {(selected || dragging) && (
+        <mesh position={[0, 0.006, 0]} rotation={[-Math.PI / 2, 0, 0]}>
           <ringGeometry args={[Math.max(w, d) * 0.65, Math.max(w, d) * 0.72, 48]} />
-          <meshBasicMaterial color={c.teal} transparent opacity={0.6} />
+          <meshBasicMaterial color={c.teal} transparent opacity={dragging ? 0.9 : 0.6} depthWrite={false} />
+        </mesh>
+      )}
+      {dragging && (
+        <mesh position={[0, -0.074, 0]} rotation={[-Math.PI / 2, 0, 0]}>
+          <planeGeometry args={[w + 0.08, d + 0.08]} />
+          <meshBasicMaterial color={c.teal} transparent opacity={0.16} depthWrite={false} />
         </mesh>
       )}
     </group>
@@ -385,7 +476,10 @@ export function Floorplan3D({
   const cz = pd / 2;
 
   return (
-    <div className={`relative w-full h-full min-h-[430px] ${className ?? ""}`} style={{ background: "#e8ece9" }}>
+    <div
+      className={`relative w-full h-full min-h-[430px] ${className ?? ""}`}
+      style={{ background: "#e8ece9", touchAction: "none", cursor: "default" }}
+    >
       {/* Camera preset buttons */}
       <div className="absolute top-3 right-3 z-10 flex gap-1 rounded-lg border border-slate-200 bg-white/95 p-1 shadow-sm backdrop-blur">
         {(["iso", "top", "front"] as const).map(p => (
@@ -484,6 +578,8 @@ export function Floorplan3D({
             onSelect={id => onSelect?.(id)}
             onMove={onFurnitureMove}
             controlsRef={controlsRef}
+            planWidth={plan.width}
+            planDepth={plan.depth}
           />
         ))}
 
