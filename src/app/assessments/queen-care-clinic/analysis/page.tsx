@@ -1,2 +1,19 @@
-import {WorkspaceShell} from "@/components/shell"; import {RiskAnalysis} from "@/components/analysis"; import Link from "next/link";
-export default function AnalysisPage(){return <WorkspaceShell activeStep="analysis"><div className="p-4 lg:p-6"><header className="mb-5 flex items-end justify-between gap-4"><div><p className="text-xs font-semibold uppercase tracking-wide text-teal-700">Assessment results</p><h1 className="mt-1 text-2xl font-semibold">Walker route safety</h1><p className="mt-1 text-sm text-slate-600">Harmony Elder Care Centre · Activity room · Sample analysis</p></div><Link href="/assessments/queen-care-clinic/options" className="rounded-lg bg-teal-700 px-4 py-2.5 text-sm font-semibold text-white">Generate safer layouts</Link></header><RiskAnalysis/></div></WorkspaceShell>}
+import { WorkspaceShell } from "@/components/shell";
+import { RiskAnalysis } from "@/components/analysis";
+
+export default function AnalysisPage() {
+  return (
+    <WorkspaceShell activeStep="analysis">
+      <div className="p-4 lg:p-6">
+        <header className="mb-5">
+          <div className="flex flex-wrap items-center gap-2 text-xs font-medium text-slate-500">
+            <span>Harmony Elder Care Centre</span><span aria-hidden="true">/</span><span>Activity Room</span><span aria-hidden="true">/</span><span className="rounded-full bg-amber-50 px-2 py-1 font-semibold text-amber-800">Professional review pending</span>
+          </div>
+          <h1 className="mt-2 text-2xl font-semibold tracking-tight text-slate-950">Review route safety findings</h1>
+          <p className="mt-1 max-w-3xl text-sm leading-6 text-slate-600">Mrs. Chan, 78 · Walker user · Entrance → Activity area → WC corridor</p>
+        </header>
+        <RiskAnalysis />
+      </div>
+    </WorkspaceShell>
+  );
+}

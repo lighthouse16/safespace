@@ -121,7 +121,8 @@ export function Floorplan2D({
   onFurnitureMove,
   showHeatmap,
   showRoute,
-  className = ""
+  className = "",
+  readOnly = false,
 }: EditorViewProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const stageRef = useRef<Konva.Stage>(null);
@@ -239,7 +240,7 @@ export function Floorplan2D({
           
           {plan.furniture.map(f => {
             const isSelected = selectedId === f.id;
-            const isMovable = f.movable !== false;
+            const isMovable = !readOnly && f.movable !== false;
             const fc = f.kind === "cabinet" ? "#5a666e" : f.kind === "chair" ? "#8c9ba3" : "#abb7bd";
             
             return (

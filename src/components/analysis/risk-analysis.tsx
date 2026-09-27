@@ -1,8 +1,226 @@
 "use client";
-import { useState } from "react";
-import { HazardDetail, type Hazard } from "./hazard-detail";
-const hazards: Hazard[] = [
-{id:"HZ-014",severity:"Critical",title:"Table blocks primary route",location:"Activity room · Centre zone",reason:"Group table A narrows the only step-free route from entrance to WC corridor.",affectedProfiles:["Walker","Wheelchair"],measured:"52 cm",required:"90 cm",evidence:"Route simulation intersects table clearance envelope for 2.1 m.",suggestedFix:"Move table A 700 mm north toward window wall.",confidence:94},
-{id:"HZ-009",severity:"High",title:"Cabinet creates pinch point",location:"Activity room · East wall",reason:"Supply cabinet narrows passage to WC corridor below walker profile requirement.",affectedProfiles:["Walker"],measured:"58 cm",required:"90 cm",evidence:"Clearance envelope clips cabinet during transition to corridor.",suggestedFix:"Relocate cabinet to storage room.",confidence:89},
-{id:"HZ-021",severity:"Medium",title:"Low contrast floor transition",location:"WC corridor entry · Grid E5",reason:"Adjacent finishes have insufficient contrast for low-vision users.",affectedProfiles:["Low vision"],measured:"12 LRV",required:"30 LRV",evidence:"Material values sampled from calibrated site photographs.",suggestedFix:"Add matte contrast strip across threshold.",confidence:82}];
-export function RiskAnalysis({onLocateHazard,onViewChange}:{onLocateHazard?:(id:string)=>void;onViewChange?:(view:"2D"|"3D")=>void}) { const [selected,setSelected]=useState(hazards[0]); const [view,setView]=useState<"2D"|"3D">("2D"); const [playing,setPlaying]=useState(false); return <section aria-labelledby="risk-title" className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm"><header className="flex flex-col gap-4 border-b border-slate-200 p-5 lg:flex-row lg:items-end lg:justify-between"><div><p className="text-xs font-semibold uppercase tracking-widest text-teal-700">Analysis complete · Demo data</p><h2 id="risk-title" className="mt-1 text-lg font-semibold text-slate-950">Environmental risk analysis</h2></div><div className="flex flex-wrap items-end gap-3"><label className="grid gap-1 text-xs font-medium text-slate-600">Profile<select className="h-9 rounded-lg border border-slate-300 bg-white px-3 text-sm"><option>Older adult using walker</option><option>Manual wheelchair user</option></select></label><label className="grid gap-1 text-xs font-medium text-slate-600">Route<select className="h-9 rounded-lg border border-slate-300 bg-white px-3 text-sm"><option>Reception → Consultation 2</option><option>Entrance → Accessible WC</option></select></label><div aria-label="Plan view" className="flex rounded-lg border border-slate-300 p-0.5">{(["2D","3D"] as const).map(v=><button key={v} aria-pressed={view===v} onClick={()=>{setView(v);onViewChange?.(v)}} className={`h-8 rounded-md px-3 text-sm font-semibold ${view===v?"bg-slate-900 text-white":"text-slate-600 hover:bg-slate-100"}`}>{v}</button>)}</div></div></header><div className="grid lg:grid-cols-[1fr_23rem]"><div className="border-r border-slate-200"><div className="grid grid-cols-[10rem_1fr] border-b border-slate-200"><div className="border-r border-slate-200 p-5"><span className="text-4xl font-semibold tabular-nums">68</span><span className="text-sm text-slate-500">/100</span><p className="text-sm font-semibold text-red-700">High risk</p><p className="text-xs text-slate-500">Lower is safer.</p></div><div className="flex items-center justify-between gap-3 p-5"><div><p className="text-sm font-semibold">Route simulation</p><p className="text-xs text-slate-500">Walker envelope · 00:18</p></div><button aria-pressed={playing} onClick={()=>setPlaying(!playing)} className="h-9 rounded-lg bg-teal-700 px-4 text-sm font-semibold text-white hover:bg-teal-800">{playing?"Pause":"Play simulation"}</button></div></div><div className="relative min-h-80 overflow-hidden bg-slate-100 p-6" aria-label={`${view} heatmap preview`}><div className="relative mx-auto h-64 max-w-2xl border-4 border-slate-500 bg-white"><div className="absolute left-[12%] top-[18%] h-[64%] w-[18%] border-2 border-slate-300 bg-slate-50"/><div className="absolute left-[32%] top-[18%] h-[64%] w-[50%] border-2 border-slate-300 bg-slate-50"/><div className="absolute left-[22%] top-[55%] h-16 w-16 rounded-full border-4 border-red-600 bg-red-100"/><div className="absolute left-[63%] top-[42%] h-12 w-12 rotate-45 border-4 border-amber-600 bg-amber-100"/><div className={`absolute bottom-[24%] left-[16%] h-1 w-[58%] bg-teal-700 ${playing?"animate-pulse":""}`}/></div><div className="relative mt-4 flex gap-4 text-xs font-medium text-slate-700"><span>● Critical</span><span>◆ High</span><span className="text-teal-800">━ Selected route</span></div></div></div><aside aria-label="Ranked hazards"><div className="border-b border-slate-200 px-4 py-3"><h3 className="text-sm font-semibold">Ranked findings</h3><p className="text-xs text-slate-500">7 total · 3 need action</p></div><ol className="divide-y divide-slate-200">{hazards.map((h,i)=><li key={h.id}><button onClick={()=>setSelected(h)} aria-current={selected.id===h.id} className={`w-full p-4 text-left focus:ring-2 focus:ring-inset focus:ring-teal-600 ${selected.id===h.id?"bg-teal-50":"hover:bg-slate-50"}`}><span className="flex justify-between text-xs font-semibold text-slate-500"><span>{String(i+1).padStart(2,"0")} · {h.id}</span><span>{h.severity}</span></span><span className="mt-1 block text-sm font-semibold">{h.title}</span><span className="text-xs text-slate-500">{h.location}</span></button></li>)}</ol></aside></div><HazardDetail hazard={selected} onLocate={()=>onLocateHazard?.(selected.id)}/></section> }
+
+import { useMemo, useState } from "react";
+import Link from "next/link";
+import {
+  ArrowRightIcon,
+  CheckCircleIcon,
+  ClipboardTextIcon,
+  EyeIcon,
+  MapPinIcon,
+  RulerIcon,
+  ShieldWarningIcon,
+  UserCircleCheckIcon,
+  WarningCircleIcon,
+  XCircleIcon,
+} from "@phosphor-icons/react";
+import { Floorplan2D } from "@/components/editor/floorplan-2d";
+import { currentPlan } from "@/components/editor/editor-model";
+import { HazardDetail, type Hazard, type ReviewDecision } from "./hazard-detail";
+
+export const hazards: Hazard[] = [
+  {
+    id: "HZ-014",
+    severity: "Critical",
+    title: "Table blocks the primary route",
+    location: "Activity room · Centre zone",
+    objectId: "table-a",
+    reason: "Group table A leaves too little space for Mrs. Chan to pass safely with her walker on the only step-free route to the WC corridor.",
+    affectedProfiles: ["Walker user", "Wheelchair user"],
+    measured: "52 cm",
+    required: "90 cm",
+    gap: "38 cm below target",
+    evidence: "The walker clearance envelope intersects the table and adjacent chair zone for 2.1 m of the assessed route.",
+    suggestedFix: "Move Group table A 70 cm north and reposition the two southern chairs.",
+    confidence: 94,
+    provenance: "Spatial model v3 · Route clearance check",
+  },
+  {
+    id: "HZ-009",
+    severity: "High",
+    title: "Cabinet narrows the WC approach",
+    location: "Activity room · East wall",
+    objectId: "cabinet",
+    reason: "The supply cabinet creates a second pinch point where the route turns into the WC corridor.",
+    affectedProfiles: ["Walker user"],
+    measured: "58 cm",
+    required: "90 cm",
+    gap: "32 cm below target",
+    evidence: "The clearance envelope clips the cabinet footprint during the turn from the activity room into the corridor.",
+    suggestedFix: "Relocate the supply cabinet to the storage room.",
+    confidence: 89,
+    provenance: "Spatial model v3 · Turning clearance check",
+  },
+  {
+    id: "HZ-021",
+    severity: "Medium",
+    title: "Threshold contrast is too low",
+    location: "WC corridor entry",
+    objectId: null,
+    reason: "The floor transition may be difficult to identify for an older adult with reduced contrast sensitivity.",
+    affectedProfiles: ["Low-vision user"],
+    measured: "12 LRV",
+    required: "30 LRV",
+    gap: "18 LRV below target",
+    evidence: "Adjacent material values were sampled from the calibrated site photographs attached to this assessment.",
+    suggestedFix: "Add a matte contrast strip across the threshold and verify the finish on site.",
+    confidence: 82,
+    provenance: "Site photo set 03 · Material contrast check",
+  },
+];
+
+const severityStyle = {
+  Critical: "border-red-200 bg-red-50 text-red-800",
+  High: "border-amber-200 bg-amber-50 text-amber-900",
+  Medium: "border-slate-200 bg-slate-100 text-slate-700",
+} as const;
+
+export function countReviewed(decisions: Record<string, ReviewDecision>) {
+  return Object.values(decisions).filter(Boolean).length;
+}
+
+export function RiskAnalysis() {
+  const [selectedId, setSelectedId] = useState(hazards[0].id);
+  const [decisions, setDecisions] = useState<Record<string, ReviewDecision>>({});
+  const selected = hazards.find((hazard) => hazard.id === selectedId) ?? hazards[0];
+  const reviewed = countReviewed(decisions);
+  const selectedDecision = decisions[selected.id];
+  const allReviewed = reviewed === hazards.length;
+  const selectedObject = selected.objectId;
+
+  const summary = useMemo(() => ({
+    critical: hazards.filter((hazard) => hazard.severity === "Critical").length,
+    open: hazards.length - reviewed,
+  }), [reviewed]);
+
+  const chooseHazard = (hazard: Hazard) => setSelectedId(hazard.id);
+  const chooseObject = (objectId: string | null) => {
+    const match = hazards.find((hazard) => hazard.objectId === objectId);
+    if (match) setSelectedId(match.id);
+  };
+
+  return (
+    <section aria-labelledby="risk-title" className="space-y-4">
+      <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-[0_12px_30px_rgba(30,50,52,0.07)]">
+        <div className="grid gap-5 border-b border-slate-200 p-5 lg:grid-cols-[minmax(0,1fr)_auto] lg:items-center lg:p-6">
+          <div className="flex gap-4">
+            <span className="flex size-11 shrink-0 items-center justify-center rounded-xl bg-red-50 text-red-700">
+              <ShieldWarningIcon size={24} weight="duotone" aria-hidden="true" />
+            </span>
+            <div>
+              <div className="flex flex-wrap items-center gap-2">
+                <h2 id="risk-title" className="text-xl font-semibold tracking-tight text-slate-950">Route unsafe for walker use</h2>
+                <span className="rounded-full border border-red-200 bg-red-50 px-2.5 py-1 text-xs font-semibold text-red-800">High risk</span>
+              </div>
+              <p className="mt-1 max-w-3xl text-sm leading-6 text-slate-600">
+                Narrowest clearance is <strong className="text-slate-900">52 cm</strong>; target is <strong className="text-slate-900">90 cm</strong>. Group table A and the supply cabinet obstruct Mrs. Chan&apos;s route to the WC corridor.
+              </p>
+            </div>
+          </div>
+          <div className="flex items-center gap-4 rounded-xl bg-slate-50 px-4 py-3">
+            <div>
+              <p className="text-xs font-medium text-slate-500">Model estimate</p>
+              <p className="text-2xl font-semibold tabular-nums text-slate-950">68<span className="text-sm font-medium text-slate-500"> / 100</span></p>
+            </div>
+            <div className="h-9 w-px bg-slate-200" />
+            <p className="max-w-28 text-xs leading-5 text-slate-500">Lower is safer. Professional review pending.</p>
+          </div>
+        </div>
+
+        <dl className="grid divide-y divide-slate-200 sm:grid-cols-3 sm:divide-x sm:divide-y-0">
+          <div className="flex items-center gap-3 px-5 py-4">
+            <WarningCircleIcon size={20} className="text-red-700" weight="fill" aria-hidden="true" />
+            <div><dt className="text-xs text-slate-500">Priority findings</dt><dd className="font-semibold text-slate-900">{summary.critical} critical · 2 other</dd></div>
+          </div>
+          <div className="flex items-center gap-3 px-5 py-4">
+            <RulerIcon size={20} className="text-teal-700" aria-hidden="true" />
+            <div><dt className="text-xs text-slate-500">Clearance gap</dt><dd className="font-semibold text-slate-900">38 cm below target</dd></div>
+          </div>
+          <div className="flex items-center gap-3 px-5 py-4">
+            <UserCircleCheckIcon size={20} className="text-slate-600" aria-hidden="true" />
+            <div><dt className="text-xs text-slate-500">Review progress</dt><dd className="font-semibold text-slate-900">{reviewed} of {hazards.length} reviewed</dd></div>
+          </div>
+        </dl>
+      </div>
+
+      <div className="grid min-h-[620px] overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-[0_12px_30px_rgba(30,50,52,0.07)] xl:grid-cols-[18rem_minmax(26rem,1fr)_23rem]">
+        <aside aria-label="Findings requiring review" className="border-b border-slate-200 xl:border-b-0 xl:border-r">
+          <div className="border-b border-slate-200 px-4 py-4">
+            <div className="flex items-center justify-between gap-3">
+              <div><h3 className="text-sm font-semibold text-slate-950">Review queue</h3><p className="mt-0.5 text-xs text-slate-500">Prioritized by route impact</p></div>
+              <span className="rounded-full bg-slate-100 px-2 py-1 text-xs font-semibold text-slate-600">{summary.open} open</span>
+            </div>
+          </div>
+          <ol className="divide-y divide-slate-100">
+            {hazards.map((hazard, index) => {
+              const decision = decisions[hazard.id];
+              const active = selected.id === hazard.id;
+              return (
+                <li key={hazard.id}>
+                  <button
+                    type="button"
+                    onClick={() => chooseHazard(hazard)}
+                    aria-current={active ? "true" : undefined}
+                    className={`w-full border-l-4 px-4 py-4 text-left transition-colors focus:outline-none focus:ring-2 focus:ring-inset focus:ring-teal-600 ${active ? "border-l-teal-700 bg-teal-50/70" : "border-l-transparent hover:bg-slate-50"}`}
+                  >
+                    <span className="flex items-center justify-between gap-2">
+                      <span className={`rounded-full border px-2 py-0.5 text-[11px] font-semibold ${severityStyle[hazard.severity]}`}>{hazard.severity}</span>
+                      {decision ? (
+                        <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-teal-700"><CheckCircleIcon weight="fill" /> Reviewed</span>
+                      ) : <span className="text-[11px] font-medium text-slate-400">#{index + 1}</span>}
+                    </span>
+                    <span className="mt-2 block text-sm font-semibold leading-5 text-slate-950">{hazard.title}</span>
+                    <span className="mt-1 flex items-center gap-1 text-xs text-slate-500"><MapPinIcon aria-hidden="true" /> {hazard.location}</span>
+                    <span className="mt-2 block text-xs font-medium text-slate-700">{hazard.measured} observed · {hazard.required} target</span>
+                  </button>
+                </li>
+              );
+            })}
+          </ol>
+        </aside>
+
+        <div className="flex min-h-[500px] flex-col border-b border-slate-200 xl:border-b-0 xl:border-r">
+          <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-200 px-4 py-3">
+            <div><h3 className="text-sm font-semibold text-slate-950">Route evidence</h3><p className="text-xs text-slate-500">Entrance → Activity area → WC corridor</p></div>
+            <div className="flex items-center gap-3 text-xs text-slate-600"><span className="inline-flex items-center gap-1.5"><i className="size-2.5 rounded-full bg-red-500" /> Risk zone</span><span className="inline-flex items-center gap-1.5"><i className="h-0.5 w-4 bg-teal-700" /> Assessed route</span></div>
+          </div>
+          <div className="relative min-h-[430px] flex-1 bg-slate-100">
+            <Floorplan2D
+              plan={currentPlan}
+              selectedId={selectedObject}
+              onSelect={chooseObject}
+              showHeatmap
+              showRoute
+              readOnly
+              className="absolute inset-0"
+            />
+            <div className="pointer-events-none absolute left-4 top-4 max-w-64 rounded-lg border border-slate-200 bg-white/95 px-3 py-2 shadow-sm backdrop-blur">
+              <p className="flex items-center gap-1.5 text-xs font-semibold text-slate-800"><EyeIcon aria-hidden="true" /> Read-only review</p>
+              <p className="mt-0.5 text-[11px] leading-4 text-slate-500">Select a highlighted object to inspect its finding. Scroll to zoom.</p>
+            </div>
+          </div>
+        </div>
+
+        <HazardDetail
+          hazard={selected}
+          decision={selectedDecision}
+          onDecision={(decision) => setDecisions((current) => ({ ...current, [selected.id]: decision }))}
+        />
+      </div>
+
+      <div className="sticky bottom-3 z-20 flex flex-col gap-3 rounded-xl border border-slate-200 bg-white/95 px-4 py-3 shadow-[0_12px_34px_rgba(30,50,52,0.16)] backdrop-blur sm:flex-row sm:items-center sm:justify-between">
+        <div className="flex items-center gap-3">
+          <ClipboardTextIcon size={22} className="text-teal-700" aria-hidden="true" />
+          <div><p className="text-sm font-semibold text-slate-900">{reviewed} of {hazards.length} findings reviewed</p><p className="text-xs text-slate-500">{allReviewed ? "Review complete. Projected layout can now be compared." : "Verify each finding before using the proposed layout."}</p></div>
+        </div>
+        {allReviewed ? (
+          <Link href="/assessments/queen-care-clinic/options" className="inline-flex h-10 items-center justify-center gap-2 rounded-lg bg-teal-700 px-4 text-sm font-semibold text-white hover:bg-teal-800 focus:outline-none focus:ring-2 focus:ring-teal-600 focus:ring-offset-2">Compare safer layout <ArrowRightIcon aria-hidden="true" /></Link>
+        ) : (
+          <button type="button" onClick={() => document.getElementById("finding-review-actions")?.focus()} className="inline-flex h-10 items-center justify-center gap-2 rounded-lg bg-slate-900 px-4 text-sm font-semibold text-white hover:bg-slate-800 focus:outline-none focus:ring-2 focus:ring-slate-600 focus:ring-offset-2">Review selected finding <ArrowRightIcon aria-hidden="true" /></button>
+        )}
+      </div>
+
+      <p className="flex items-start gap-2 px-1 text-xs leading-5 text-slate-500"><XCircleIcon className="mt-0.5 shrink-0" aria-hidden="true" /> Decision support only. Verify dimensions, route clearance, and recommendations on site before implementation.</p>
+    </section>
+  );
+}

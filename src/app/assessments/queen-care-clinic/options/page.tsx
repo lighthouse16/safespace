@@ -33,10 +33,10 @@ export default function OptionsPage() {
     <WorkspaceShell activeStep="options">
       <div className="p-4 lg:p-6">
         <header className="mb-5">
-          <p className="text-xs font-semibold uppercase tracking-wide text-teal-700">Generated layouts · AI Optimization</p>
-          <h1 className="mt-1 text-2xl font-semibold">Compare Before & After</h1>
+          <p className="text-xs font-semibold uppercase tracking-wide text-teal-700">Proposed layout · AI-assisted</p>
+          <h1 className="mt-1 text-2xl font-semibold">Compare current and Balanced layout</h1>
           <p className="mt-1 text-sm text-slate-600">
-            Toggle between current and proposed layout to see safety improvements on the 2D/3D model.
+            Review the single proposed layout against the current room. All improvements are projected until verified on site.
           </p>
         </header>
 
@@ -55,7 +55,7 @@ export default function OptionsPage() {
             {/* Option selector */}
             <div className="overflow-hidden rounded-xl border border-slate-200 bg-white">
               <div className="border-b border-slate-200 px-4 py-3">
-                <h2 className="text-sm font-semibold">Implementation path</h2>
+                <h2 className="text-sm font-semibold">Layout view</h2>
               </div>
               {options.map(o => (
                 <button
@@ -77,9 +77,9 @@ export default function OptionsPage() {
               ))}
             </div>
 
-            {/* Measured impact */}
+            {/* Projected impact */}
             <div className="rounded-xl border border-slate-200 bg-white p-4">
-              <h3 className="text-sm font-semibold">Measured impact</h3>
+              <h3 className="text-sm font-semibold">Projected impact</h3>
               <dl className="mt-3 divide-y divide-slate-100 text-sm">
                 {[
                   ["Risk score", `68 → ${selected.score}`],
@@ -119,7 +119,7 @@ export default function OptionsPage() {
             </button>
 
             <p className="text-center text-xs text-slate-500">
-              AI-generated layout · Professional review recommended
+              Modeled estimate · Verify dimensions and clearance on site
             </p>
           </aside>
         </div>
@@ -127,3 +127,4 @@ export default function OptionsPage() {
     </WorkspaceShell>
   );
 }
+

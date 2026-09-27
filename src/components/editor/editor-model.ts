@@ -12,6 +12,7 @@ export type EditorViewProps = {
   onSelect?: (id: string | null) => void;
   onFurnitureMove?: (id: string, position: Point) => void;
   showHeatmap?: boolean; showRoute?: boolean; className?: string;
+  readOnly?: boolean;
 };
 
 export const editorPalette = {

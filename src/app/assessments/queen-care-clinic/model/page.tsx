@@ -80,7 +80,7 @@ export default function ModelPage() {
               <h3 className="text-sm font-semibold">Readiness</h3>
               <ul className="mt-3 space-y-2 text-sm text-slate-600">
                 <li>✓ Scale calibrated</li>
-                <li>✓ 18 objects verified</li>
+                <li>✓ 15 objects verified</li>
                 <li>✓ Walker profile selected</li>
                 <li>✓ Critical route defined</li>
               </ul>
@@ -91,3 +91,4 @@ export default function ModelPage() {
     </WorkspaceShell>
   );
 }
+
