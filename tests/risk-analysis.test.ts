@@ -7,9 +7,10 @@ test("review progress counts only recorded professional decisions", () => {
   assert.equal(countReviewed({ [hazards[0].id]: "verified", [hazards[1].id]: "site-check" }), 2);
 });
 
-test("Harmony route findings use canonical measurements", () => {
-  assert.equal(hazards.length, 3);
-  assert.equal(hazards[0].measured, "52 cm");
+test("Queen Care Clinic route findings use canonical measurements", () => {
+  assert.equal(hazards.length, 4);
+  assert.equal(hazards[0].id, "HZ-001");
+  assert.equal(hazards[0].measured, "54 cm");
   assert.equal(hazards[0].required, "90 cm");
-  assert.equal(hazards[0].objectId, "table-a");
+  assert.equal(hazards[0].objectId, "chair-1");
 });

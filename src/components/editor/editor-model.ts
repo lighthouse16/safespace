@@ -23,111 +23,101 @@ export const editorPalette = {
 };
 
 /*
- * Harmony Elder Care Centre — Activity Room
+ * Queen Care Clinic — Waiting Area and Consultation Corridor
  * Scale 1:50 → 1 unit ≈ 1 cm
- * Room ~800×600 cm (8 × 6 m)
+ * Area ~800×600 cm (8 × 6 m)
  *
- * Layout: Main activity room with group tables, seating,
- * kitchenette alcove, storage, and corridor to WC.
- *
- * Risk scenario: Mrs. Chan, 78, uses walker.
- * Route from entrance → activity area → WC corridor.
- * Current: chairs and table block primary route, clearance 52 cm (need 90 cm).
+ * Mobility profile: Older adult using a walker (min 90 cm clearance).
+ * Critical route: Entrance → Reception → Waiting Seat → Consultation Room.
+ * Current: Waiting chair and desk corner narrow route, clearance 54 cm (need 90 cm).
+ * Proposed: Relocated chairs, wall handrail, doorway lighting, clearance 96 cm.
  */
 export const currentPlan: EditorPlan = {
   width: 800, depth: 600,
   rooms: [
-    { id: "activity", label: "ACTIVITY ROOM", x: 40, y: 40, width: 480, depth: 400 },
-    { id: "kitchen", label: "KITCHENETTE", x: 520, y: 40, width: 240, depth: 200 },
-    { id: "storage", label: "STORAGE", x: 520, y: 240, width: 240, depth: 200 },
-    { id: "corridor", label: "WC CORRIDOR", x: 40, y: 440, width: 720, depth: 120 },
+    { id: "waiting", label: "WAITING AREA", x: 40, y: 40, width: 460, depth: 380 },
+    { id: "reception", label: "RECEPTION ALCOVE", x: 500, y: 40, width: 260, depth: 200 },
+    { id: "storage", label: "RECORDS & STORAGE", x: 500, y: 240, width: 260, depth: 180 },
+    { id: "corridor", label: "CONSULTATION CORRIDOR", x: 40, y: 420, width: 720, depth: 140 },
   ],
   furniture: [
-    // Group table A — center of activity room (blocks route)
-    { id: "table-a", label: "Group table A", kind: "desk", x: 180, y: 150, width: 160, depth: 90, movable: true },
-    // Chairs around table A
-    { id: "chair-1", label: "Chair 1", kind: "chair", x: 150, y: 120, width: 48, depth: 48, movable: true },
-    { id: "chair-2", label: "Chair 2", kind: "chair", x: 310, y: 120, width: 48, depth: 48, movable: true },
-    { id: "chair-3", label: "Chair 3", kind: "chair", x: 150, y: 250, width: 48, depth: 48, movable: true },
-    { id: "chair-4", label: "Chair 4", kind: "chair", x: 310, y: 250, width: 48, depth: 48, movable: true },
-    // Group table B — near wall, less problematic
-    { id: "table-b", label: "Group table B", kind: "desk", x: 80, y: 310, width: 120, depth: 80, movable: true },
-    // Chairs around table B
-    { id: "chair-5", label: "Chair 5", kind: "chair", x: 60, y: 290, width: 48, depth: 48, movable: true },
-    { id: "chair-6", label: "Chair 6", kind: "chair", x: 170, y: 290, width: 48, depth: 48, movable: true },
-    // Bookshelf — against east wall of activity room
-    { id: "bookshelf", label: "Bookshelf", kind: "shelf", x: 430, y: 100, width: 60, depth: 30 },
-    // Cabinet — near corridor entry, creates pinch point
-    { id: "cabinet", label: "Supply cabinet", kind: "cabinet", x: 400, y: 350, width: 50, depth: 80, movable: true },
+    // Reception desk with corner close to route
+    { id: "reception-desk", label: "Reception counter", kind: "desk", x: 520, y: 100, width: 180, depth: 70, movable: false },
+    // Waiting chairs (Chair 1 narrows route clearance to 54 cm)
+    { id: "chair-1", label: "Waiting chair A", kind: "chair", x: 235, y: 235, width: 52, depth: 52, movable: true },
+    { id: "chair-2", label: "Waiting chair B", kind: "chair", x: 295, y: 235, width: 52, depth: 52, movable: true },
+    { id: "chair-3", label: "Waiting chair C", kind: "chair", x: 235, y: 140, width: 52, depth: 52, movable: true },
+    { id: "chair-4", label: "Waiting chair D", kind: "chair", x: 295, y: 140, width: 52, depth: 52, movable: true },
+    // Rest bench in waiting area
+    { id: "bench", label: "Waiting bench", kind: "bench", x: 80, y: 80, width: 140, depth: 45, movable: true },
+    // Magazine table (sharp corner)
+    { id: "corner-table", label: "Magazine table", kind: "desk", x: 400, y: 170, width: 50, depth: 50, movable: true },
+    // Water dispenser
+    { id: "dispenser", label: "Water dispenser", kind: "cabinet", x: 430, y: 60, width: 45, depth: 45 },
+    // Pamphlet rack / bookshelf
+    { id: "bookshelf", label: "Health brochure rack", kind: "shelf", x: 80, y: 310, width: 60, depth: 30 },
     // Plants
     { id: "plant-1", label: "Indoor plant", kind: "plant", x: 60, y: 60, width: 40, depth: 40 },
-    { id: "plant-2", label: "Indoor plant", kind: "plant", x: 465, y: 60, width: 40, depth: 40 },
-    // TV on wall stand — kitchenette area
-    { id: "tv", label: "Wall TV", kind: "tv", x: 580, y: 60, width: 100, depth: 20 },
-    // Kitchenette counter
-    { id: "counter", label: "Kitchen counter", kind: "desk", x: 560, y: 130, width: 180, depth: 60 },
-    // Bench in corridor
-    { id: "bench", label: "Rest bench", kind: "bench", x: 200, y: 465, width: 140, depth: 45, movable: true },
+    { id: "plant-2", label: "Corridor planter", kind: "plant", x: 465, y: 440, width: 40, depth: 40 },
+    // Patient queue display
+    { id: "tv", label: "Queue display TV", kind: "tv", x: 580, y: 60, width: 100, depth: 20 },
+    // Corridor rest bench
+    { id: "corridor-bench", label: "Corridor bench", kind: "bench", x: 200, y: 465, width: 140, depth: 45, movable: true },
+    // Consultation room desk
+    { id: "consultation-desk", label: "Consultation desk", kind: "desk", x: 560, y: 450, width: 160, depth: 60 },
+    // Records cabinet
+    { id: "records-cabinet", label: "Records cabinet", kind: "cabinet", x: 560, y: 280, width: 60, depth: 80 },
   ],
-  // Mrs. Chan's route: Entrance (left wall) → across activity room → WC corridor (right side)
+  // Critical route: Entrance → Reception → Waiting Seat → Consultation Room (clearance 54 cm at chair-1)
   route: [
-    { x: 50, y: 240 },   // entrance door
-    { x: 130, y: 240 },  // into room
-    { x: 200, y: 200 },  // forced detour around table A
-    { x: 280, y: 160 },  // squeeze between chairs
-    { x: 370, y: 200 },  // past table A
-    { x: 420, y: 320 },  // near cabinet — pinch point (52 cm!)
-    { x: 440, y: 440 },  // into corridor
-    { x: 700, y: 490 },  // toward WC
+    { x: 50, y: 240 },   // Entrance door
+    { x: 150, y: 240 },  // Entry foyer
+    { x: 220, y: 200 },  // Approach toward reception
+    { x: 290, y: 190 },  // Squeeze past Chair A (54 cm clearance pinch point!)
+    { x: 400, y: 230 },  // Turn past sharp corner
+    { x: 450, y: 330 },  // Poor doorway lighting threshold
+    { x: 450, y: 440 },  // Into corridor (2.1m section without handrail)
+    { x: 700, y: 490 },  // To Consultation Room
   ],
 };
 
 /*
  * Proposed layout — "Balanced" option
- * Moves: table A shifted north, cabinet relocated, chair-4 rotated
- * Result: clearance 52→96 cm, risk 68→27, cost HK$850
+ * Moves: Waiting chairs relocated to perimeter, handrail mounted, doorway lighting upgraded
+ * Result: clearance 54→96 cm, risk 68→27, cost HK$850
  */
 export const proposedPlan: EditorPlan = {
   ...currentPlan,
   furniture: [
-    // Table A — shifted north, away from main route
-    { id: "table-a", label: "Group table A", kind: "desk", x: 180, y: 80, width: 160, depth: 90, movable: true },
-    // Chairs repositioned around new table A position
-    { id: "chair-1", label: "Chair 1", kind: "chair", x: 150, y: 55, width: 48, depth: 48, movable: true },
-    { id: "chair-2", label: "Chair 2", kind: "chair", x: 310, y: 55, width: 48, depth: 48, movable: true },
-    { id: "chair-3", label: "Chair 3", kind: "chair", x: 150, y: 180, width: 48, depth: 48, movable: true },
-    { id: "chair-4", label: "Chair 4", kind: "chair", x: 310, y: 180, width: 48, depth: 48, movable: true },
-    // Table B — unchanged
-    { id: "table-b", label: "Group table B", kind: "desk", x: 80, y: 310, width: 120, depth: 80, movable: true },
-    { id: "chair-5", label: "Chair 5", kind: "chair", x: 60, y: 290, width: 48, depth: 48, movable: true },
-    { id: "chair-6", label: "Chair 6", kind: "chair", x: 170, y: 290, width: 48, depth: 48, movable: true },
-    // Bookshelf — unchanged
-    { id: "bookshelf", label: "Bookshelf", kind: "shelf", x: 430, y: 100, width: 60, depth: 30 },
-    // Cabinet — relocated to storage room
-    { id: "cabinet", label: "Supply cabinet", kind: "cabinet", x: 560, y: 280, width: 50, depth: 80, movable: true },
-    // Plants — unchanged
+    { id: "reception-desk", label: "Reception counter", kind: "desk", x: 520, y: 100, width: 180, depth: 70, movable: false },
+    // Chairs A & B moved to perimeter wall away from transit path
+    { id: "chair-1", label: "Waiting chair A", kind: "chair", x: 80, y: 160, width: 52, depth: 52, movable: true },
+    { id: "chair-2", label: "Waiting chair B", kind: "chair", x: 140, y: 160, width: 52, depth: 52, movable: true },
+    { id: "chair-3", label: "Waiting chair C", kind: "chair", x: 235, y: 110, width: 52, depth: 52, movable: true },
+    { id: "chair-4", label: "Waiting chair D", kind: "chair", x: 295, y: 110, width: 52, depth: 52, movable: true },
+    { id: "bench", label: "Waiting bench", kind: "bench", x: 80, y: 80, width: 140, depth: 45, movable: true },
+    { id: "corner-table", label: "Magazine table", kind: "desk", x: 430, y: 110, width: 50, depth: 50, movable: true },
+    { id: "dispenser", label: "Water dispenser", kind: "cabinet", x: 430, y: 60, width: 45, depth: 45 },
+    { id: "bookshelf", label: "Health brochure rack", kind: "shelf", x: 80, y: 310, width: 60, depth: 30 },
     { id: "plant-1", label: "Indoor plant", kind: "plant", x: 60, y: 60, width: 40, depth: 40 },
-    { id: "plant-2", label: "Indoor plant", kind: "plant", x: 465, y: 60, width: 40, depth: 40 },
-    // TV — unchanged
-    { id: "tv", label: "Wall TV", kind: "tv", x: 580, y: 60, width: 100, depth: 20 },
-    // Counter — unchanged
-    { id: "counter", label: "Kitchen counter", kind: "desk", x: 560, y: 130, width: 180, depth: 60 },
-    // Bench — unchanged
-    { id: "bench", label: "Rest bench", kind: "bench", x: 200, y: 465, width: 140, depth: 45, movable: true },
+    { id: "plant-2", label: "Corridor planter", kind: "plant", x: 465, y: 440, width: 40, depth: 40 },
+    { id: "tv", label: "Queue display TV", kind: "tv", x: 580, y: 60, width: 100, depth: 20 },
+    { id: "corridor-bench", label: "Corridor bench", kind: "bench", x: 200, y: 465, width: 140, depth: 45, movable: true },
+    { id: "consultation-desk", label: "Consultation desk", kind: "desk", x: 560, y: 450, width: 160, depth: 60 },
+    { id: "records-cabinet", label: "Records cabinet", kind: "cabinet", x: 560, y: 280, width: 60, depth: 80 },
   ],
-  // Clear straight route after reorganization
+  // Wide straight route with 96 cm clearance throughout
   route: [
     { x: 50, y: 240 },
-    { x: 150, y: 250 },
-    { x: 280, y: 260 },  // straight through — no detour needed
-    { x: 400, y: 280 },  // wide clearance (96 cm)
-    { x: 440, y: 400 },
-    { x: 440, y: 460 },
-    { x: 700, y: 490 },
+    { x: 180, y: 240 },
+    { x: 320, y: 240 },  // Straight through transit zone (96 cm clearance)
+    { x: 450, y: 260 },
+    { x: 450, y: 440 },  // Along handrail-equipped corridor
+    { x: 700, y: 490 },  // Consultation Room
   ],
 };
 
-// Keep backward compat alias
+// Backward compatibility alias
 export const clinicPlan = currentPlan;
 
 export function clampFurniture(item: EditorFurniture, point: Point, plan: EditorPlan): Point {

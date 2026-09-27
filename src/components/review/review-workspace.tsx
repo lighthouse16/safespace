@@ -8,25 +8,58 @@ export type ReviewSnapshot = { id: string; label: string; createdAt: string; cre
 type Props = { title?: string; notes?: ReviewNote[]; snapshots?: ReviewSnapshot[]; onDecision?: (decision: ReviewDecision, rationale: string) => void };
 
 const sampleNotes: ReviewNote[] = [
-  { id: "note-01", author: "Dr. Maya Chan", role: "Occupational therapist", body: "Confirm the proposed 96 cm turning clearance after the chair is relocated.", location: "Activity room · Pin 01", createdAt: "26 Sep 2026, 14:32" },
-  { id: "note-02", author: "Alex Wong", role: "Facility manager", body: "Power outlet remains accessible. Contractor confirmed no wall work is required.", location: "Reception wall · Pin 02", createdAt: "26 Sep 2026, 16:05", resolved: true },
+  { id: "note-01", author: "Dr. Adrian Lau", role: "Registered Occupational Therapist, HKROT", body: "Verified: Moving Chairs A & B restores clearance to 96 cm along critical walker route. Recommend proceeding with Balanced proposal.", location: "Waiting Area · Pin 01", createdAt: "27 Sep 2026, 10:15" },
+  { id: "note-02", author: "Alex Wong", role: "Facility Operations Lead", body: "Contractor quote received: HK$500 for 1.8 m continuous handrail + HK$350 for 200 lux doorway LED fixture. Total HK$850 budget confirmed.", location: "Consultation Corridor · Pin 02", createdAt: "27 Sep 2026, 10:30", resolved: true },
 ];
 const sampleSnapshots: ReviewSnapshot[] = [
-  { id: "SS-2026-0926-04", label: "Balanced option · Revision 4", createdAt: "26 Sep 2026, 16:18 HKT", createdBy: "Alex Wong", checksum: "9C7A–4E20–B1F8" },
+  { id: "SS-2026-0927-01", label: "Balanced Option · Rev 1", createdAt: "27 Sep 2026, 10:35 HKT", createdBy: "Alex Wong", checksum: "9C7A–4E20–B1F8" },
 ];
 
-export function ReviewWorkspace({ title = "Harmony Elder Care Centre — Activity Room", notes = sampleNotes, snapshots = sampleSnapshots, onDecision }: Props) {
+export function ReviewWorkspace({ title = "Queen Care Clinic — Waiting Area and Consultation Corridor", notes = sampleNotes, snapshots = sampleSnapshots, onDecision }: Props) {
   const [view, setView] = useState<"before" | "proposed">("proposed");
   const [activeNote, setActiveNote] = useState(notes[0]?.id);
   const [checked, setChecked] = useState(() => new Set(["measurements", "route"]));
   const [modalOpen, setModalOpen] = useState(false);
+  const [approvedDecision, setApprovedDecision] = useState<string | null>(null);
   const resolvedCount = useMemo(() => notes.filter((note) => note.resolved).length, [notes]);
   const toggle = (id: string) => setChecked((current) => { const next = new Set(current); if (next.has(id)) next.delete(id); else next.add(id); return next; });
 
   return <section className="min-h-[720px] bg-slate-100 text-slate-950" aria-labelledby="review-title">
     <header className="flex flex-wrap items-center justify-between gap-4 border-b border-slate-200 bg-white px-5 py-4 lg:px-7">
-      <div><div className="mb-1 flex items-center gap-2 text-xs font-semibold text-slate-500"><span>Professional review</span><span aria-hidden>/</span><span>REV-1048</span></div><h1 id="review-title" className="text-xl font-semibold tracking-tight">{title}</h1></div>
-      <div className="flex items-center gap-3"><span className="rounded-full border border-amber-300 bg-amber-50 px-3 py-1 text-xs font-semibold text-amber-900">Review pending</span><button type="button" onClick={() => setModalOpen(true)} className="rounded-lg bg-teal-700 px-4 py-2.5 text-sm font-semibold text-white hover:bg-teal-800 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-teal-700 active:translate-y-px">Record decision</button></div>
+      <div>
+        <div className="mb-1 flex items-center gap-2 text-xs font-semibold text-slate-500">
+          <span>Professional review</span><span aria-hidden>/</span><span>REV-1048</span>
+        </div>
+        <h1 id="review-title" className="text-xl font-semibold tracking-tight">{title}</h1>
+      </div>
+      <div className="flex items-center gap-3">
+        {approvedDecision ? (
+          <>
+            <span className="rounded-full border border-teal-300 bg-teal-50 px-3 py-1 text-xs font-semibold text-teal-800">
+              Approved by OT
+            </span>
+            <a
+              href="/assessments/queen-care-clinic/report"
+              className="rounded-lg bg-teal-700 px-4 py-2.5 text-sm font-semibold text-white hover:bg-teal-800"
+            >
+              View Implementation Report &rarr;
+            </a>
+          </>
+        ) : (
+          <>
+            <span className="rounded-full border border-amber-300 bg-amber-50 px-3 py-1 text-xs font-semibold text-amber-900">
+              Review pending
+            </span>
+            <button
+              type="button"
+              onClick={() => setModalOpen(true)}
+              className="rounded-lg bg-teal-700 px-4 py-2.5 text-sm font-semibold text-white hover:bg-teal-800 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-teal-700 active:translate-y-px"
+            >
+              Record decision
+            </button>
+          </>
+        )}
+      </div>
     </header>
     <div className="grid min-h-[650px] lg:grid-cols-[minmax(0,1fr)_360px]">
       <main className="border-r border-slate-200 p-4 lg:p-6">
@@ -43,7 +76,16 @@ export function ReviewWorkspace({ title = "Harmony Elder Care Centre — Activit
         <section className="p-5"><h2 className="mb-3 font-semibold">Version record</h2>{snapshots[0] && <div className="rounded-lg border border-slate-200 bg-slate-50 p-3 text-sm"><strong className="block">{snapshots[0].label}</strong><span className="mt-1 block text-xs text-slate-500">{snapshots[0].id} · {snapshots[0].createdAt}</span><p className="mt-3 text-xs leading-5 text-slate-600"><strong>Immutable snapshot.</strong> Decision applies only to this locked geometry, evidence set, and analysis result. Later edits create a new review version.</p><code className="mt-2 block text-xs text-slate-500">Checksum {snapshots[0].checksum}</code></div>}</section>
       </aside>
     </div>
-    <DecisionModal open={modalOpen} snapshot={snapshots[0]} onClose={() => setModalOpen(false)} onSubmit={(decision, rationale) => { onDecision?.(decision, rationale); setModalOpen(false); }}/>
+    <DecisionModal
+      open={modalOpen}
+      snapshot={snapshots[0]}
+      onClose={() => setModalOpen(false)}
+      onSubmit={(decision, rationale) => {
+        setApprovedDecision(decision);
+        onDecision?.(decision, rationale);
+        setModalOpen(false);
+      }}
+    />
   </section>;
 }
 

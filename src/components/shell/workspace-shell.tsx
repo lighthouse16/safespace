@@ -15,9 +15,12 @@ export function WorkspaceShell({ children, activeStep, status = "Saved" }: { chi
         <div className="flex min-w-0 items-center gap-3">
           <Link href="/assessments" className="text-sm font-medium text-slate-600 hover:text-slate-950">&larr; Assessments</Link>
           <span className="text-slate-300">/</span>
-          <strong className="truncate text-sm font-semibold text-slate-900">Harmony Elder Care Centre — Activity Room</strong>
+          <strong className="truncate text-sm font-semibold text-slate-900">Queen Care Clinic — Waiting Area & Consultation Corridor</strong>
         </div>
         <div className="flex items-center gap-3">
+          <Link href="/reviews/queen-care-clinic" className="hidden sm:inline-block rounded-md border border-slate-300 bg-white px-2.5 py-1 text-xs font-semibold text-slate-700 hover:bg-slate-50">
+            OT Review &rarr;
+          </Link>
           <span role="status" className="rounded-full bg-slate-100 px-2.5 py-1 text-xs font-medium text-slate-600 border border-slate-200">{status}</span>
         </div>
       </header>

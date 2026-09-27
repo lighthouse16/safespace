@@ -20,52 +20,68 @@ import { HazardDetail, type Hazard, type ReviewDecision } from "./hazard-detail"
 
 export const hazards: Hazard[] = [
   {
-    id: "HZ-014",
+    id: "HZ-001",
     severity: "Critical",
-    title: "Table blocks the primary route",
-    location: "Activity room · Centre zone",
-    objectId: "table-a",
-    reason: "Group table A leaves too little space for Mrs. Chan to pass safely with her walker on the only step-free route to the WC corridor.",
-    affectedProfiles: ["Walker user", "Wheelchair user"],
-    measured: "52 cm",
+    title: "Waiting chair obstructing the route",
+    location: "Waiting Area · Main transit path",
+    objectId: "chair-1",
+    reason: "Waiting chair A narrows the walker transit route to 54 cm, well below the 90 cm minimum clearance required for older adults using a wheeled walking frame.",
+    affectedProfiles: ["Older adult using walker", "Wheelchair user"],
+    measured: "54 cm",
     required: "90 cm",
-    gap: "38 cm below target",
-    evidence: "The walker clearance envelope intersects the table and adjacent chair zone for 2.1 m of the assessed route.",
-    suggestedFix: "Move Group table A 70 cm north and reposition the two southern chairs.",
-    confidence: 94,
-    provenance: "Spatial model v3 · Route clearance check",
+    gap: "36 cm below target",
+    evidence: "Route simulation intersects the chair envelope for 1.8 m between entrance and reception approach.",
+    suggestedFix: "Move two waiting chairs (Chairs A & B) 60 cm against the west perimeter wall.",
+    confidence: 96,
+    provenance: "Spatial model v3 · Transit clearance analysis",
   },
   {
-    id: "HZ-009",
+    id: "HZ-002",
     severity: "High",
-    title: "Cabinet narrows the WC approach",
-    location: "Activity room · East wall",
-    objectId: "cabinet",
-    reason: "The supply cabinet creates a second pinch point where the route turns into the WC corridor.",
-    affectedProfiles: ["Walker user"],
-    measured: "58 cm",
+    title: "Sharp furniture corner close to the route",
+    location: "Reception approach · Magazine table",
+    objectId: "corner-table",
+    reason: "Sharp table edge projects into the walker turning corridor, presenting impact and balance destabilization risks.",
+    affectedProfiles: ["Older adult using walker"],
+    measured: "68 cm clearance",
     required: "90 cm",
-    gap: "32 cm below target",
-    evidence: "The clearance envelope clips the cabinet footprint during the turn from the activity room into the corridor.",
-    suggestedFix: "Relocate the supply cabinet to the storage room.",
-    confidence: 89,
-    provenance: "Spatial model v3 · Turning clearance check",
+    gap: "22 cm below target",
+    evidence: "Turning path radius of 150 cm clips table edge corner during transition to corridor.",
+    suggestedFix: "Reposition table to alcove or install high-visibility rounded edge protection.",
+    confidence: 91,
+    provenance: "Spatial model v3 · Corner collision detection",
   },
   {
-    id: "HZ-021",
+    id: "HZ-003",
     severity: "Medium",
-    title: "Threshold contrast is too low",
-    location: "WC corridor entry",
+    title: "Poor lighting near doorway",
+    location: "Consultation corridor threshold",
     objectId: null,
-    reason: "The floor transition may be difficult to identify for an older adult with reduced contrast sensitivity.",
-    affectedProfiles: ["Low-vision user"],
-    measured: "12 LRV",
-    required: "30 LRV",
-    gap: "18 LRV below target",
-    evidence: "Adjacent material values were sampled from the calibrated site photographs attached to this assessment.",
-    suggestedFix: "Add a matte contrast strip across the threshold and verify the finish on site.",
-    confidence: 82,
-    provenance: "Site photo set 03 · Material contrast check",
+    reason: "Ambient illuminance drops significantly below recommended levels for older adults with reduced contrast sensitivity.",
+    affectedProfiles: ["Low-vision user", "Older adult using walker"],
+    measured: "85 lux",
+    required: "200 lux",
+    gap: "115 lux below standard",
+    evidence: "Calibrated site photometer records 85 lux ambient light at doorway threshold.",
+    suggestedFix: "Install high-efficiency diffuse LED fixture at the corridor doorway.",
+    confidence: 88,
+    provenance: "Site photo set · Photometric assessment",
+  },
+  {
+    id: "HZ-004",
+    severity: "Medium",
+    title: "2.1-metre route section without stable support",
+    location: "Consultation corridor wall",
+    objectId: "corridor-bench",
+    reason: "A continuous 2.1 m section lacks handrails or stable tactile touchpoints for balance recovery during walking.",
+    affectedProfiles: ["Older adult using walker", "Cane user"],
+    measured: "2.1 m span",
+    required: "1.2 m max span",
+    gap: "0.9 m unsupported",
+    evidence: "Continuous wall run between waiting exit and consultation room lacks grab rail or architectural support.",
+    suggestedFix: "Mount a 1.8 m continuous architectural handrail at 88 cm height.",
+    confidence: 85,
+    provenance: "Spatial model v3 · Continuous support scan",
   },
 ];
 
@@ -101,6 +117,7 @@ export function RiskAnalysis() {
 
   return (
     <section aria-labelledby="risk-title" className="space-y-4">
+      {/* Risk Overview Banner */}
       <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-[0_12px_30px_rgba(30,50,52,0.07)]">
         <div className="grid gap-5 border-b border-slate-200 p-5 lg:grid-cols-[minmax(0,1fr)_auto] lg:items-center lg:p-6">
           <div className="flex gap-4">
@@ -109,46 +126,71 @@ export function RiskAnalysis() {
             </span>
             <div>
               <div className="flex flex-wrap items-center gap-2">
-                <h2 id="risk-title" className="text-xl font-semibold tracking-tight text-slate-950">Route unsafe for walker use</h2>
-                <span className="rounded-full border border-red-200 bg-red-50 px-2.5 py-1 text-xs font-semibold text-red-800">High risk</span>
+                <h2 id="risk-title" className="text-xl font-semibold tracking-tight text-slate-950">
+                  Critical route clearance compromised
+                </h2>
+                <span className="rounded-full border border-red-200 bg-red-50 px-2.5 py-1 text-xs font-semibold text-red-800">
+                  High Risk (68/100)
+                </span>
               </div>
               <p className="mt-1 max-w-3xl text-sm leading-6 text-slate-600">
-                Narrowest clearance is <strong className="text-slate-900">52 cm</strong>; target is <strong className="text-slate-900">90 cm</strong>. Group table A and the supply cabinet obstruct Mrs. Chan&apos;s route to the WC corridor.
+                Minimum route clearance is <strong className="text-slate-900">54 cm</strong> (required <strong className="text-slate-900">90 cm</strong>). Waiting chair A obstructs the step-free transit route from entrance to consultation corridor for older adults using a walker.
               </p>
             </div>
           </div>
           <div className="flex items-center gap-4 rounded-xl bg-slate-50 px-4 py-3">
             <div>
-              <p className="text-xs font-medium text-slate-500">Model estimate</p>
-              <p className="text-2xl font-semibold tabular-nums text-slate-950">68<span className="text-sm font-medium text-slate-500"> / 100</span></p>
+              <p className="text-xs font-medium text-slate-500">Environmental Risk Index</p>
+              <p className="text-2xl font-semibold tabular-nums text-slate-950">
+                68<span className="text-sm font-medium text-slate-500"> / 100</span>
+              </p>
             </div>
             <div className="h-9 w-px bg-slate-200" />
-            <p className="max-w-28 text-xs leading-5 text-slate-500">Lower is safer. Professional review pending.</p>
+            <p className="max-w-32 text-xs leading-5 text-slate-500">
+              Lower is safer. Baseline assessment before layout modifications.
+            </p>
           </div>
         </div>
 
+        {/* Metric Badges */}
         <dl className="grid divide-y divide-slate-200 sm:grid-cols-3 sm:divide-x sm:divide-y-0">
           <div className="flex items-center gap-3 px-5 py-4">
             <WarningCircleIcon size={20} className="text-red-700" weight="fill" aria-hidden="true" />
-            <div><dt className="text-xs text-slate-500">Priority findings</dt><dd className="font-semibold text-slate-900">{summary.critical} critical · 2 other</dd></div>
+            <div>
+              <dt className="text-xs text-slate-500">Prioritized Hazards</dt>
+              <dd className="font-semibold text-slate-900">{summary.critical} Critical · 3 Other</dd>
+            </div>
           </div>
           <div className="flex items-center gap-3 px-5 py-4">
             <RulerIcon size={20} className="text-teal-700" aria-hidden="true" />
-            <div><dt className="text-xs text-slate-500">Clearance gap</dt><dd className="font-semibold text-slate-900">38 cm below target</dd></div>
+            <div>
+              <dt className="text-xs text-slate-500">Narrowest Clearance</dt>
+              <dd className="font-semibold text-slate-900">54 cm (36 cm below target)</dd>
+            </div>
           </div>
           <div className="flex items-center gap-3 px-5 py-4">
             <UserCircleCheckIcon size={20} className="text-slate-600" aria-hidden="true" />
-            <div><dt className="text-xs text-slate-500">Review progress</dt><dd className="font-semibold text-slate-900">{reviewed} of {hazards.length} reviewed</dd></div>
+            <div>
+              <dt className="text-xs text-slate-500">Professional Review</dt>
+              <dd className="font-semibold text-slate-900">{reviewed} of {hazards.length} items reviewed</dd>
+            </div>
           </div>
         </dl>
       </div>
 
+      {/* Main Review Workspace: Queue + Floorplan + Inspector */}
       <div className="grid min-h-[620px] overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-[0_12px_30px_rgba(30,50,52,0.07)] xl:grid-cols-[18rem_minmax(26rem,1fr)_23rem]">
+        {/* Left: Prioritized Queue */}
         <aside aria-label="Findings requiring review" className="border-b border-slate-200 xl:border-b-0 xl:border-r">
           <div className="border-b border-slate-200 px-4 py-4">
             <div className="flex items-center justify-between gap-3">
-              <div><h3 className="text-sm font-semibold text-slate-950">Review queue</h3><p className="mt-0.5 text-xs text-slate-500">Prioritized by route impact</p></div>
-              <span className="rounded-full bg-slate-100 px-2 py-1 text-xs font-semibold text-slate-600">{summary.open} open</span>
+              <div>
+                <h3 className="text-sm font-semibold text-slate-950">Prioritized Hazards</h3>
+                <p className="mt-0.5 text-xs text-slate-500">Deterministic rule-based scan</p>
+              </div>
+              <span className="rounded-full bg-slate-100 px-2 py-1 text-xs font-semibold text-slate-600">
+                {summary.open} open
+              </span>
             </div>
           </div>
           <ol className="divide-y divide-slate-100">
@@ -161,17 +203,29 @@ export function RiskAnalysis() {
                     type="button"
                     onClick={() => chooseHazard(hazard)}
                     aria-current={active ? "true" : undefined}
-                    className={`w-full border-l-4 px-4 py-4 text-left transition-colors focus:outline-none focus:ring-2 focus:ring-inset focus:ring-teal-600 ${active ? "border-l-teal-700 bg-teal-50/70" : "border-l-transparent hover:bg-slate-50"}`}
+                    className={`w-full border-l-4 px-4 py-4 text-left transition-colors focus:outline-none focus:ring-2 focus:ring-inset focus:ring-teal-600 ${
+                      active ? "border-l-teal-700 bg-teal-50/70" : "border-l-transparent hover:bg-slate-50"
+                    }`}
                   >
                     <span className="flex items-center justify-between gap-2">
-                      <span className={`rounded-full border px-2 py-0.5 text-[11px] font-semibold ${severityStyle[hazard.severity]}`}>{hazard.severity}</span>
+                      <span className={`rounded-full border px-2 py-0.5 text-[11px] font-semibold ${severityStyle[hazard.severity]}`}>
+                        {hazard.severity}
+                      </span>
                       {decision ? (
-                        <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-teal-700"><CheckCircleIcon weight="fill" /> Reviewed</span>
-                      ) : <span className="text-[11px] font-medium text-slate-400">#{index + 1}</span>}
+                        <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-teal-700">
+                          <CheckCircleIcon weight="fill" /> Reviewed
+                        </span>
+                      ) : (
+                        <span className="text-[11px] font-medium text-slate-400">#{index + 1}</span>
+                      )}
                     </span>
                     <span className="mt-2 block text-sm font-semibold leading-5 text-slate-950">{hazard.title}</span>
-                    <span className="mt-1 flex items-center gap-1 text-xs text-slate-500"><MapPinIcon aria-hidden="true" /> {hazard.location}</span>
-                    <span className="mt-2 block text-xs font-medium text-slate-700">{hazard.measured} observed · {hazard.required} target</span>
+                    <span className="mt-1 flex items-center gap-1 text-xs text-slate-500">
+                      <MapPinIcon aria-hidden="true" /> {hazard.location}
+                    </span>
+                    <span className="mt-2 block text-xs font-medium text-slate-700">
+                      {hazard.measured} observed · {hazard.required} required
+                    </span>
                   </button>
                 </li>
               );
@@ -179,10 +233,17 @@ export function RiskAnalysis() {
           </ol>
         </aside>
 
+        {/* Center: Spatial Plan Evidence */}
         <div className="flex min-h-[500px] flex-col border-b border-slate-200 xl:border-b-0 xl:border-r">
           <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-200 px-4 py-3">
-            <div><h3 className="text-sm font-semibold text-slate-950">Route evidence</h3><p className="text-xs text-slate-500">Entrance → Activity area → WC corridor</p></div>
-            <div className="flex items-center gap-3 text-xs text-slate-600"><span className="inline-flex items-center gap-1.5"><i className="size-2.5 rounded-full bg-red-500" /> Risk zone</span><span className="inline-flex items-center gap-1.5"><i className="h-0.5 w-4 bg-teal-700" /> Assessed route</span></div>
+            <div>
+              <h3 className="text-sm font-semibold text-slate-950">Spatial Route Evidence</h3>
+              <p className="text-xs text-slate-500">Critical Route: Entrance → Reception → Waiting Seat → Consultation Room</p>
+            </div>
+            <div className="flex items-center gap-3 text-xs text-slate-600">
+              <span className="inline-flex items-center gap-1.5"><i className="size-2.5 rounded-full bg-red-500" /> Hazard Zone</span>
+              <span className="inline-flex items-center gap-1.5"><i className="h-0.5 w-4 bg-teal-700" /> Critical Route</span>
+            </div>
           </div>
           <div className="relative min-h-[430px] flex-1 bg-slate-100">
             <Floorplan2D
@@ -195,12 +256,17 @@ export function RiskAnalysis() {
               className="absolute inset-0"
             />
             <div className="pointer-events-none absolute left-4 top-4 max-w-64 rounded-lg border border-slate-200 bg-white/95 px-3 py-2 shadow-sm backdrop-blur">
-              <p className="flex items-center gap-1.5 text-xs font-semibold text-slate-800"><EyeIcon aria-hidden="true" /> Read-only review</p>
-              <p className="mt-0.5 text-[11px] leading-4 text-slate-500">Select a highlighted object to inspect its finding. Scroll to zoom.</p>
+              <p className="flex items-center gap-1.5 text-xs font-semibold text-slate-800">
+                <EyeIcon aria-hidden="true" /> Spatial Hazard Map
+              </p>
+              <p className="mt-0.5 text-[11px] leading-4 text-slate-500">
+                Click objects on the plan or select from the queue to view clearance evidence.
+              </p>
             </div>
           </div>
         </div>
 
+        {/* Right: Inspector Details & Decision */}
         <HazardDetail
           hazard={selected}
           decision={selectedDecision}
@@ -208,19 +274,43 @@ export function RiskAnalysis() {
         />
       </div>
 
+      {/* Review Footer / Progression */}
       <div className="sticky bottom-3 z-20 flex flex-col gap-3 rounded-xl border border-slate-200 bg-white/95 px-4 py-3 shadow-[0_12px_34px_rgba(30,50,52,0.16)] backdrop-blur sm:flex-row sm:items-center sm:justify-between">
         <div className="flex items-center gap-3">
           <ClipboardTextIcon size={22} className="text-teal-700" aria-hidden="true" />
-          <div><p className="text-sm font-semibold text-slate-900">{reviewed} of {hazards.length} findings reviewed</p><p className="text-xs text-slate-500">{allReviewed ? "Review complete. Projected layout can now be compared." : "Verify each finding before using the proposed layout."}</p></div>
+          <div>
+            <p className="text-sm font-semibold text-slate-900">
+              {reviewed} of {hazards.length} hazards verified
+            </p>
+            <p className="text-xs text-slate-500">
+              {allReviewed
+                ? "All hazards triaged. Proceed to layout optimization options."
+                : "Review and verify identified hazards to unlock layout recommendations."}
+            </p>
+          </div>
         </div>
         {allReviewed ? (
-          <Link href="/assessments/queen-care-clinic/options" className="inline-flex h-10 items-center justify-center gap-2 rounded-lg bg-teal-700 px-4 text-sm font-semibold text-white hover:bg-teal-800 focus:outline-none focus:ring-2 focus:ring-teal-600 focus:ring-offset-2">Compare safer layout <ArrowRightIcon aria-hidden="true" /></Link>
+          <Link
+            href="/assessments/queen-care-clinic/options"
+            className="inline-flex h-10 items-center justify-center gap-2 rounded-lg bg-teal-700 px-4 text-sm font-semibold text-white hover:bg-teal-800 focus:outline-none focus:ring-2 focus:ring-teal-600 focus:ring-offset-2"
+          >
+            Generate Layout Options <ArrowRightIcon aria-hidden="true" />
+          </Link>
         ) : (
-          <button type="button" onClick={() => document.getElementById("finding-review-actions")?.focus()} className="inline-flex h-10 items-center justify-center gap-2 rounded-lg bg-slate-900 px-4 text-sm font-semibold text-white hover:bg-slate-800 focus:outline-none focus:ring-2 focus:ring-slate-600 focus:ring-offset-2">Review selected finding <ArrowRightIcon aria-hidden="true" /></button>
+          <button
+            type="button"
+            onClick={() => document.getElementById("finding-review-actions")?.focus()}
+            className="inline-flex h-10 items-center justify-center gap-2 rounded-lg bg-slate-900 px-4 text-sm font-semibold text-white hover:bg-slate-800 focus:outline-none focus:ring-2 focus:ring-slate-600 focus:ring-offset-2"
+          >
+            Review Selected Hazard <ArrowRightIcon aria-hidden="true" />
+          </button>
         )}
       </div>
 
-      <p className="flex items-start gap-2 px-1 text-xs leading-5 text-slate-500"><XCircleIcon className="mt-0.5 shrink-0" aria-hidden="true" /> Decision support only. Verify dimensions, route clearance, and recommendations on site before implementation.</p>
+      <p className="flex items-start gap-2 px-1 text-xs leading-5 text-slate-500">
+        <XCircleIcon className="mt-0.5 shrink-0" aria-hidden="true" />
+        SafeSpace is a clinical decision-support tool. It does not replace an occupational therapist or clinical judgment. Verify all measurements on site.
+      </p>
     </section>
   );
 }
