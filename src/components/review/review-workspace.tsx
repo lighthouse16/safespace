@@ -8,14 +8,14 @@ export type ReviewSnapshot = { id: string; label: string; createdAt: string; cre
 type Props = { title?: string; notes?: ReviewNote[]; snapshots?: ReviewSnapshot[]; onDecision?: (decision: ReviewDecision, rationale: string) => void };
 
 const sampleNotes: ReviewNote[] = [
-  { id: "note-01", author: "Dr. Maya Chan", role: "Occupational therapist", body: "Confirm the proposed 96 cm turning clearance after the chair is relocated.", location: "Waiting area · Pin 01", createdAt: "26 Sep 2026, 14:32" },
+  { id: "note-01", author: "Dr. Maya Chan", role: "Occupational therapist", body: "Confirm the proposed 96 cm turning clearance after the chair is relocated.", location: "Activity room · Pin 01", createdAt: "26 Sep 2026, 14:32" },
   { id: "note-02", author: "Alex Wong", role: "Facility manager", body: "Power outlet remains accessible. Contractor confirmed no wall work is required.", location: "Reception wall · Pin 02", createdAt: "26 Sep 2026, 16:05", resolved: true },
 ];
 const sampleSnapshots: ReviewSnapshot[] = [
   { id: "SS-2026-0926-04", label: "Balanced option · Revision 4", createdAt: "26 Sep 2026, 16:18 HKT", createdBy: "Alex Wong", checksum: "9C7A–4E20–B1F8" },
 ];
 
-export function ReviewWorkspace({ title = "Queen Care Clinic — Waiting Area", notes = sampleNotes, snapshots = sampleSnapshots, onDecision }: Props) {
+export function ReviewWorkspace({ title = "Harmony Elder Care Centre — Activity Room", notes = sampleNotes, snapshots = sampleSnapshots, onDecision }: Props) {
   const [view, setView] = useState<"before" | "proposed">("proposed");
   const [activeNote, setActiveNote] = useState(notes[0]?.id);
   const [checked, setChecked] = useState(() => new Set(["measurements", "route"]));

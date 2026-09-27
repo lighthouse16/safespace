@@ -1,8 +1,8 @@
 import Link from "next/link"; import {AppShell} from "@/components/shell";
 const rows = [
-  { name: "Waiting Area & Entrance", type: "Clinic lobby", status: "Analysis complete", risk: "68 · High risk", updated: "12 min ago", href: "/assessments/queen-care-clinic/model" },
-  { name: "North Circulation Corridor", type: "Corridor", status: "Review pending", risk: "34 · Moderate", updated: "Yesterday", href: "/assessments/queen-care-clinic/model" },
-  { name: "Consultation Room 2", type: "Clinical room", status: "Safe", risk: "14 · Low risk", updated: "24 Sep", href: "/assessments/queen-care-clinic/model" }
+  { name: "Activity Room", type: "Common area", status: "Analysis complete", risk: "68 · High risk", updated: "12 min ago", href: "/assessments/queen-care-clinic/model" },
+  { name: "Ground Floor Corridor", type: "Corridor", status: "Review pending", risk: "34 · Moderate", updated: "Yesterday", href: "/assessments/queen-care-clinic/model" },
+  { name: "Dining Hall", type: "Common area", status: "Safe", risk: "14 · Low risk", updated: "24 Sep", href: "/assessments/queen-care-clinic/model" }
 ];
 
 export default function Dashboard() {
@@ -11,7 +11,7 @@ export default function Dashboard() {
       <div className="mx-auto max-w-6xl">
         <header className="flex flex-col gap-4 border-b border-slate-200 pb-6 sm:flex-row sm:items-end sm:justify-between">
           <div>
-            <p className="text-sm text-slate-500">Queen Care Clinic · Operations Workspace</p>
+            <p className="text-sm text-slate-500">Harmony Elder Care Centre · Operations Workspace</p>
             <h1 className="mt-1 text-3xl font-semibold tracking-tight">Facility Safety Overview</h1>
             <p className="mt-2 text-slate-600">Monitor fall-risk assessments, verified 3D layouts, and implementation work orders.</p>
           </div>
@@ -21,8 +21,8 @@ export default function Dashboard() {
         </header>
 
         <section className="grid grid-cols-2 gap-px border-b border-slate-200 bg-slate-200 lg:grid-cols-4">
-          <Metric value="3" label="Monitored spaces" note="Waiting area, corridor, consultation" />
-          <Metric value="1" label="Critical finding" note="Walker route blocked in Waiting Area" />
+          <Metric value="3" label="Monitored spaces" note="Activity room, corridor, consultation" />
+          <Metric value="1" label="Critical finding" note="Walker route blocked in Activity Room" />
           <Metric value="41" label="Risk points reduced" note="Balanced layout ready" />
           <Metric value="OT Approved" label="Professional sign-off" note="Dr. Adrian Lau (Certified OT)" />
         </section>
@@ -71,7 +71,7 @@ export default function Dashboard() {
           <aside className="space-y-5">
             <div className="rounded-xl border border-red-200 bg-red-50/60 p-5">
               <p className="text-xs font-semibold uppercase tracking-wide text-red-800">Action Required</p>
-              <h2 className="mt-2 font-semibold text-slate-950">Waiting Area: Hazard HZ-014</h2>
+              <h2 className="mt-2 font-semibold text-slate-950">Activity Room: Hazard HZ-014</h2>
               <p className="mt-2 text-sm leading-6 text-slate-600">
                 Visitor chair narrows walker clearance to <strong>54 cm</strong> (min 90 cm required).
               </p>

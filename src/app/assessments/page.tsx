@@ -4,7 +4,7 @@ import { AppShell } from "@/components/shell";
 const spaces = [
   {
     id: "queen-care-clinic",
-    name: "Waiting Area & Main Entrance",
+    name: "Activity Room & Main Entrance",
     category: "Lobby & Reception",
     status: "Analysis Complete",
     risk: "68 · High risk",
@@ -54,7 +54,7 @@ export default function AssessmentsPage() {
       <div className="mx-auto max-w-6xl">
         <header className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
           <div>
-            <p className="text-xs font-semibold uppercase tracking-wider text-slate-500">Queen Care Clinic</p>
+            <p className="text-xs font-semibold uppercase tracking-wider text-slate-500">Harmony Elder Care Centre</p>
             <h1 className="mt-1 text-3xl font-semibold tracking-tight">Spaces & Assessments</h1>
             <p className="mt-2 text-slate-600">Manage spatial fall-risk evaluations, 2D/3D floorplans, and route audits across your facility.</p>
           </div>

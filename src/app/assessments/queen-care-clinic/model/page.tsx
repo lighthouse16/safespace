@@ -15,7 +15,7 @@ export default function ModelPage() {
         <header className="mb-4 flex flex-wrap items-end justify-between gap-3">
           <div>
             <p className="text-xs font-semibold uppercase tracking-wide text-teal-700">Space model · Version 3</p>
-            <h1 className="mt-1 text-2xl font-semibold">Verify the waiting area</h1>
+            <h1 className="mt-1 text-2xl font-semibold">Verify the activity room</h1>
             <p className="mt-1 text-sm text-slate-600">Check AI-detected structure, furniture, and safety context before analysis.</p>
           </div>
           <Link href="/assessments/queen-care-clinic/analysis" className="rounded-lg bg-teal-700 px-4 py-2.5 text-sm font-semibold text-white">
@@ -62,7 +62,7 @@ export default function ModelPage() {
                 <dl className="mt-5 space-y-4 text-sm">
                   <div>
                     <dt className="text-slate-500">Overview</dt>
-                    <dd className="font-semibold">9 objects</dd>
+                    <dd className="font-semibold">15 objects</dd>
                   </div>
                   <div>
                     <dt className="text-slate-500">Scale</dt>

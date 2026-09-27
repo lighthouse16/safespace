@@ -18,6 +18,8 @@ const furnitureColors: Record<FurnitureKind, string> = {
   cabinet: "#6b7b82",
   plant: "#5a8a5e",
   bench: "#a09080",
+  shelf: "#7a6e5e",
+  tv: "#1a2530",
 };
 
 /* ── Furniture 3D geometry ── */
@@ -137,6 +139,40 @@ function Bench({ w, d }: { w: number; d: number }) {
   );
 }
 
+function Shelf({ w, d }: { w: number; d: number }) {
+  return (
+    <group>
+      <mesh position={[0, 0.6, 0]} castShadow receiveShadow>
+        <boxGeometry args={[w, 1.2, d]} />
+        <meshStandardMaterial color="#7a6e5e" roughness={0.75} />
+      </mesh>
+      {[0.25, 0.5, 0.75, 1.0].map(y => (
+        <mesh key={y} position={[0, y * 1.2, d / 2 + 0.003]}>
+          <boxGeometry args={[w * 0.95, 0.008, 0.003]} />
+          <meshStandardMaterial color="#5a4e3e" />
+        </mesh>
+      ))}
+    </group>
+  );
+}
+
+function TV({ w, d }: { w: number; d: number }) {
+  return (
+    <group>
+      {/* Screen */}
+      <mesh position={[0, 1.3, 0]} castShadow>
+        <boxGeometry args={[w, w * 0.56, d]} />
+        <meshStandardMaterial color="#1a2530" roughness={0.3} />
+      </mesh>
+      {/* Inner screen */}
+      <mesh position={[0, 1.3, d / 2 + 0.002]}>
+        <planeGeometry args={[w * 0.92, w * 0.50]} />
+        <meshStandardMaterial color="#2a3a45" roughness={0.2} />
+      </mesh>
+    </group>
+  );
+}
+
 function FurnitureShape({ kind, w, d }: { kind: FurnitureKind; w: number; d: number }) {
   switch (kind) {
     case "chair": return <Chair w={w} d={d} />;
@@ -144,6 +180,14 @@ function FurnitureShape({ kind, w, d }: { kind: FurnitureKind; w: number; d: num
     case "cabinet": return <Cabinet w={w} d={d} />;
     case "plant": return <Plant w={w} />;
     case "bench": return <Bench w={w} d={d} />;
+    case "shelf": return <Shelf w={w} d={d} />;
+    case "tv": return <TV w={w} d={d} />;
+    default: return (
+      <mesh position={[0, 0.3, 0]} castShadow receiveShadow>
+        <boxGeometry args={[w, 0.6, d]} />
+        <meshStandardMaterial color="#9aa" roughness={0.7} />
+      </mesh>
+    );
   }
 }
 
@@ -262,11 +306,11 @@ function RoomWalls({ room }: { room: EditorRoom }) {
 
 /* ── Heatmap overlay ── */
 function HeatmapOverlay() {
-  // Fixed risk zones matching the 2D heatmap data
+  // Risk zones matching the activity room layout
   const zones: [number, number, number, string][] = [
-    [toM(465), toM(365), 0.85, c.red],    // critical near route-chair
-    [toM(555), toM(298), 0.62, c.amber],   // moderate near corridor entry
-    [toM(300), toM(445), 0.70, "#e7b64a"], // moderate corridor
+    [toM(420), toM(340), 1.2, c.red],      // critical: cabinet pinch point
+    [toM(260), toM(190), 1.4, c.amber],    // high: table A blockage
+    [toM(440), toM(450), 0.8, "#e7b64a"],  // moderate: corridor entry
   ];
   return (
     <group>

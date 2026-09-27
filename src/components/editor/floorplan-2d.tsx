@@ -93,6 +93,24 @@ const FurnitureShape = ({ kind, w, d, c }: { kind: string; w: number; d: number;
       </Group>
     );
   }
+  if (kind === "shelf") {
+    return (
+      <Group>
+        <Rect width={w} height={d} fill="#8a7e6e" />
+        {[0.25, 0.5, 0.75].map(f => (
+          <Line key={f} points={[2, d * f, w - 2, d * f]} stroke={editorPalette.ink} strokeWidth={1} opacity={0.25} />
+        ))}
+      </Group>
+    );
+  }
+  if (kind === "tv") {
+    return (
+      <Group>
+        <Rect width={w} height={d} fill="#2c3e50" cornerRadius={2} />
+        <Rect x={3} y={2} width={w - 6} height={d - 4} fill="#445566" cornerRadius={1} />
+      </Group>
+    );
+  }
   return <Rect width={w} height={d} fill={c} />;
 };
 
@@ -313,8 +331,9 @@ export function Floorplan2D({
 
           {showHeatmap && (
             <Group listening={false}>
-              <Circle x={300} y={200} radius={150} fillRadialGradientStartPoint={{ x: 0, y: 0 }} fillRadialGradientStartRadius={0} fillRadialGradientEndPoint={{ x: 0, y: 0 }} fillRadialGradientEndRadius={150} fillRadialGradientColorStops={[0, "rgba(201,87,77,0.6)", 1, "rgba(201,87,77,0)"]} />
-              <Circle x={600} y={400} radius={200} fillRadialGradientStartPoint={{ x: 0, y: 0 }} fillRadialGradientStartRadius={0} fillRadialGradientEndPoint={{ x: 0, y: 0 }} fillRadialGradientEndRadius={200} fillRadialGradientColorStops={[0, "rgba(217,145,50,0.5)", 1, "rgba(217,145,50,0)"]} />
+              <Circle x={420} y={340} radius={120} fillRadialGradientStartPoint={{ x: 0, y: 0 }} fillRadialGradientStartRadius={0} fillRadialGradientEndPoint={{ x: 0, y: 0 }} fillRadialGradientEndRadius={120} fillRadialGradientColorStops={[0, "rgba(201,87,77,0.6)", 1, "rgba(201,87,77,0)"]} />
+              <Circle x={260} y={190} radius={140} fillRadialGradientStartPoint={{ x: 0, y: 0 }} fillRadialGradientStartRadius={0} fillRadialGradientEndPoint={{ x: 0, y: 0 }} fillRadialGradientEndRadius={140} fillRadialGradientColorStops={[0, "rgba(217,145,50,0.5)", 1, "rgba(217,145,50,0)"]} />
+              <Circle x={440} y={450} radius={80} fillRadialGradientStartPoint={{ x: 0, y: 0 }} fillRadialGradientStartRadius={0} fillRadialGradientEndPoint={{ x: 0, y: 0 }} fillRadialGradientEndRadius={80} fillRadialGradientColorStops={[0, "rgba(217,145,50,0.35)", 1, "rgba(217,145,50,0)"]} />
             </Group>
           )}
         </Layer>

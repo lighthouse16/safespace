@@ -3,9 +3,9 @@ import type { DomainData } from "./types";
 export const demoIds = { facility: "facility-queen-care", assessment: "assessment-queen-care", room: "room-waiting", profile: "profile-walker", route: "route-entry-reception", balancedScenario: "scenario-balanced" } as const;
 
 export const mockData: DomainData = {
-  facilities: { [demoIds.facility]: { id: demoIds.facility, name: "Queen Care Clinic", address: "18 Queen's Road Central, Hong Kong", timezone: "Asia/Hong_Kong" } },
-  assessments: { [demoIds.assessment]: { id: demoIds.assessment, facilityId: demoIds.facility, name: "Waiting Area Safety Review", areaName: "Waiting Area", status: "analysis-complete", step: "analysis", owner: "Maya Chen", updatedAt: "2026-09-26T16:40:00+08:00", riskScore: 68, roomIds: [demoIds.room], profileIds: [demoIds.profile], routeIds: [demoIds.route], hazardIds: ["hazard-chair", "hazard-corner"], scenarioIds: ["scenario-current", "scenario-minimum", demoIds.balancedScenario, "scenario-safety"], selectedScenarioId: demoIds.balancedScenario, version: 3 } },
-  rooms: { [demoIds.room]: { id: demoIds.room, name: "Waiting Area", widthCm: 720, lengthCm: 940, wallThicknessCm: 14, origin: { x: 0, y: 0 } } },
+  facilities: { [demoIds.facility]: { id: demoIds.facility, name: "Harmony Elder Care Centre", address: "18 Queen's Road Central, Hong Kong", timezone: "Asia/Hong_Kong" } },
+  assessments: { [demoIds.assessment]: { id: demoIds.assessment, facilityId: demoIds.facility, name: "Activity Room Safety Review", areaName: "Activity Room", status: "analysis-complete", step: "analysis", owner: "Maya Chen", updatedAt: "2026-09-26T16:40:00+08:00", riskScore: 68, roomIds: [demoIds.room], profileIds: [demoIds.profile], routeIds: [demoIds.route], hazardIds: ["hazard-chair", "hazard-corner"], scenarioIds: ["scenario-current", "scenario-minimum", demoIds.balancedScenario, "scenario-safety"], selectedScenarioId: demoIds.balancedScenario, version: 3 } },
+  rooms: { [demoIds.room]: { id: demoIds.room, name: "Activity Room", widthCm: 720, lengthCm: 940, wallThicknessCm: 14, origin: { x: 0, y: 0 } } },
   furniture: {
     "chair-a": { id: "chair-a", roomId: demoIds.room, name: "Visitor chair A", kind: "chair", position: { x: 235, y: 270 }, widthCm: 58, depthCm: 62, rotationDeg: 0, movable: true },
     "chair-b": { id: "chair-b", roomId: demoIds.room, name: "Visitor chair B", kind: "chair", position: { x: 302, y: 270 }, widthCm: 58, depthCm: 62, rotationDeg: 0, movable: true },
