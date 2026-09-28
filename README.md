@@ -21,4 +21,4 @@ Open `http://localhost:3000`.
 
 ## Scope
 
-Frontend prototype only. AI extraction, safety analysis, collaboration, persistence, and PDF generation use deterministic sample data. Results support professional decisions and do not replace an onsite assessment.
+Frontend prototype only. Automated spatial extraction, safety analysis, collaboration, persistence, and PDF generation use deterministic sample data. Results support professional decisions and do not replace an onsite assessment.

@@ -10,3 +10,6 @@ dist/
 
 *.tsbuildinfo
 Hackathon-project
+AGENTS.md
+CLAUDE.md
+.gemini
