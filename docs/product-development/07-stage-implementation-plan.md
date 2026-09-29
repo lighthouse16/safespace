@@ -9,34 +9,39 @@ This implementation plan defines the gated roadmap for SafeSpace from Stage 1 th
 
 ## Stage 1: Canonical Domain Model & Data Persistence
 
-- **Goal**: Establish a single canonical TypeScript spatial domain model validated with Zod, consolidate duplicate state stores, and implement durable client-side IndexedDB persistence to eliminate refresh data loss.
+- **Goal**: Establish a single canonical TypeScript spatial domain model validated with Zod, consolidate duplicate state stores, implement durable client-side IndexedDB persistence to eliminate refresh data loss, and introduce minimal defensive runtime-stability protection for 3D views.
 - **In Scope**:
   - Unified TypeScript domain types (`CanonicalRoom`, `CanonicalOpening`, `CanonicalObject`, `CanonicalMobilityProfile`, `CanonicalRoute`, `CanonicalHazard`).
   - Runtime validation schemas using Zod.
   - Client-side persistence engine via IndexedDB (offline-first).
   - Deprecation of parallel `assessment-store.ts` in favor of a consolidated `useSpatialStore`.
   - Automatic migration for Queen Care Clinic initial fixture.
+  - Minimal defensive 3D runtime-stability isolation: wrap 3D canvas mount points in defensive isolation with automatic fallback to 2D Plan view so that 3D failures do not trigger the global "Workspace could not load" error boundary or block core user flows.
 - **Out of Scope**:
   - Cloud backend / PostgreSQL authentication (deferred to Stage 8).
-  - Computer vision floorplan ingestion (deferred to Stage 2).
+  - Computer vision floorplan ingestion (deferred to Stage 7; Stage 2 is 100% manual).
   - Automatic layout solving (deferred to Stage 5).
+  - Full 3D digital twin overhaul, asset expansion, or shadow-map refactoring (deferred to Stage 6).
 - **Dependencies**: Stage 0 audit approval.
 - **Major Implementation Tasks**:
   1. Author `src/lib/domain/` containing canonical entity definitions and Zod schemas.
   2. Implement `src/lib/storage/indexed-db.ts` with auto-save debounce (300ms) and versioned schema migrations.
   3. Refactor `useSafeSpaceStore` to bind to IndexedDB on mount and sync state updates.
   4. Replace false "All changes saved" header badge with real save lifecycle indicators ("Unsaved changes...", "Saving...", "Saved to local storage").
+  5. Add defensive error boundary / safe fallback toggle around 3D canvas component to protect the main workspace from catastrophic crashes while root cause investigation continues in Stage 6.
 - **Required Tests**:
   - Unit tests verifying Zod serialization/deserialization of full facility models.
   - Persistence test: modify furniture position -> simulate browser reload -> verify state restored exactly.
   - Fixture backward-compatibility test for Queen Care Clinic demo plan.
+  - Defensive fallback test: verify that a 3D mount failure falls back to 2D Plan without crashing the global workspace.
 - **Acceptance Criteria**:
   - Refreshing the browser preserves 100% of user-modified room geometry, furniture positions, and active stage without resetting.
   - Zero TypeScript or lint errors.
   - Legacy `src/lib/types.ts` and `src/lib/mock-data.ts` merged into canonical schema.
+  - 3D view toggle failure cannot take down the global application shell.
 - **Risks**: State migration edge cases when schema versions evolve.
 - **Suggested Branch Name**: `stage-1-domain-model-persistence`
-- **Expected Review Evidence**: Automated test suite passing; screen recording demonstrating state persistence across hard browser reloads.
+- **Expected Review Evidence**: Automated test suite passing; screen recording demonstrating state persistence across hard browser reloads and graceful 3D fallback.
 
 ---
 
@@ -45,12 +50,12 @@ This implementation plan defines the gated roadmap for SafeSpace from Stage 1 th
 - **Goal**: Enable real floorplan intake (image/PDF upload and manual drawing), scale calibration, and interactive 2D editing with human confirmation gates.
 - **In Scope**:
   - File uploader accepting PNG, JPEG, SVG, and PDF.
-  - Scale calibration tool (user draws a line between two points and inputs real-world dimension in meters/cm).
-  - Interactive 2D editor for drawing/editing room polygons, placing doors, and arranging furniture.
+  - Scale calibration tool (user draws a reference line between two known points and inputs real-world dimension in meters/cm).
+  - Interactive 2D editor for drawing/editing room polygons, placing doors/windows, and arranging furniture.
   - Human verification checklist for newly added or imported objects.
   - Dynamic grid snapping, coordinate readout, and pan/zoom boundaries.
 - **Out of Scope**:
-  - Automatic AI vision extraction (AI parsing is introduced as an optional accelerator in Stage 2/7, but manual calibrated intake must work deterministically first).
+  - AI vision extraction or automated floorplan interpretation (Stage 2 operates 100% manually without any AI dependencies: upload, calibration, polygon drawing, and item placement are entirely deterministic user actions).
   - 3D rendering updates (deferred to Stage 6).
 - **Dependencies**: Stage 1 (Canonical Domain Model & Persistence).
 - **Major Implementation Tasks**:
@@ -63,7 +68,7 @@ This implementation plan defines the gated roadmap for SafeSpace from Stage 1 th
   - Polygon boundary containment and vertex editing tests.
   - Grid snap and boundary clamp assertion suite.
 - **Acceptance Criteria**:
-  - A user can upload an arbitrary floorplan image, calibrate a known doorway to 90 cm, draw an L-shaped room, place furniture, and save.
+  - A user can upload an arbitrary floorplan image, calibrate a known doorway to 90 cm, draw an L-shaped room, place furniture, and save without AI involvement.
 - **Risks**: High-resolution image canvas memory consumption on lower-end devices.
 - **Suggested Branch Name**: `stage-2-floorplan-intake-2d-editor`
 - **Expected Review Evidence**: Interactive intake demo uploading and calibrating a blank test floorplan.
@@ -105,19 +110,20 @@ This implementation plan defines the gated roadmap for SafeSpace from Stage 1 th
 
 ## Stage 4: Evidence-Backed Fall Risk Engine
 
-- **Goal**: Replace hardcoded risk numbers (68, 41, 27) with an empirical, multi-factor fall risk scoring engine mapped to official building and clinical standards.
+- **Goal**: Replace hardcoded risk numbers (68, 41, 27) with an empirical, multi-factor Environmental Hazard Score (EHS) mapped to verified statutory standards (HK BFA 2008, CIBSE LG2), separating spatial hazard metrics from clinical patient screening (CDC STEADI).
 - **In Scope**:
-  - Standard rule registry (`RuleRegistry.ts`) referencing HK BFD 2008, ADA 2010, CIBSE LG2, and CDC STEADI.
-  - Continuous Environmental Fall Risk Index calculation ($0\dots100$).
+  - Standard rule registry (`RuleRegistry.ts`) referencing HK BFA 2008 and CIBSE LG2 for spatial geometry and lighting.
+  - Explicit separation between spatial Environmental Hazard Score (EHS, $0\dots100$) and clinical functional fall screening (CDC STEADI).
   - Dynamic hazard generation: identifies pinch points, sharp corners, lighting deficits, unsupported spans, and trip thresholds from real geometry.
   - Hazard queue sorting, severity grading (Critical, High, Medium, Low), and measured evidence formatting.
+  - Clear flagging of unvalidated thresholds as "TBD — requires OT/building-code validation".
 - **Out of Scope**:
   - Layout alternative optimization (deferred to Stage 5).
   - Sensor hardware procurement or procurement pricing (deferred to Stage 7).
 - **Dependencies**: Stage 3 (Geometry Engine & Dynamic Clearances).
 - **Major Implementation Tasks**:
   1. Author rule evaluation modules for clearance, corner proximity, lighting, thresholds, and support gaps.
-  2. Implement multi-factor weighted risk formula: $\text{Risk} = \min(100, \sum w_i \cdot P_i)$.
+  2. Implement multi-factor weighted risk formula: $\text{EHS} = \min(100, \sum w_i \cdot P_i)$.
   3. Replace `INITIAL_HAZARDS` and `calculateLiveMetrics` in `spatial-model.ts`.
   4. Connect Stage 4 hazard list directly to live evaluation output.
 - **Required Tests**:
@@ -164,9 +170,10 @@ This implementation plan defines the gated roadmap for SafeSpace from Stage 1 th
 
 ## Stage 6: Production-Quality 3D Digital Twin Synchronised with 2D
 
-- **Goal**: Fix the 3D rendering crash, harden Three.js / R3F against context loss and font issues, and synchronize the 3D digital twin to the canonical scene model.
+- **Goal**: Complete root cause isolation and resolution for the 3D rendering crash, harden Three.js / R3F against context loss and font issues, and synchronize the 3D digital twin to the canonical scene model.
 - **In Scope**:
-  - Implement `Spatial3DErrorBoundary` with graceful 2D fallback.
+  - Comprehensive 3D root cause investigation and fix across GPU configurations.
+  - Implement full `Spatial3DErrorBoundary` with graceful 2D fallback.
   - Resolve Three.js r186 deprecations (`Clock` -> `Timer`, explicit shadow map configuration).
   - Replace remote Drei `<Text>` font downloads with local 2D canvas billboard sprites.
   - Refactor Stage 5 comparison views to use a single shared WebGL canvas with viewports/scissor test.
@@ -174,12 +181,13 @@ This implementation plan defines the gated roadmap for SafeSpace from Stage 1 th
   - Synchronize 2D and 3D camera and selection states.
 - **Out of Scope**:
   - Photorealistic offline raytracing or VR headsets.
-- **Dependencies**: Stage 1 (Canonical Model) and Stage 5 (Layout Alternatives).
+- **Dependencies**: Stage 1 (Canonical Model & 3D isolation) and Stage 5 (Layout Alternatives).
 - **Major Implementation Tasks**:
-  1. Refactor `Floorplan3D.tsx` to consume canonical scene graph entities.
-  2. Implement `Spatial3DErrorBoundary.tsx` wrapping all Canvas mounts.
-  3. Replace Drei font loader with local sprite canvas texture for hazard markers.
-  4. Build single-canvas split renderer for Stage 5 before/after comparison.
+  1. Isolate and eliminate the WebGL crash trigger observed in deployed environments.
+  2. Refactor `Floorplan3D.tsx` to consume canonical scene graph entities.
+  3. Implement `Spatial3DErrorBoundary.tsx` wrapping all Canvas mounts.
+  4. Replace Drei font loader with local sprite canvas texture for hazard markers.
+  5. Build single-canvas split renderer for Stage 5 before/after comparison.
 - **Required Tests**:
   - 3D mount/unmount endurance test (50 consecutive toggles without memory leak or context loss).
   - Offline network test verifying 3D loads without internet access.
@@ -194,26 +202,34 @@ This implementation plan defines the gated roadmap for SafeSpace from Stage 1 th
 
 ## Stage 7: AI Assistance, Professional Report & Sensor Recommendations
 
-- **Goal**: Integrate role-bounded LLM assistance for plain-language explanations, clinical report generation, and environmental sensor recommendations, backed by verifiable human review.
+- **Goal**: Integrate role-bounded LLM assistance for plain-language explanations, clinical report generation, and environmental sensor recommendations, backed by verifiable human review, with optional AI floorplan drafting.
 - **In Scope**:
-  - Multimodal Vision API integration for optional initial floorplan drafting (with mandatory human confirmation).
+  - Optional AI floorplan drafting accelerator:
+    - Vision model processes uploaded floorplan image to suggest candidate room boundaries and furniture bounding boxes.
+    - Draft geometry only; outputs explicit confidence scores and provenance metadata for each detected entity.
+    - Mandatory human interactive confirmation and correction in the 2D editor before any geometry enters the spatial model.
+    - AI never determines scale, dimensions, obstacle clearances, or safety scores independently.
   - LLM report authoring: drafts clinical executive summary, OT rationales, and contractor scopes using calculated metrics only.
   - Environmental sensor recommendation engine (radar fall detectors, night-path motion beacons, door contact sensors) placed at high-risk coordinates.
   - Printable and exportable audit report (PDF / HTML) with explicit provenance disclaimers and human signature capture.
+  - API architecture: lightweight serverless function (Option A for static GitHub Pages) or Next.js server actions (Option B for full-stack host).
 - **Out of Scope**:
-  - Allowing AI to calculate dimensions, distances, or risk scores.
+  - Allowing AI to calculate dimensions, distances, or risk scores independently.
   - Commercial billing or paid subscription gates.
 - **Dependencies**: Stage 4 (Risk Engine) and Stage 5 (Layout Optimizer).
 - **Major Implementation Tasks**:
-  1. Implement AI server actions invoking Gemini API with strict structured JSON output schemas.
-  2. Implement sensor placement heuristics targeting unmonitored high-risk zones.
-  3. Build PDF generation pipeline (`@react-pdf/renderer` or server-side headless Chromium print).
-  4. Connect OT review sign-off modal with digital signature and license verification fields.
+  1. Implement AI endpoint invoking Gemini API with strict structured JSON output schemas.
+  2. Implement draft geometry preview and human confirmation workflow in 2D editor.
+  3. Implement sensor placement heuristics targeting unmonitored high-risk zones.
+  4. Build PDF generation pipeline (`@react-pdf/renderer` or server-side headless Chromium print).
+  5. Connect OT review sign-off modal with digital signature and license verification fields.
 - **Required Tests**:
   - Prompt injection and hallucination test: verify LLM never fabricates measurements differing from the spatial store.
+  - AI floorplan drafting test: verify geometry requires human acceptance before persisting.
   - PDF generation snapshot test.
 - **Acceptance Criteria**:
   - An OT can review findings, add clinical notes, sign off with their registration number, and download an audit-grade PDF report.
+  - AI-generated floorplan drafts can be rejected, accepted, or corrected by the user.
 - **Risks**: AI API latency and rate limits.
 - **Suggested Branch Name**: `stage-7-ai-report-sensor-engine`
 - **Expected Review Evidence**: Exported sample clinical report demonstrating exact metric alignment with calculated spatial facts.
@@ -224,7 +240,7 @@ This implementation plan defines the gated roadmap for SafeSpace from Stage 1 th
 
 - **Goal**: Implement user authentication, role separation (Resident vs. Professional/Organization), multi-facility management, and cloud database persistence.
 - **In Scope**:
-  - Authentication (Email, Magic Link, OAuth) via Supabase Auth.
+  - Authentication (Email, Magic Link, OAuth) via Supabase Auth or equivalent.
   - Multi-tenant data model with PostgreSQL and Row Level Security (RLS).
   - Facility workspace management: create, rename, archive, and share assessment projects.
   - Role-based access control (Caregiver, Occupational Therapist, Clinic Admin, Contractor).
@@ -233,8 +249,8 @@ This implementation plan defines the gated roadmap for SafeSpace from Stage 1 th
   - Commercial payment gateways (Stripe) and subscription billing (deferred to post-pilot).
 - **Dependencies**: Stage 1 through Stage 7.
 - **Major Implementation Tasks**:
-  1. Author Supabase database schema and RLS policies.
-  2. Implement Next.js auth middleware and protected routes.
+  1. Author database schema and RLS policies.
+  2. Implement auth middleware and protected routes.
   3. Create organization dashboard for multi-bed or multi-room facilities.
 - **Required Tests**:
   - RLS security audit verifying Tenant A cannot access Tenant B's assessments.
@@ -247,9 +263,9 @@ This implementation plan defines the gated roadmap for SafeSpace from Stage 1 th
 
 ---
 
-## Stage 9: Hardening, Accessibility, Privacy & Demo Readiness
+## Stage 9: Hardening, Accessibility, Privacy & Staged Release Readiness
 
-- **Goal**: Harden the complete application for public release, achieve WCAG 2.1 AA accessibility compliance, ensure patient data privacy, optimize performance, and achieve production demo readiness.
+- **Goal**: Harden the complete application, achieve WCAG 2.1 AA accessibility compliance, ensure patient data privacy, optimize performance, and satisfy formal staged release criteria across four distinct operational gates.
 - **In Scope**:
   - Full keyboard accessibility (focus traps, roving tab indexes, canvas keyboard controls).
   - Screen reader semantic descriptions for 2D/3D spatial hazards.
@@ -257,6 +273,7 @@ This implementation plan defines the gated roadmap for SafeSpace from Stage 1 th
   - Privacy compliance: anonymization of residential addresses, local-only processing toggles.
   - Bundle optimization: code-splitting Three.js and Konva to achieve `< 200KB` initial JS load.
   - Comprehensive end-to-end testing with Playwright.
+  - Staged readiness gate validation and documentation.
 - **Out of Scope**:
   - New functional features or architectural redesigns.
 - **Dependencies**: Stages 1 through 8.
@@ -265,10 +282,56 @@ This implementation plan defines the gated roadmap for SafeSpace from Stage 1 th
   2. Implement keyboard navigation for spatial canvas selection and waypoint inspection.
   3. Author full end-to-end Playwright test suite covering the entire 6-stage journey.
   4. Finalize demo presets and self-guided onboarding tour.
+  5. Audit and document compliance against the 4 operational readiness gates.
 - **Required Tests**:
   - Playwright E2E test running the full flow from upload to report export.
   - Lighthouse Accessibility score $\ge 98$.
-- **Acceptance Criteria**:
-  - Zero critical security, accessibility, or rendering defects; clean production build; ready for clinical trials and public launch.
+
+### Staged Operational Readiness Gates
+
+SafeSpace replaces generic "ready for clinical trials and public launch" claims with four strictly separated operational readiness tiers:
+
+```
+[ Gate 1: Hackathon Demo ] ──> [ Gate 2: Controlled Pilot ] ──> [ Gate 3: Public Release ] ──> [ Gate 4: Clinical Validation ]
+  - Simulated fixtures           - Real client floorplans       - General public               - Formal clinical trial
+  - Synthetic data disclaimer    - Human OT in the loop         - Multi-tenant accounts        - IRB / Ethics approval
+  - Zero fatal unhandled crash   - Statutory code alignment     - WCAG 2.1 AA & PII scrubbed   - SaMD regulatory review
+```
+
+#### Gate 1: Hackathon Demo Readiness
+- **Intended Use**: Live conference and hackathon demonstration only.
+- **Requirements**:
+  - Zero fatal unhandled runtime exceptions or white-screen errors across the 6-stage demo flow.
+  - Prominent UI disclaimer: "Demonstration prototype with synthetic data. Not for clinical or diagnostic use."
+  - Deterministic calculations verified against baseline test fixtures.
+- **Restrictions**: Cannot be used with real patient floorplans or unmanaged users.
+
+#### Gate 2: Controlled Clinical Pilot Readiness
+- **Intended Use**: Supervised pilot deployments in partnering clinics, NGOs, or care homes.
+- **Requirements**:
+  - 100% of spatial assessments must be reviewed and confirmed by a certified Occupational Therapist.
+  - Real floorplan intake and calibrated measurements verified against physical ground truth ($\pm 2\text{ cm}$).
+  - Statutory alignment with primary local building standards (HK BFA 2008 for HK facilities).
+  - Informed participant consent and facility data-sharing agreement executed.
+- **Restrictions**: Limited to controlled pilot cohorts under direct clinician oversight.
+
+#### Gate 3: Public Release Readiness
+- **Intended Use**: Open web deployment for residents, caregivers, and independent organizations.
+- **Requirements**:
+  - Multi-tenant data isolation with cryptographically verified Row Level Security (RLS).
+  - Automated PII stripping (removing resident names, unit numbers, floor levels from cloud transmission).
+  - WCAG 2.1 AA accessibility compliance across all interactive canvases and forms.
+  - Comprehensive legal terms of service, privacy policy, and liability disclaimers stating the system provides spatial decision support, not medical diagnosis.
+- **Restrictions**: Cannot claim certified medical device or clinical diagnostic efficacy.
+
+#### Gate 4: Formal Clinical Validation Readiness
+- **Intended Use**: Certified clinical intervention tool with evidence-backed fall reduction claims.
+- **Requirements**:
+  - Prospective clinical trial or randomized controlled trial (RCT) protocol approved by an Institutional Review Board (IRB) or Human Research Ethics Committee (HREC).
+  - Statistically significant fall incidence reduction outcomes published in peer-reviewed clinical literature.
+  - Regulatory classification determination under Software as a Medical Device (SaMD) frameworks (e.g., US FDA 21 CFR Part 820 / EU MDR 2017/745 / HK MDCO).
+  - Formal clinical risk management system (ISO 14971) and quality management system (ISO 13485) implementation.
+- **Restrictions**: No clinical claims of fall reduction or diagnostic efficacy may be made until Gate 4 is fully completed.
+
 - **Suggested Branch Name**: `stage-9-hardening-demo-readiness`
-- **Expected Review Evidence**: Full Playwright test run recording and Lighthouse audit report.
+- **Expected Review Evidence**: Full Playwright test run recording, Lighthouse audit report, and Stage Gate Verification Dossier.

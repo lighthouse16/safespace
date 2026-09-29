@@ -1,56 +1,60 @@
 # Inventory of Mocks, Hardcoding, and Simulated Behaviors
 
-## 1. Executive Summary & Inventory Totals
+## 1. Inventory Summary & Reconciliation Methodology
 
-This inventory catalogues every mock, hardcoded metric, simulated workflow state, unbacked safety claim, and fake interaction identified across the SafeSpace codebase.
+This inventory catalogues every verified mock, hardcoded metric, simulated workflow state, unbacked safety claim, and missing implementation identified in the SafeSpace codebase.
+Per Stage 0 audit standards, **every finding counted in the summary totals is individually and completely documented below** with its unique identifier, category, severity, file location, exact code evidence, product impact, and future stage assignment.
 
-### Totals by Category
-| Category | Count | Description |
-| :--- | :---: | :--- |
-| **Misleading mock behavior** | **8** | UI displays operations or persistence that do not perform what they claim |
-| **Hardcoded business logic** | **11** | Formulas, clearances, risk indices, and costs fixed to specific demo item IDs |
-| **Missing implementation** | **9** | Critical domain functions stubbed out or non-operational |
-| **Temporary prototype implementation** | **6** | Working UI mechanisms built as temporary frontend place-holders |
-| **Legitimate fixture or example** | **4** | Valid testing and initial baseline seed fixtures for Queen Care Clinic |
-| **Dead or unused code** | **4** | Orphaned routes, unreferenced types, or duplicate components |
-| **TOTAL FINDINGS** | **42** | |
+### Reconciliation Proof Table
+| Metric | Count | Reconciliation Check |
+| :--- | :---: | :---: |
+| **Total Catalogued Findings** | **24** | Base Total |
+| **Sum by Category** | **24** | 6 Misleading + 8 Hardcoded + 5 Missing + 3 Temporary + 2 Dead = 24 (MATCH) |
+| **Sum by Severity** | **24** | 9 Critical + 8 High + 6 Medium + 1 Low = 24 (MATCH) |
+| **Detailed Documented Entries** | **24** | MOCK-01 through MOCK-24 (MATCH) |
 
-### Totals by Severity
-| Severity | Count | Criteria |
-| :--- | :---: | :--- |
-| **Critical** | **10** | Directly endangers clinical/spatial truth, misleads user on safety/persistence, or causes system crash |
-| **High** | **15** | Prevents arbitrary floorplans, lacks computational foundation, or blocks end-to-end user flow |
-| **Medium** | **12** | Incomplete interactive features, missing validation, or duplicate architecture |
-| **Low** | **5** | Minor styling cosmetic stubs or unused helper exports |
+### Breakdown by Category
+- **Hardcoded business logic**: 8 findings
+- **Misleading mock behavior**: 6 findings
+- **Missing implementation**: 5 findings
+- **Temporary prototype implementation**: 3 findings
+- **Dead or unused code**: 2 findings
+- **Total**: **24 findings**
+
+### Breakdown by Severity
+- **Critical**: 9 findings (Blocks clinical validity, endangers user data, or fakes core calculations)
+- **High**: 8 findings (Blocks arbitrary floorplan support or multi-object analysis)
+- **Medium**: 6 findings (Incomplete UI features, missing assets, or cosmetic stubs)
+- **Low**: 1 finding (Test fixture artifacts)
+- **Total**: **24 findings**
 
 ---
 
-## 2. Detailed Findings Register
+## 2. Complete Detailed Findings Register (MOCK-01 to MOCK-24)
 
-### Item MOCK-01: Fake Floorplan Upload & Detection Progress
+### MOCK-01: Fake Floorplan Upload & Extraction State Transitions
 - **Category**: Misleading mock behavior
 - **Severity**: Critical
 - **User-Facing Claim**: "Upload Plan (PDF, PNG, CAD)" / "Extracting architectural boundaries and interior fixtures..."
-- **Actual Behavior**: Clicking the upload button initiates a pure UI state toggle (`setImportMode("uploading")` -> `setImportMode("extracting")` -> `setImportMode("ready")`). No file upload occurs, no multipart form data is parsed, and no computer vision or vector parsing library is called.
+- **Actual Behavior**: Clicking the upload button triggers purely cosmetic UI state transitions (`setImportMode("uploading")` $\to$ `setImportMode("extracting")` $\to$ `setImportMode("ready")`). No file is ingested, no multipart data is parsed, and no computer vision backend is invoked.
 - **Exact File & Symbol**: `src/store/safespace-store.ts:32-34` (`importMode`, `setImportMode`), `src/components/workflow/Stage1Layout.tsx:160-185`.
 - **Evidence**:
   ```typescript
-  // Stage 1 import mode is a cosmetic state enum
   importMode: "ready", // ready for demo clinic by default
   setImportMode: (mode) => set({ importMode: mode }),
   ```
-- **Product Risk**: Gives users the illusion that any floorplan can be ingested, while only the hardcoded Queen Care Clinic geometry is ever loaded.
-- **Recommended Future Stage**: Stage 2 (Real Floorplan Intake).
-- **Blocks End-to-End Operation**: Yes.
+- **Product Impact**: Users cannot import arbitrary spaces; only the pre-baked Queen Care Clinic geometry is ever available.
+- **Assigned Future Stage**: Stage 2 (Real Floorplan Intake).
+- **Status**: **Blocking**.
 
 ---
 
-### Item MOCK-02: Hardcoded "All changes saved" / "Saved" Persistence Claims
+### MOCK-02: Non-Durable In-Memory State Claiming "All changes saved"
 - **Category**: Misleading mock behavior
 - **Severity**: Critical
-- **User-Facing Claim**: "All changes saved" in header bar; "Saved" status pill in sub-pages.
-- **Actual Behavior**: Zero persistence logic exists. No IndexedDB, no localStorage, no API fetch. All edits live purely in Zustand in-memory state. Reloading the browser immediately wipes all changes and resets to initial fixtures.
-- **Exact File & Symbol**: `src/components/workflow/TopAppBar.tsx:50`, `src/components/ui/status.tsx:7`, `src/app/assessments/queen-care-clinic/model/page.tsx:11`.
+- **User-Facing Claim**: "All changes saved" displayed with a green checkmark in the global top application bar.
+- **Actual Behavior**: No persistence layer exists. State lives exclusively in volatile Zustand memory. Refreshing the browser instantly erases all changes.
+- **Exact File & Symbol**: `src/components/workflow/TopAppBar.tsx:50` (`TopAppBar`).
 - **Evidence**:
   ```tsx
   <span className="flex items-center gap-1.5 text-[11px] text-emerald-800 font-medium">
@@ -58,44 +62,76 @@ This inventory catalogues every mock, hardcoded metric, simulated workflow state
     All changes saved
   </span>
   ```
-- **Product Risk**: Clinicians and residents believe their custom adjustments, notes, and profile configurations are stored safely, leading to severe data loss upon accidental refresh.
-- **Recommended Future Stage**: Stage 1 (Domain Model & Persistence).
-- **Blocks End-to-End Operation**: Yes.
+- **Product Impact**: False assurance of persistence leads to immediate data loss upon accidental refresh.
+- **Assigned Future Stage**: Stage 1 (Canonical Domain Model & Persistence).
+- **Status**: **Blocking**.
 
 ---
 
-### Item MOCK-03: Hardcoded Live Risk Metric Engine Tailored to `chair-c04`
+### MOCK-03: Sub-Page Header "Saved" Persistence Badge
+- **Category**: Misleading mock behavior
+- **Severity**: Critical
+- **User-Facing Claim**: "Saved" status pill in sub-route headers.
+- **Actual Behavior**: Status badge renders static string `"Saved"` without checking database write acknowledgments.
+- **Exact File & Symbol**: `src/components/ui/status.tsx:7` (`StatusPill`), `src/app/assessments/queen-care-clinic/model/page.tsx:11`.
+- **Evidence**:
+  ```tsx
+  <span className="rounded-full bg-emerald-50 px-2 py-0.5 text-xs font-semibold text-emerald-800">
+    Saved
+  </span>
+  ```
+- **Product Impact**: Reinforces false persistence claim in multi-page routes.
+- **Assigned Future Stage**: Stage 1 (Canonical Domain Model & Persistence).
+- **Status**: **Blocking**.
+
+---
+
+### MOCK-04: Metric Engine Tied Exclusively to `chair-c04`
 - **Category**: Hardcoded business logic
 - **Severity**: Critical
-- **User-Facing Claim**: "Environmental Risk Index: 68 (High Risk)" / "Live metric recalculation".
-- **Actual Behavior**: Metric evaluation is hardcoded to specifically query `item.id === "chair-c04"` and `item.id === "mat-entrance"`. If `chair-c04` is close to point (235, 260), clearance is clamped to 54 cm. Risk index drops discretely to 68, 41, or 27. It does not calculate general geometric clearances or polygon intersections.
-- **Exact File & Symbol**: `src/lib/spatial-model.ts:879-965` (`calculateLiveMetrics`).
+- **User-Facing Claim**: "Environmental Risk Index" dynamically evaluates scene clearances.
+- **Actual Behavior**: `calculateLiveMetrics` explicitly searches for `item.id === "chair-c04"`. Clearance is only evaluated relative to this specific object ID and a magic coordinate `(235, 260)`. All other 17 objects are ignored.
+- **Exact File & Symbol**: `src/lib/spatial-model.ts:893-913` (`calculateLiveMetrics`).
 - **Evidence**:
   ```typescript
-  export function calculateLiveMetrics(furniture: SpatialFurniture[], ...) {
-    const chair4 = furniture.find((f) => f.id === "chair-c04");
-    const mat = furniture.find((f) => f.id === "mat-entrance");
-    let minClearance = 96;
-    if (chair4) {
-      const distToRoute = Math.hypot(chair4.x + chair4.width / 2 - 235, chair4.y + chair4.depth / 2 - 260);
-      if (distToRoute < 50) minClearance = Math.min(minClearance, 54);
-    }
-    // Hardcoded discrete steps
-    if (minClearance <= 60) { risk = 68; highHazards = 3; totalHazards = 7; }
-    else if (minClearance < 90) { risk = 41; highHazards = 1; totalHazards = 4; }
-    else { risk = 27; highHazards = 0; totalHazards = 2; }
+  const chair4 = furniture.find((f) => f.id === "chair-c04");
+  const mat = furniture.find((f) => f.id === "mat-entrance");
+  if (chair4) {
+    const distToRoute = Math.hypot(chair4.x + chair4.width / 2 - 235, chair4.y + chair4.depth / 2 - 260);
+    const effectiveClearance = Math.round(Math.max(45, Math.min(120, distToRoute * 1.4)));
+    if (distToRoute < 50) minClearance = Math.min(minClearance, 54);
+    else minClearance = Math.min(minClearance, effectiveClearance);
+  }
   ```
-- **Product Risk**: Fails completely on any other room arrangement. If a user adds a new chair blocking the door, clearance is NOT reduced and risk does NOT increase because the code only looks for `chair-c04`.
-- **Recommended Future Stage**: Stage 4 (Evidence-Backed Risk Engine).
-- **Blocks End-to-End Operation**: Yes.
+- **Product Impact**: Zero multi-object geometric awareness. Deleting `chair-c04` permanently locks the system into a "safe" state regardless of actual room obstructions.
+- **Assigned Future Stage**: Stage 3 (Geometry Engine) & Stage 4 (Risk Engine).
+- **Status**: **Blocking**.
 
 ---
 
-### Item MOCK-04: Hardcoded Route Length Return Values
+### MOCK-05: Discrete Stepped Risk Indices (68, 41, 27)
+- **Category**: Hardcoded business logic
+- **Severity**: Critical
+- **User-Facing Claim**: Continuous numerical risk index ($0\dots100$).
+- **Actual Behavior**: The score is not computed from an epidemiological or spatial formula; it is hard-clamped to three discrete step numbers (`68`, `41`, or `27`).
+- **Exact File & Symbol**: `src/lib/spatial-model.ts:934-946` (`calculateLiveMetrics`).
+- **Evidence**:
+  ```typescript
+  if (minClearance <= 60) { risk = 68; highHazards = 3; totalHazards = 7; }
+  else if (minClearance < 90) { risk = 41; highHazards = 1; totalHazards = 4; }
+  else { risk = 27; highHazards = 0; totalHazards = 2; }
+  ```
+- **Product Impact**: Gives illusion of mathematical precision while running a rudimentary 3-step switch.
+- **Assigned Future Stage**: Stage 4 (Evidence-Backed Fall Risk Engine).
+- **Status**: **Blocking**.
+
+---
+
+### MOCK-06: Hardcoded Route Length Constants (10.4 m, 10.0 m, 11.8 m)
 - **Category**: Hardcoded business logic
 - **Severity**: High
 - **User-Facing Claim**: "Route Length: 10.4 m" / "11.8 m".
-- **Actual Behavior**: The function checks `isDefaultRoute` (if route has 8 points starting at x=60). If true, it returns hardcoded literal numbers (`10.4`, `10.0`, or `11.8`) rather than the calculated geometric polyline length.
+- **Actual Behavior**: If the route has 8 waypoints starting at $x=60$, the function overrides geometric line summation and returns hardcoded literals.
 - **Exact File & Symbol**: `src/lib/spatial-model.ts:920-927` (`calculateLiveMetrics`).
 - **Evidence**:
   ```typescript
@@ -104,17 +140,17 @@ This inventory catalogues every mock, hardcoded metric, simulated workflow state
     ? activeAlternativeId === "balanced" ? 10.4 : activeAlternativeId === "max-safety" ? 10.0 : 11.8
     : Number((totalLengthCm / 100).toFixed(1));
   ```
-- **Product Risk**: Distorts spatial facts and gives fake precision.
-- **Recommended Future Stage**: Stage 3 (Mobility Profile, Routes & Geometry Engine).
-- **Blocks End-to-End Operation**: No.
+- **Product Impact**: Distorts spatial facts; prevents verification of actual walking distances.
+- **Assigned Future Stage**: Stage 3 (Geometry Engine).
+- **Status**: **Non-blocking**.
 
 ---
 
-### Item MOCK-05: Fake Route Recalculation Button
+### MOCK-07: Fake Route Recalculation Resetting to Initial Fixture
 - **Category**: Misleading mock behavior
 - **Severity**: High
-- **User-Facing Claim**: "Recalculate Route" (Stage 3).
-- **Actual Behavior**: Clicking the recalculate button simply resets the waypoint array back to the static `INITIAL_ROUTE` constant. No A*, Dijkstra, or visibility-graph pathfinding is performed around furniture obstacles.
+- **User-Facing Claim**: "Recalculate Route" button computes obstacle-avoiding trajectory.
+- **Actual Behavior**: Clicking the button resets waypoints to the hardcoded `INITIAL_ROUTE` constant. No A*, Dijkstra, or navmesh algorithm runs.
 - **Exact File & Symbol**: `src/store/safespace-store.ts:344-346` (`recalculateRoute`), `src/components/workflow/Stage3Routes.tsx:120`.
 - **Evidence**:
   ```typescript
@@ -122,18 +158,18 @@ This inventory catalogues every mock, hardcoded metric, simulated workflow state
     set({ routeWaypoints: INITIAL_ROUTE });
   },
   ```
-- **Product Risk**: Users moving furniture expect the route to automatically route around new obstacles; instead it resets any customized waypoints to the original path.
-- **Recommended Future Stage**: Stage 3 (Mobility Profile, Routes & Geometry Engine).
-- **Blocks End-to-End Operation**: Yes.
+- **Product Impact**: Route does not adjust to newly placed furniture; user-customized routes are erased.
+- **Assigned Future Stage**: Stage 3 (Geometry Engine & Pathfinding).
+- **Status**: **Blocking**.
 
 ---
 
-### Item MOCK-06: Simulated 2-Second "Analysis Transition" Modal
+### MOCK-08: Simulated 2-Second Analysis Progress Timer
 - **Category**: Misleading mock behavior
 - **Severity**: Medium
 - **User-Facing Claim**: "Running AI fall-risk simulation: Rasterizing corridor, Detecting pinch points..."
-- **Actual Behavior**: A JavaScript `setInterval` timer runs every 450ms across 4 cosmetic steps (`transitionStep: 0..4`) purely to fake computation time before setting `activeStage: "analysis"`.
-- **Exact File & Symbol**: `src/store/safespace-store.ts:353-366` (`runAnalysisTransition`), `src/components/workflow/AnalysisTransition.tsx`.
+- **Actual Behavior**: A JavaScript `setInterval` timer ticks 4 cosmetic steps every 450ms (`transitionStep: 0..4`) purely to fake computation time before setting `activeStage: "analysis"`.
+- **Exact File & Symbol**: `src/store/safespace-store.ts:353-366` (`runAnalysisTransition`), `src/components/workflow/AnalysisTransition.tsx:15-35`.
 - **Evidence**:
   ```typescript
   runAnalysisTransition: () => {
@@ -148,17 +184,17 @@ This inventory catalogues every mock, hardcoded metric, simulated workflow state
     }, 450);
   }
   ```
-- **Product Risk**: Violates core product principle: "No fake loading states, fake persistence, or prewritten reports presented as generated results."
-- **Recommended Future Stage**: Stage 4 (Evidence-Backed Risk Engine).
-- **Blocks End-to-End Operation**: No.
+- **Product Impact**: Violates product principle banning fake loading states.
+- **Assigned Future Stage**: Stage 4 (Risk Engine).
+- **Status**: **Non-blocking**.
 
 ---
 
-### Item MOCK-07: Static Prewritten Hazard Register (Flow 1: 7 Hazards)
+### MOCK-09: Hardcoded Primary Hazard Fixture Array (Model A: 7 Hazards)
 - **Category**: Hardcoded business logic
 - **Severity**: Critical
 - **User-Facing Claim**: "Identified Hazards (7) · Deterministic rule-based scan".
-- **Actual Behavior**: All 7 hazards (`hz-01` to `hz-07`) are hardcoded fixture objects with static positions, static titles, static severity ("high", "medium", "low"), static evidence strings, and hardcoded resolution lists (`resolvedInAlternative: ["balanced", "max-safety"]`). None are generated by evaluating furniture positions against profile thresholds.
+- **Actual Behavior**: All 7 hazards (`hz-01` to `hz-07`) are hardcoded objects with fixed titles, static evidence strings, and hardcoded resolution lists (`resolvedInAlternative: ["balanced", "max-safety"]`). None are generated by evaluating furniture positions against profile thresholds.
 - **Exact File & Symbol**: `src/lib/spatial-model.ts:565-673` (`INITIAL_HAZARDS`).
 - **Evidence**:
   ```typescript
@@ -176,17 +212,17 @@ This inventory catalogues every mock, hardcoded metric, simulated workflow state
       detectionConfidence: 0.96,
       ...
   ```
-- **Product Risk**: If furniture is re-arranged or rooms changed, the hazards remain identical unless manually manipulated by alternative-specific if-conditions.
-- **Recommended Future Stage**: Stage 4 (Evidence-Backed Risk Engine).
-- **Blocks End-to-End Operation**: Yes.
+- **Product Impact**: Hazards never update when rooms are modified; cannot evaluate any new layout.
+- **Assigned Future Stage**: Stage 4 (Evidence-Backed Fall Risk Engine).
+- **Status**: **Blocking**.
 
 ---
 
-### Item MOCK-08: Divergent Static Hazard Register (Flow 2: 4 Hazards)
-- **Category**: Dead or unused code / Hardcoded business logic
+### MOCK-10: Divergent Secondary Hazard Fixture Array (Model B: 4 Hazards)
+- **Category**: Hardcoded business logic
 - **Severity**: High
 - **User-Facing Claim**: "4 Hazards requiring review · Deterministic rule-based scan".
-- **Actual Behavior**: `risk-analysis.tsx` in the multi-page route defines an independent array of 4 hazards (`HZ-001` to `HZ-004`) with different names, IDs, clearances (e.g. `HZ-002`: "68 cm clearance" vs Flow 1's `hz-02`: "28 cm clearance"), and illuminances (`85 lux` vs Flow 1's `110 Lux`).
+- **Actual Behavior**: `risk-analysis.tsx` in the multi-page route defines an independent array of 4 hazards (`HZ-001` to `HZ-004`) with conflicting clearances (e.g. `HZ-002`: "68 cm clearance" vs Model A's `hz-02`: "28 cm clearance") and illuminance levels (`85 lux` vs `110 Lux`).
 - **Exact File & Symbol**: `src/components/analysis/risk-analysis.tsx:21-86` (`hazards`).
 - **Evidence**:
   ```typescript
@@ -197,17 +233,17 @@ This inventory catalogues every mock, hardcoded metric, simulated workflow state
     { id: "HZ-004", severity: "Medium", title: "2.1-metre route section without stable support", ... measured: "2.1 m span" }
   ];
   ```
-- **Product Risk**: Direct contradiction of clinical evidence between two pages of the same repository.
-- **Recommended Future Stage**: Stage 1 & Stage 4 (Canonical Model Consolidation).
-- **Blocks End-to-End Operation**: No.
+- **Product Impact**: Clinical contradictions between two views in the same application.
+- **Assigned Future Stage**: Stage 1 & Stage 4 (Domain Model Consolidation).
+- **Status**: **Non-blocking**.
 
 ---
 
-### Item MOCK-09: Hardcoded Layout Alternatives & Fixed Costs
+### MOCK-11: Hardcoded Pre-Scripted Layout Alternatives
 - **Category**: Hardcoded business logic
 - **Severity**: Critical
-- **User-Facing Claim**: "Optimisation Engine: Minimum Cost (HK$180), Balanced (HK$850), Maximum Safety (HK$2400)".
-- **Actual Behavior**: The three alternatives are static dictionaries in `spatial-model.ts` with hardcoded costs (`180`, `850`, `2400`), fixed risk indices (`41`, `27`, `19`), fixed clearance improvements (`82 cm`, `96 cm`, `110 cm`), and pre-scripted manual changes targeting `chair-c04` and `chair-c05`.
+- **User-Facing Claim**: "Layout Optimisation Engine: Minimum Cost, Balanced, Maximum Safety".
+- **Actual Behavior**: Alternatives are static dictionaries containing pre-scripted manual moves explicitly targeting `chair-c04` and `chair-c05`.
 - **Exact File & Symbol**: `src/lib/spatial-model.ts:752-872` (`LAYOUT_ALTERNATIVES`), `src/store/safespace-store.ts:136-166` (`generateProposedFurniture`).
 - **Evidence**:
   ```typescript
@@ -217,83 +253,190 @@ This inventory catalogues every mock, hardcoded metric, simulated workflow state
     "max-safety": { costHkd: 2400, riskIndex: 19, minClearanceCm: 110, ... }
   };
   ```
-- **Product Risk**: No real layout optimization algorithm exists. The application cannot generate options for any other layout.
-- **Recommended Future Stage**: Stage 5 (Layout Optimisation).
-- **Blocks End-to-End Operation**: Yes.
+- **Product Impact**: No optimization algorithm exists; cannot generate alternatives for any new floorplan.
+- **Assigned Future Stage**: Stage 5 (Layout Optimisation).
+- **Status**: **Blocking**.
 
 ---
 
-### Item MOCK-10: Prewritten Occupational Therapy Review & Sign-Off
+### MOCK-12: Hardcoded Cost Estimates (HK$180, HK$850, HK$2400)
+- **Category**: Hardcoded business logic
+- **Severity**: High
+- **User-Facing Claim**: Accurate retrofit cost estimation for implementation.
+- **Actual Behavior**: Cost numbers are hardcoded integers not derived from itemized material takeoffs, hardware pricing, or labor rates.
+- **Exact File & Symbol**: `src/lib/spatial-model.ts:759, 787, 834`.
+- **Evidence**:
+  ```typescript
+  costHkd: 180, // min-cost
+  costHkd: 850, // balanced
+  costHkd: 2400, // max-safety
+  ```
+- **Product Impact**: Misleading cost projections for healthcare facility operators and contractors.
+- **Assigned Future Stage**: Stage 5 (Layout Optimisation & Pricing).
+- **Status**: **Non-blocking**.
+
+---
+
+### MOCK-13: Prewritten Fictitious Occupational Therapy Sign-Off
 - **Category**: Misleading mock behavior
 - **Severity**: Critical
-- **User-Facing Claim**: "Professional sign-off by Dr. Adrian Lau, HKROT (Reg. #OT2018-0442)".
-- **Actual Behavior**: The review approval status, reviewer credentials, professional license number, and rationale are hardcoded static strings in `mock-data.ts` and `ReportModal.tsx`.
+- **User-Facing Claim**: "Professional review completed by Dr. Adrian Lau, HKROT (Reg. #OT2018-0442)".
+- **Actual Behavior**: Review approval status, reviewer identity, professional credentials, and rationale are hardcoded static strings.
 - **Exact File & Symbol**: `src/lib/mock-data.ts:145-155` (`mockData.reviews`), `src/components/workflow/ReportModal.tsx:112-125`.
 - **Evidence**:
   ```tsx
   <p className="text-xs font-semibold text-slate-800">Dr. Adrian Lau, HKROT</p>
   <p className="text-[10px] text-slate-500">Senior Occupational Therapist · Reg #OT2018-0442</p>
   ```
-- **Product Risk**: Misleading accreditation and clinical validation. Poses legal/regulatory liability if presented to healthcare organisations.
-- **Recommended Future Stage**: Stage 6 & Stage 7 (Professional Review & Report).
-- **Blocks End-to-End Operation**: No.
+- **Product Impact**: Fabricated clinical sign-off creates legal and ethical liability.
+- **Assigned Future Stage**: Stage 6 & Stage 7 (Professional Review).
+- **Status**: **Non-blocking**.
 
 ---
 
-### Item MOCK-11: Hardcoded Photometric Illuminance
+### MOCK-14: Hardcoded Photometric Illuminance Values
 - **Category**: Hardcoded business logic
 - **Severity**: High
-- **User-Facing Claim**: "Doorway threshold illuminance: 110 Lux (Standard: ≥ 200 Lux)".
-- **Actual Behavior**: Number is hardcoded as `lightLevelLux: 160` in `INITIAL_ROOMS` and `110 Lux` in `INITIAL_HAZARDS`. No 3D light distribution or photometric raycasting exists.
-- **Exact File & Symbol**: `src/lib/spatial-model.ts:163`, `src/lib/spatial-model.ts:609`.
-- **Product Risk**: Cannot detect real dark corridors or over-glare in arbitrary spaces.
-- **Recommended Future Stage**: Stage 4 (Evidence-Backed Risk Engine).
-- **Blocks End-to-End Operation**: No.
+- **User-Facing Claim**: "Photometric reading: 110 Lux (Standard: ≥ 200 Lux)".
+- **Actual Behavior**: Fixed numbers placed in fixture files (`lightLevelLux: 160` in `INITIAL_ROOMS`, `110 Lux` in `INITIAL_HAZARDS`, `85 lux` in `risk-analysis.tsx`). No photometric raycasting or light simulation exists.
+- **Exact File & Symbol**: `src/lib/spatial-model.ts:163, 609`, `src/components/analysis/risk-analysis.tsx:62`.
+- **Product Impact**: Inability to assess real lighting conditions or glare in user spaces.
+- **Assigned Future Stage**: Stage 4 (Risk Engine).
+- **Status**: **Non-blocking**.
 
 ---
 
-### Item MOCK-12: Simulated Detection Confidence & Unconfirmed Flags
+### MOCK-15: Hardcoded "Unconfirmed Detections" Checklist (3 Items)
 - **Category**: Temporary prototype implementation
 - **Severity**: Medium
-- **User-Facing Claim**: "3 items need confirmation (chair-c04: 81%, table-sharp: 78%, mat-entrance: 91%)".
-- **Actual Behavior**: The unconfirmed status (`isConfirmed: false`) and detection confidence numbers are manually coded into the static array items.
+- **User-Facing Claim**: "3 unconfirmed detected items requiring boundary verification".
+- **Actual Behavior**: The three items (`chair-c04`, `table-sharp`, `mat-entrance`) have `isConfirmed: false` hardcoded into the initial fixture array.
 - **Exact File & Symbol**: `src/lib/spatial-model.ts:337, 356, 392`.
-- **Product Risk**: Safe for demoing human-in-the-loop review, but cannot intake uncalibrated user models.
-- **Recommended Future Stage**: Stage 2 (Real Floorplan Intake).
-- **Blocks End-to-End Operation**: No.
+- **Evidence**:
+  ```typescript
+  isConfirmed: false, // 1st unconfirmed: chair-c04
+  isConfirmed: false, // 2nd unconfirmed: chair-c05 / table-sharp
+  isConfirmed: false, // 3rd unconfirmed: mat-entrance
+  ```
+- **Product Impact**: Effective for demoing human confirmation gates, but cannot ingest unverified user models.
+- **Assigned Future Stage**: Stage 2 (Floorplan Intake).
+- **Status**: **Non-blocking**.
 
 ---
 
-### Item MOCK-13: Missing Handrail & Luminaire 3D Meshes in Stage 4/5
+### MOCK-16: Fabricated Detection Confidence Decimals
+- **Category**: Temporary prototype implementation
+- **Severity**: Medium
+- **User-Facing Claim**: AI confidence scores (`0.81`, `0.78`, `0.96`).
+- **Actual Behavior**: Arbitrary decimal values assigned manually to fixture objects.
+- **Exact File & Symbol**: `src/lib/spatial-model.ts:249, 268, 338, 393`.
+- **Evidence**:
+  ```typescript
+  detectionConfidence: 0.81, // chair-c04
+  detectionConfidence: 0.78, // table-sharp
+  ```
+- **Product Impact**: Telemetry appears AI-generated but is static.
+- **Assigned Future Stage**: Stage 7 (AI Floorplan Extraction).
+- **Status**: **Non-blocking**.
+
+---
+
+### MOCK-17: Missing 3D Geometries for Handrail and Light Fixtures
 - **Category**: Missing implementation
 - **Severity**: Medium
-- **User-Facing Claim**: Visualizing added handrails and LED downlights in 3D.
-- **Actual Behavior**: In `src/components/spatial/Floorplan3D.tsx`, `furniture.map` only renders geometries for `chair`, `desk`, `table`, `bench`, `plant`, `mat`, and `cabinet`. Categories `handrail` and `light` have no geometry branch and are rendered as empty groups.
+- **User-Facing Claim**: 3D Digital Twin renders all proposed modifications (handrails, LED downlights).
+- **Actual Behavior**: In `src/components/spatial/Floorplan3D.tsx`, `furniture.map` only renders branches for `chair`, `desk`, `table`, `bench`, `plant`, `mat`, and `cabinet`. Categories `handrail` and `light` render empty groups.
 - **Exact File & Symbol**: `src/components/spatial/Floorplan3D.tsx:349-374`.
-- **Product Risk**: Inconsistencies between 2D representation and 3D digital twin.
-- **Recommended Future Stage**: Stage 6 (Synchronised 3D).
-- **Blocks End-to-End Operation**: No.
+- **Evidence**:
+  ```typescript
+  {item.category === "chair" && <Chair3D ... />}
+  {item.category === "desk" && <Desk3D ... />}
+  // handrail and light categories have no render branch
+  ```
+- **Product Impact**: Visual discrepancy between 2D floorplan and 3D digital twin.
+- **Assigned Future Stage**: Stage 6 (Synchronised 3D).
+- **Status**: **Non-blocking**.
 
 ---
 
-### Item MOCK-14: Duplicate Parallel Codebase (Flow A vs Flow B)
+### MOCK-18: Parallel Decoupled Zustand State Stores
 - **Category**: Dead or unused code
 - **Severity**: High
-- **User-Facing Claim**: Cohesive unified product.
-- **Actual Behavior**: As established in Audit 01, `src/app/page.tsx` and `src/app/assessments/*` use disjointed components, stores, and fixtures.
-- **Exact File & Symbol**: `src/store/assessment-store.ts` vs `src/store/safespace-store.ts`.
-- **Product Risk**: Technical debt accumulation; dual bug surface.
-- **Recommended Future Stage**: Stage 1 (Domain Model Consolidation).
-- **Blocks End-to-End Operation**: No.
+- **User-Facing Claim**: Single cohesive application state.
+- **Actual Behavior**: `src/store/safespace-store.ts` manages the SPA stepper on `/`; `src/store/assessment-store.ts` manages the multi-page routes on `/assessments/*`. They do not share state.
+- **Exact File & Symbol**: `src/store/assessment-store.ts`, `src/store/safespace-store.ts`.
+- **Product Impact**: State divergence, double bug surface, and developer confusion.
+- **Assigned Future Stage**: Stage 1 (Domain Model Consolidation).
+- **Status**: **Non-blocking**.
 
 ---
 
-## 3. Summary of Blocking Findings
+### MOCK-19: Orphaned Options Compare Sub-Route
+- **Category**: Dead or unused code
+- **Severity**: Medium
+- **User-Facing Claim**: Multi-scenario comparison table.
+- **Actual Behavior**: Route `/assessments/queen-care-clinic/options/compare` renders a static table disconnected from both stores.
+- **Exact File & Symbol**: `src/app/assessments/queen-care-clinic/options/compare/page.tsx:1-40`.
+- **Product Impact**: Dead code cluttering route tree.
+- **Assigned Future Stage**: Stage 1 (Cleanup & Consolidation).
+- **Status**: **Non-blocking**.
 
-The following items **strictly block** real-world production usage and must be resolved sequentially in Stages 1–5:
-1. **MOCK-01**: Inability to upload/parse real floorplans.
-2. **MOCK-02**: Total absence of data persistence across sessions.
-3. **MOCK-03**: Risk score calculation hardcoded exclusively to `chair-c04`.
-4. **MOCK-05**: Inability to calculate dynamic walking routes around obstacles.
-5. **MOCK-07**: Static hazard generation rather than rule-based spatial scanning.
-6. **MOCK-09**: Pre-scripted layout alternatives rather than algorithmic optimization.
+---
+
+### MOCK-20: Missing Dynamic A* Pathfinding Engine
+- **Category**: Missing implementation
+- **Severity**: High
+- **User-Facing Claim**: Critical routes dynamically trace step-free passage around room fixtures.
+- **Actual Behavior**: Routes are static waypoint arrays. No computational pathfinder exists to compute routes through walkable space.
+- **Exact File & Symbol**: `src/components/workflow/Stage3Routes.tsx:115-130`.
+- **Product Impact**: Routes cannot adapt to new rooms or rearranged furniture.
+- **Assigned Future Stage**: Stage 3 (Routes & Geometry Engine).
+- **Status**: **Blocking**.
+
+---
+
+### MOCK-21: Total Absence of Durable Client or Cloud Persistence
+- **Category**: Missing implementation
+- **Severity**: Critical
+- **User-Facing Claim**: System saves user work.
+- **Actual Behavior**: No IndexedDB, localStorage, or remote database client is configured.
+- **Exact File & Symbol**: `src/store/safespace-store.ts:1-435`.
+- **Product Impact**: Complete data loss upon browser navigation or refresh.
+- **Assigned Future Stage**: Stage 1 (Domain Model & Persistence).
+- **Status**: **Blocking**.
+
+---
+
+### MOCK-22: Absence of Floorplan Ingestion & Parsing Engine
+- **Category**: Missing implementation
+- **Severity**: High
+- **User-Facing Claim**: User can import architectural PDFs or floorplan photos.
+- **Actual Behavior**: No image parsing, PDF vector extraction, or scale calibration canvas exists.
+- **Exact File & Symbol**: `src/components/workflow/Stage1Layout.tsx:160-190`.
+- **Product Impact**: Inability to ingest any new floorplan.
+- **Assigned Future Stage**: Stage 2 (Floorplan Intake & Calibration).
+- **Status**: **Blocking**.
+
+---
+
+### MOCK-23: Missing Native PDF Generation Engine
+- **Category**: Missing implementation
+- **Severity**: Medium
+- **User-Facing Claim**: "Download Official Assessment Report (PDF)".
+- **Actual Behavior**: Clicking print/download calls `window.print()` without formatting dedicated CSS print stylesheets or generating standalone vector PDF files.
+- **Exact File & Symbol**: `src/components/workflow/ReportModal.tsx:150-165`.
+- **Product Impact**: Inconsistent printed report formatting across different browsers.
+- **Assigned Future Stage**: Stage 7 (Professional Report Generation).
+- **Status**: **Non-blocking**.
+
+---
+
+### MOCK-24: Hardcoded Demo Identifiers in Test Fixtures
+- **Category**: Temporary prototype implementation
+- **Severity**: Low
+- **User-Facing Claim**: Internal test automation.
+- **Actual Behavior**: Tests reference hardcoded fixture IDs (`demoIds.balancedScenario`, `demoIds.route`) in `mock-data.ts`.
+- **Exact File & Symbol**: `src/lib/mock-data.ts:18-28`, `tests/domain.test.ts:1-4`.
+- **Product Impact**: Tests only validate the demo fixture, not general domain operations.
+- **Assigned Future Stage**: Stage 1 (Testing Framework).
+- **Status**: **Non-blocking**.

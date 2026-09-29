@@ -1,14 +1,14 @@
 # SafeSpace Product Scope & Operational Baseline
 
 ## 1. Product Mission & Purpose
-SafeSpace is a specialised spatial decision-support system designed to evaluate and mitigate environmental fall risks for older adults. The product provides objective spatial analysis of physical living and care environments—identifying navigational pinch points, doorway bottlenecks, trip hazards, lighting deficits, and gaps in physical support—and computes actionable architectural and operational modifications to prevent falls.
+SafeSpace is a specialised spatial decision-support system designed to evaluate and mitigate environmental fall risks for older adults. The product provides objective spatial analysis of physical living and care environments—identifying navigational pinch points, doorway bottlenecks, trip hazards, lighting deficits, and gaps in physical support—and computes actionable architectural and operational modifications to reduce fall risk.
 
 ### Core Value Proposition
-- **Target Users**: Older residents, family caregivers, occupational therapists (OTs), clinical staff, non-governmental organisations (NGOs), property managers, housing authorities, insurers, and accessibility retrofit contractors.
-- **Facility Types Supported**:
-  - Private residences (apartments, public housing flats, multi-generational homes).
-  - Elder care centres, nursing homes, and outpatient clinics (e.g., Queen Care Clinic, Harmony Elder Care Centre).
-  - Public amenities, community hubs, and commercial transit spaces used by seniors.
+- **Target Users**: Older residents, family caregivers, occupational therapists (OTs), clinical staff, non-governmental organisations (NGOs), property managers, housing organisations, insurers, and accessibility retrofit contractors.
+- **Supported Environments (Team-Approved Scope)**:
+  - Apartments and residential environments
+  - Clinics, elderly-care, and rehabilitation environments
+  - Shopping malls and other environments frequently used by older adults
 - **Commercial Boundary (Stage 0 Baseline)**:
   - Resident tier: Free public accessibility evaluation.
   - Professional/Enterprise tier: Organisational multi-site management, clinical review workflows, contractor tender packs, and regulatory audit compliance (deferred to Stage 8). Pricing, licensing gates, and billing tiers are strictly excluded from current scope.
@@ -38,10 +38,10 @@ The verified 6-stage end-to-end user journey agreed by product architecture:
 ```
 
 ### Stage Functional Breakdown
-1. **Layout**: Ingest 2D floorplan (raster image, vector CAD, or manual entry). Extract architectural boundaries (walls, doors, windows) and interior objects (furniture, fixtures, appliances). Require human verification for low-confidence detections.
-2. **Mobility Profile**: Model assistive aid envelope (walking stick, rollator walker, manual wheelchair, power chair), turning circle requirements, gait asymmetry, fall history, tactile support dependency, and contrast/illuminance thresholds.
-3. **Critical Routes**: Map mandatory routine paths between functional nodes (e.g., Bed ↔ En-suite Bathroom, Entrance ↔ Reception ↔ Waiting Seat ↔ Consultation Room). Identify transit frequency and night-time transit risks.
-4. **Safety Analysis**: Evaluate dynamic spatial clearances, collision envelopes, door swing encroachments, illuminance levels, and continuous grab-support spans against empirical guidelines (e.g., Hong Kong Building Department Barrier Free Design 2008, UK Building Regulations Part M, CDC STEADI guidelines). Generate ranked hazard register with measured evidence.
+1. **Layout**: Ingest 2D floorplan (raster image, vector CAD, or manual drawing). Establish physical scale via two-point calibration. Define architectural boundaries (walls, doors, openings) and interior objects (furniture, fixtures). Require human confirmation for all geometry before analysis.
+2. **Mobility Profile**: Model assistive aid envelope (walking stick, cane, rollator walker, manual wheelchair), turning space requirements, gait asymmetry, fall history, tactile support dependency, and contrast/illuminance thresholds.
+3. **Critical Routes**: Map mandatory routine paths between functional destinations (e.g., Bed ↔ En-suite Bathroom, Entrance ↔ Reception ↔ Waiting Seat ↔ Consultation Room). Identify transit frequency and night-time transit risks.
+4. **Safety Analysis**: Evaluate dynamic spatial clearances, collision envelopes, door swing encroachments, illuminance levels, and continuous grab-support spans against empirical guidelines. Generate ranked hazard register with measured evidence.
 5. **Improve**: Generate three discrete optimisation tiers:
    - **Minimum Cost**: Non-structural operational re-arrangements (zero hardware spend).
    - **Balanced**: High-impact furniture shifts plus modest safety hardware (grab bars, downlights).
@@ -55,9 +55,9 @@ The verified 6-stage end-to-end user journey agreed by product architecture:
 To maintain clinical trust, regulatory defensibility, and user safety, all implementations must adhere to the following architectural laws:
 
 1. **Environmental Fall Prevention Over Aesthetic Interior Design**: The software optimizes exclusively for biomechanical safety, assistive aid clearances, support continuity, and hazard eradication—never decorative aesthetics.
-2. **Real Calculation Over Mocked Telemetry**: All measurements (clearance cm, turning radius cm, illuminance lux, route length m), risk indices (0–100), hazard classifications, and layout delta percentages displayed to users must be calculated from runtime spatial geometry and profile constraints. Hardcoded scores, static lookup tables, and cosmetic loading delays are prohibited in production.
-3. **Deterministic Spatial Geometry**: Spatial facts—including wall collisions, clearance gaps, polygon envelopes, Minkowski route dilations, and door-swing arcs—must be evaluated using deterministic computational geometry. AI / LLM models must never invent spatial dimensions, clearances, or risk numbers.
-4. **Role-Bounded AI Integration**: AI is restricted to unstructured data interpretation (multimodal floorplan vectorisation, room semantic labeling), conversational intake assistance, plain-language clinical explanations, and report authoring. Spatial metrics remain rule-governed.
+2. **Real Calculation Over Mocked Telemetry**: All measurements (clearance cm, turning radius cm, illuminance lux, route length m), hazard classifications, and layout delta percentages displayed to users must be calculated from runtime spatial geometry and profile constraints. Hardcoded scores, static lookup tables, and cosmetic loading delays are prohibited in production.
+3. **Deterministic Spatial Geometry**: Spatial facts—including wall collisions, clearance gaps, polygon envelopes, Minkowski route dilations, and door-swing arcs—must be evaluated using deterministic computational geometry. AI models must never invent spatial dimensions, clearances, or risk numbers.
+4. **Role-Bounded AI Integration**: AI is restricted to unstructured data interpretation (optional floorplan drafting assistance), conversational intake assistance, plain-language clinical explanations, and report authoring. Spatial metrics remain rule-governed.
 5. **Canonical Scene Synchronization**: 2D floorplans and 3D digital twins must consume identical underlying scene graph entities (rooms, walls, openings, furniture coordinates, hazard vectors). Editing in 2D must immediately reflect in 3D without state drift.
 6. **Professional Accountability & Provenance**: Every hazard and recommendation must display clear provenance (e.g., "Deterministic clearance engine · BFD 2008 clause 12.2" vs. "OT site observation"). Clinical outputs must support human sign-off without replacing professional liability.
 7. **Clean Clinical Design System**: Styling must remain functional, accessible, and high-contrast (WCAG AA minimum). No neon gradients, cyberpunk visual effects, decorative AI artifacts, or unreadable micro-typography.

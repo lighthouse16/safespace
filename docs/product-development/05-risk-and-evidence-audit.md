@@ -1,109 +1,82 @@
 # Analytical Integrity, Safety Claims & Evidence Audit
 
-## 1. Executive Summary: Analytical Defense Posture
+## 1. Executive Summary: Evidence Posture & Clear Separation
 
-SafeSpace's value as a clinical and architectural decision-support tool rests entirely on its analytical defensibility. In healthcare and elderly residential fall prevention, recommending inadequate doorway clearances, inaccurate turning circles, or unjustified lighting levels directly increases the risk of physical injury, hospitalization, or wrongful death.
+In elder care, clinical environments, and residential planning, safety assessments must maintain absolute evidentiary transparency. Recommending inadequate doorway clearances, inaccurate turning circles, or unverified lighting thresholds directly affects physical safety and clinical trust.
 
-### Key Finding
-**Almost all current measurements, risk indices, severity classifications, and improvement statistics shown in the UI are hardcoded fixtures, or use rudimentary linear approximations anchored to a single chair fixture (`chair-c04`). None of the current risk scores or percentages are computed from an epidemiological fall-risk model or building code standard.**
-
----
-
-## 2. Traceability Matrix of Displayed Metrics & Claims
-
-| Displayed Metric / Claim | UI Value / Display | Code Location / Symbol | True Computational Source | Recalculated Dynamically? | Independently Verifiable? | Misleading to Residents/Clinicians? |
-| :--- | :--- | :--- | :--- | :---: | :---: | :---: |
-| **Environmental Risk Index (Initial)** | `68 / 100 (High Risk)` | `spatial-model.ts:935`, `mock-data.ts:104` | Hardcoded literal `68`. Step logic clamps to 68 if clearance <= 60cm. | Pseudo (discrete step 68/41/27) | **No** (No formula provided) | **HIGH**: Appears as a continuous clinical index, but is a 3-step hardcoded switch. |
-| **Narrowest Route Clearance** | `54 cm` | `spatial-model.ts:576, 905` | Hardcoded literal `54` if `chair-c04` is within 50cm of point (235, 260). | Partial (linear scale `dist * 1.4` clamped to 54) | **No** (Ignores other 17 items) | **HIGH**: If a user drags another chair into the path, clearance remains 96 cm. |
-| **Sharp Corner Clearance** | `28 cm` (to table-sharp) | `spatial-model.ts:593` | Static string in `INITIAL_HAZARDS[1]`. | **No** (Static fixture) | **No** | **HIGH**: Value never recalculates when table is moved. |
-| **Corridor Illuminance** | `110 Lux` / `85 Lux` | `spatial-model.ts:609`, `risk-analysis.tsx:62` | Static text in hazard evidence. Contradicts itself between files. | **No** (Static fixture) | **No** | **HIGH**: Fabricated sensor readings presented as real site photometer data. |
-| **Unsupported Walking Span** | `2.1 m` | `spatial-model.ts:623`, `risk-analysis.tsx:78` | Static text in hazard evidence. | **No** (Static fixture) | **No** | **MEDIUM**: Fixed clinical claim not measured from floorplan walls. |
-| **Entrance Mat Entrapment** | `12 mm height edge` | `spatial-model.ts:653` | Static text in hazard evidence. | **No** (Static fixture) | **No** | **MEDIUM**: Static trip hazard note. |
-| **Tight S-Turn Curvature** | `42 cm radius` | `spatial-model.ts:667` | Static text in hazard evidence. | **No** (Static fixture) | **No** | **HIGH**: No spline curve or curvature analysis is performed on route waypoints. |
-| **Minimum Cost Plan Risk** | `41 / 100` | `spatial-model.ts:757` | Hardcoded constant in `LAYOUT_ALTERNATIVES`. | **No** | **No** | **HIGH**: Pre-scripted score. |
-| **Balanced Plan Risk** | `27 / 100` | `spatial-model.ts:785` | Hardcoded constant in `LAYOUT_ALTERNATIVES`. | **No** | **No** | **HIGH**: Pre-scripted score. |
-| **Maximum Safety Plan Risk** | `19 / 100` | `spatial-model.ts:832` | Hardcoded constant in `LAYOUT_ALTERNATIVES`. | **No** | **No** | **HIGH**: Pre-scripted score. |
-| **Balanced Clearance** | `96 cm` | `spatial-model.ts:788` | Hardcoded constant in `LAYOUT_ALTERNATIVES`. | **No** | **No** | **HIGH**: Pre-scripted score. |
-| **Max Safety Clearance** | `110 cm` | `spatial-model.ts:835` | Hardcoded constant in `LAYOUT_ALTERNATIVES`. | **No** | **No** | **HIGH**: Pre-scripted score. |
-| **Route Lengths** | `11.8 m` → `10.4 m` → `10.0 m` | `spatial-model.ts:923` | Hardcoded ternary checks on `activeAlternativeId`. | **No** | **No** | **HIGH**: Route lengths are hardcoded constants. |
-| **Estimated Cost (Min-Cost)** | `HK$ 180` | `spatial-model.ts:759` | Hardcoded constant. | **No** | **No** | **HIGH**: No labor rate or material takeoff. |
-| **Estimated Cost (Balanced)** | `HK$ 850` | `spatial-model.ts:787` | Hardcoded constant. | **No** | **No** | **HIGH**: Handrail (HK$620) + Downlight (HK$230) sum is hardcoded. |
-| **Estimated Cost (Max Safety)** | `HK$ 2,400` | `spatial-model.ts:834` | Hardcoded constant. | **No** | **No** | **HIGH**: Fixed pricing not verifiable by contractors. |
-| **Standard References** | "CIBSE/OT minimum: ≥ 200 Lux", "Profile target ≥ 90 cm" | `spatial-model.ts:609` | Text strings in hazard plain descriptions. | **No** (Text strings) | **Partial** (CIBSE guidelines exist, but are unlinked) | **MEDIUM**: Real standards cited as loose text without authoritative clause mapping. |
-| **Professional Review Sign-Off** | "Dr. Adrian Lau, HKROT" | `mock-data.ts:147`, `ReportModal.tsx:112` | Hardcoded static string. | **No** | **No** | **CRITICAL**: Fictitious clinical accreditation. |
+### Essential Architectural Corrections
+1. **Clinical Screening vs. Spatial Hazard Analysis**:
+   - The CDC STEADI (Stopping Elderly Accidents, Deaths, & Injuries) framework is a **clinical screening, assessment, and intervention protocol** administered by healthcare providers to evaluate patient gait, balance, medication, and fall history.
+   - **CDC STEADI does NOT supply a validated spatial floorplan risk formula or geometric penalty weighting.**
+   - STEADI principles can legitimately inform user mobility profile intake (e.g. screening questions on fall history, assistive device use, and balance asymmetry), but they cannot be cited as empirical validation for a spatial algorithm.
+2. **Neutral Terminology: Environmental Hazard Score**:
+   - The proposed composite metric is designated as an **Environmental Hazard Score (EHS)**, not an "individual fall probability" or clinical diagnosis.
+   - It represents an architectural heuristic reflecting environmental compliance and hazard severity, **not** an individual person's likelihood of falling.
+   - During early stages (Stages 1–4), the system must prioritize **transparent individual rule violations and hazard severity counts** over any single composite 0–100 index.
+3. **Primary-Source Standards Hierarchy**:
+   - For Hong Kong environments, the primary statutory design document is the **Hong Kong Buildings Department *Design Manual: Barrier Free Access 2008* (BFA 2008)**.
+   - US ADA 2010 standards and UK Building Regulations Part M are comparative international benchmarks only and must not be cited as default Hong Kong requirements.
 
 ---
 
-## 3. Dissection of the "Live Metric Engine" (`spatial-model.ts`)
+## 2. Standards Traceability Matrix (Primary Sources vs. Product Assumptions)
 
-Lines 879–965 of `src/lib/spatial-model.ts` contain the only runtime calculation in the entire system (`calculateLiveMetrics`). A thorough forensic code review reveals why this engine is an illusion of real calculation:
-
-```typescript
-// 1. Hardcoded Target IDs:
-const chair4 = furniture.find((f) => f.id === "chair-c04");
-const mat = furniture.find((f) => f.id === "mat-entrance");
-
-// 2. Fixed Arbitrary Centerpoint:
-// Distance is measured only from chair4 to a magic coordinate (235, 260)
-const distToRoute = Math.hypot(chair4.x + chair4.width / 2 - 235, chair4.y + chair4.depth / 2 - 260);
-
-// 3. Fabricated Linear Formula:
-const effectiveClearance = Math.round(Math.max(45, Math.min(120, distToRoute * 1.4)));
-if (distToRoute < 50) {
-  minClearance = Math.min(minClearance, 54);
-} else {
-  minClearance = Math.min(minClearance, effectiveClearance);
-}
-
-// 4. Quantized Step Outputs Rather Than Calculated Distribution:
-if (minClearance <= 60) {
-  risk = 68; highHazards = 3; totalHazards = 7;
-} else if (minClearance < 90) {
-  risk = 41; highHazards = 1; totalHazards = 4;
-} else {
-  risk = 27; highHazards = 0; totalHazards = 2;
-}
-
-// 5. Overriding Route Lengths with Hardcoded Demo Numbers:
-const isDefaultRoute = route.length === 8 && route[0].x === 60;
-const routeLengthM = isDefaultRoute
-  ? activeAlternativeId === "balanced" ? 10.4 : activeAlternativeId === "max-safety" ? 10.0 : 11.8
-  : Number((totalLengthCm / 100).toFixed(1));
-```
-
-### Architectural Implications
-1. **Zero Multi-Object Spatial Awareness**: Moving any of the other 17 objects has zero effect on the metrics.
-2. **Fragile Coupling**: Any user who deletes `chair-c04` permanently locks the risk score into the "safe" state (`risk = 27`), even if they obstruct the entrance with 10 tables.
-3. **Fictitious Risk Scales**: The risk numbers `68`, `41`, and `27` are not calibrated against any clinical risk stratification tool (such as the Morse Fall Scale, STRATIFY, or CDC STEADI).
+| Rule ID | Metric / Threshold | Jurisdiction | Primary Source Document | Edition / Year | Section, Clause, or Page | Official Primary-Source URL | Applicability | Classification |
+| :--- | :--- | :---: | :--- | :---: | :--- | :--- | :--- | :--- |
+| **STD-01** | Minimum clear width of accessible corridor / path: **1050 mm** | Hong Kong | BD Design Manual: Barrier Free Access | 2008 | Division 2, Section 12, Clause 12.1 | [https://www.bd.gov.hk](https://www.bd.gov.hk/doc/en/resources/codes-and-references/code-and-design-manuals/bfa2008_e.pdf) | Clinics, care facilities, commercial & public buildings | **Statutory requirement** |
+| **STD-02** | Minimum clear width of doorway opening: **800 mm** | Hong Kong | BD Design Manual: Barrier Free Access | 2008 | Division 3, Section 17, Clause 17.1 | [https://www.bd.gov.hk](https://www.bd.gov.hk/doc/en/resources/codes-and-references/code-and-design-manuals/bfa2008_e.pdf) | Clinics, care facilities, accessible domestic units | **Statutory requirement** |
+| **STD-03** | Minimum wheelchair turning space: **1500 mm × 1500 mm** | Hong Kong | BD Design Manual: Barrier Free Access | 2008 | Division 2, Section 12, Clause 12.2 | [https://www.bd.gov.hk](https://www.bd.gov.hk/doc/en/resources/codes-and-references/code-and-design-manuals/bfa2008_e.pdf) | Clinics, care facilities, commercial & public buildings | **Statutory requirement** |
+| **STD-04** | Continuous handrail height: **850 mm – 950 mm** above finished floor level | Hong Kong | BD Design Manual: Barrier Free Access | 2008 | Division 3, Section 18, Clause 18.1 | [https://www.bd.gov.hk](https://www.bd.gov.hk/doc/en/resources/codes-and-references/code-and-design-manuals/bfa2008_e.pdf) | Corridors and ramps in public and care buildings | **Statutory requirement** |
+| **STD-05** | Healthcare circulation corridor maintained illuminance: **200 Lux** | UK / Intl | CIBSE / SLL Lighting Guide 2: Hospitals and Health Care Buildings | 2019 | Section 5.3 (Circulation areas), Table 2 | [https://www.cibse.org](https://www.cibse.org) | Hospitals, outpatient clinics, healthcare circulation | **Official design guidance** |
+| **STD-06** | General consulting room maintained illuminance: **500 Lux** (task) / **300 Lux** (ambient) | UK / Intl | CIBSE / SLL Code for Lighting | 2022 | Section 7.4 (Health care premises) | [https://www.cibse.org](https://www.cibse.org) | Consultation and examination rooms | **Official design guidance** |
+| **STD-07** | Clinical mobility screening protocol (TUG, 30s chair stand, 4-stage balance) | USA / Intl | CDC STEADI: Algorithm for Fall Risk Screening | 2019 | Provider Clinical Algorithm | [https://www.cdc.gov/steadi](https://www.cdc.gov/steadi) | Clinical patient intake and risk stratification | **Clinical guidance** |
+| **STD-08** | Preferred rollator walker corridor clearance: **90 cm** | N/A | None (Derived from 65 cm walker width + 25 cm sway buffer) | N/A | N/A | None | Domestic & clinic walking paths | **TBD — requires OT/building-code validation** |
+| **STD-09** | Maximum unsupported walking distance between handrails/resting points: **1.5 m** | N/A | None (Common clinical OT heuristic for frail elderly gait) | N/A | N/A | None | Corridor and residential transit routes | **TBD — requires OT validation** |
+| **STD-10** | Universal corridor illuminance: **200 Lux** across all domestic residences | N/A | None (Domestic night lighting requires 50–100 Lux to avoid circadian disruption) | N/A | N/A | None | Private apartments and residences | **TBD — requires OT/lighting validation** |
+| **STD-11** | Sharp furniture corner safety buffer: **60 cm proximity** to transit route | N/A | None (Product safety heuristic) | N/A | N/A | None | All environments | **TBD — requires OT validation** |
+| **STD-12** | Rigid furniture edge corner radius threshold: **5 mm** | N/A | None (Impact mitigation heuristic) | N/A | N/A | None | All environments | **TBD — requires OT validation** |
+| **STD-13** | Environmental Hazard Score composite formula & factor weights ($w_i$) | N/A | None (Engineering prototype formulation) | N/A | N/A | None | All environments | **TBD — product hypothesis requiring clinical validation** |
+| **STD-14** | Risk category classification thresholds (e.g. Low $<35$, High $\ge 60$) | N/A | None (Arbitrary UI grouping) | N/A | N/A | None | All environments | **TBD — product assumption** |
+| **STD-15** | Implementation cost estimates (HK$180, HK$850, HK$2400) and improvement % | N/A | None (Unbacked prototype sample values) | N/A | N/A | None | Queen Care Clinic demo plan | **TBD — product assumption** |
 
 ---
 
-## 4. Required Rule-Engine Specification (For Stage 4)
+## 3. Audit of Currently Displayed Metrics & Hardcoded Claims
 
-To replace these hardcoded fixtures with defensible analytical rigor, the system requires a deterministic rule registry adhering to documented building accessibility standards:
+| Displayed Metric / Claim | Currently Displayed Value | Code Symbol & Location | True Nature of Current Implementation | Evidentiary Assessment |
+| :--- | :--- | :--- | :--- | :--- |
+| **Environmental Risk Index** | `68 / 100 (High Risk)` | `spatial-model.ts:935` | Hardcoded step clamped based exclusively on `chair-c04` proximity. | **Unsupported product assumption**. Must be renamed to Environmental Hazard Score and calibrated with OTs. |
+| **Narrowest Clearance** | `54 cm` | `spatial-model.ts:576, 905` | Hardcoded literal `54` if `chair-c04` is within 50 cm of point (235, 260). | **Unsupported hardcoding**. Must be replaced with Minkowski dilation corridor calculation. |
+| **Sharp Corner Clearance** | `28 cm` to table | `spatial-model.ts:593` | Static string in `INITIAL_HAZARDS[1]`. | **Unsupported static fixture**. |
+| **Corridor Illuminance** | `110 Lux` / `85 Lux` | `spatial-model.ts:609`, `risk-analysis.tsx:62` | Static text in fixture descriptions; values conflict between files. | **Unsupported static fixture**. |
+| **Unsupported Walking Span** | `2.1 m span` | `spatial-model.ts:623`, `risk-analysis.tsx:78` | Static text in hazard evidence string. | **Unsupported static fixture**. |
+| **Trip Threshold** | `12 mm height edge` | `spatial-model.ts:653` | Static text in hazard description. | **Unsupported static fixture**. |
+| **Tight S-Turn Curvature** | `42 cm radius` | `spatial-model.ts:667` | Static text in hazard description. | **Unsupported static fixture**. |
+| **Alternative Risk Scores** | `41`, `27`, `19` | `spatial-model.ts:757, 785, 832` | Hardcoded constants in `LAYOUT_ALTERNATIVES`. | **Unsupported product assumption**. |
+| **Retrofit Costs** | `HK$ 180`, `HK$ 850`, `HK$ 2,400` | `spatial-model.ts:759, 787, 834` | Fixed integers with no bill-of-materials takeoff. | **Unsupported product assumption**. |
+| **Professional Reviewer** | "Dr. Adrian Lau, HKROT" | `mock-data.ts:147`, `ReportModal.tsx:112` | Hardcoded static string presenting a fictitious clinical sign-off. | **Non-compliant mock**. Must be replaced by real user authentication and digital sign-off. |
 
-### Standard References to Formalise
-1. **Clearance Envelope Standards**:
-   - *Hong Kong Barrier Free Design Handbook 2008 (Section 12)*: Minimum clear width of accessible corridor = 1050 mm; absolute minimum unobstructed transit pinch point = 900 mm for walking frame, 800 mm for single doorway threshold.
-   - *ADA Standards 2010 (Section 403)*: 36 inches (915 mm) continuous clear path, minimum 32 inches (815 mm) at discrete doorway points.
-2. **Turning Space Standards**:
-   - *Hong Kong BFD 2008*: Minimum 1500 mm × 1500 mm clear turning area for 180° / 360° wheelchair turns.
-3. **Lighting & Photometric Standards**:
-   - *CIBSE Code for Lighting / SLL Lighting Guide 2 (Hospitals and Health Care Buildings)*: Minimum 200 Lux on horizontal floor plane in corridors and circulation areas; 300 Lux in consultation and activity zones.
-4. **Grab Rail & Continuous Support**:
-   - Maximum unsupported gait distance between stable resting touchpoints: 1.5 m for frail older adults (OT clinical guideline).
-5. **Threshold & Level Change**:
-   - Maximum vertical trip threshold without bevel: 6 mm. Maximum beveled threshold: 13 mm (1:2 slope).
+---
 
-### Target Risk Index Formula Structure
-Risk should be computed as a weighted multi-factor penalty function normalized to `0..100`:
+## 4. Proposed Environmental Hazard Scoring Model (Product Hypothesis)
 
-$$\text{Risk} = \min\left(100, \sum w_i \cdot \text{Penalty}_i\right)$$
+Until empirical multi-center clinical validation is conducted, the software must avoid claiming that its score predicts a resident's clinical likelihood of falling. Instead, the system outputs an **Environmental Hazard Score (EHS)** representing the density and severity of physical guideline deviations.
 
-Where factors include:
-- $P_{\text{clearance}}$: Proportional deficit below required profile envelope ($\ge 90\text{ cm}$).
-- $P_{\text{corners}}$: Proximity of unrounded edges ($r < 5\text{ mm}$) within $60\text{ cm}$ of walking corridor.
-- $P_{\text{trip}}$: Unsecured floor coverings, rugs, thresholds $> 6\text{ mm}$ along active route.
-- $P_{\text{support}}$: Uninterrupted wall segments $> 1.5\text{ m}$ lacking stable support handrails.
-- $P_{\text{lux}}$: Deficit below required profile illuminance at floor level ($< 200\text{ Lux}$).
-- Factor weights ($w_i$) are scaled by user profile vulnerability (e.g., fall history, low-vision, walking aid dependency).
+### Product Hypothesis Formula (Subject to OT Panel Review)
+
+$$\text{EHS} = \min\left(100, \sum_{k \in \text{Hazards}} S(k) \times W(\text{profile}, k)\right)$$
+
+Where:
+- $S(k)$ is the base severity penalty of hazard $k$:
+  - Critical (unpassable route, door blocked, step $> 13\text{ mm}$): $30\text{ points}$.
+  - High (clearance below profile minimum, unrounded corner in sweep zone): $15\text{ points}$.
+  - Medium (illuminance deficit, unsupported span $> \text{threshold}$): $8\text{ points}$.
+  - Low (minor operational clutter, non-optimal turning arc): $3\text{ points}$.
+- $W(\text{profile}, k)$ is a profile vulnerability multiplier ($1.0\dots1.5$) reflecting specific user limitations (e.g. a low-light deficit is weighted higher for a user with limited vision).
+
+### Governance Rule
+During Stages 1 through 4, all UI screens must present:
+1. Exact measured dimensions (e.g. "Measured clear width: 72 cm · Standard: 105 cm · Deficit: 33 cm").
+2. The specific standard reference (e.g. "HK BFA 2008 Clause 12.1").
+3. Individual hazard counts by severity level.
+4. Composite EHS marked as an advisory product heuristic.

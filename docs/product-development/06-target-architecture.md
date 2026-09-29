@@ -2,7 +2,7 @@
 
 ## 1. Architectural Blueprint & Layer Separation
 
-The target architecture for SafeSpace separates deterministic spatial physics and rule-based clinical calculations from generative AI and user interaction.
+The target architecture for SafeSpace separates deterministic spatial geometry and rule-based compliance calculations from generative AI assistance and presentation state.
 
 ```
 ┌────────────────────────────────────────────────────────────────────────┐
@@ -25,11 +25,11 @@ The target architecture for SafeSpace separates deterministic spatial physics an
 └──────────────────┬─────────────────────────────────┬───────────────────┘
                    │                                 │
 ┌──────────────────▼─────────────────┐     ┌─────────▼──────────────────┐
-│   Deterministic Geometry Engine    │     │   Evidence & Risk Engine   │
+│   Deterministic Geometry Engine    │     │    Compliance & Rule Engine│
 │   • Minkowski Dilation Corridor    │     │   • Standard Rule Registry │
-│   • Polygon-Line Intersections     │     │   • STEADI Multi-factor    │
-│   • Dynamic A* Pathfinding         │     │   • Illuminance & Support  │
-│   • Door-Swing Clearance Sweeps    │     │   • Auditable Provenance   │
+│   • Polygon-Line Intersections     │     │   • HK BFA 2008 & CIBSE LG2│
+│   • Dynamic A* Pathfinding         │     │   • Environmental Hazard   │
+│   • Door-Swing Clearance Sweeps    │     │     Score (EHS) Formulation│
 └──────────────────┬─────────────────┘     └─────────┬──────────────────┘
                    │                                 │
 ┌──────────────────▼─────────────────────────────────▼───────────────────┐
@@ -40,76 +40,89 @@ The target architecture for SafeSpace separates deterministic spatial physics an
                    │                                 │
 ┌──────────────────▼─────────────────┐     ┌─────────▼──────────────────┐
 │        AI Integration Layer        │     │  Persistence & Org Layer   │
-│   • Vision API Floorplan Extraction│     │  • Client-side IndexedDB   │
-│   • Plain-Language Report Authoring│     │  • Supabase / PostgreSQL   │
-│   • Human Confirmation Gate        │     │  • Multi-tenant Accounts   │
+│   • Multimodal Vision Extraction   │     │  • Client-side IndexedDB   │
+│   • Plain-Language Report Drafting │     │  • Cloud Database (PG)     │
+│   • Mandatory Human Review Gate    │     │  • Multi-tenant Accounts   │
 └────────────────────────────────────┘     └────────────────────────────┘
 ```
 
 ---
 
-## 2. Core Architectural Subsystems
+## 2. Hosting & Backend Architecture: Evaluation of Options
 
-### 1. Canonical Spatial Data Model & State Layer
-- **Schema Validation**: Define all domain entities in strict TypeScript with runtime validation using Zod.
-- **Single Source of Truth**: Eliminate dual Zustand stores. Consolidate `safespace-store.ts` and `assessment-store.ts` into a unified `useSpatialStore`.
-- **Coordinate Standard**:
-  - Global Plan Space: Centimeters (cm), 2D origin at top-left `(0, 0)`.
-  - 3D Twin Space: Meters (m) via deterministic conversion `toM = (cm) => cm / 100`, centered via scene bounding box offset.
-  - Rotations: Clockwise degrees `[0, 360)`.
+The current repository build produces a static HTML/JS export (`output: "export"` in `next.config.ts`) hosted on GitHub Pages via `.github/workflows/deploy.yml`. 
+> [!IMPORTANT]
+> **Static Export Reality**: In a static export deployment, **Next.js Server Actions and Route Handlers cannot execute at runtime**. There is no Node.js server to run server-side code. Therefore, two distinct architectural paths exist for future backend and AI integration:
 
-### 2. Deterministic Computational Geometry & Pathfinding Engine
-- **Footprints & Collisions**: Model furniture footprints as 2D convex polygons. Compute distance to walking paths using point-to-segment perpendicular distance algorithms.
-- **Route Corridor (Minkowski Sum)**: Dilate the center polyline by the mobility profile envelope radius (e.g. $r = 45\text{ cm}$ for a $90\text{ cm}$ walker) to generate the transit corridor ribbon. Detect encroachments by intersecting obstacle polygons with the ribbon.
-- **Dynamic Pathfinding (A* Grid / Navmesh)**: In Stage 3, replace hardcoded route reset with an A* obstacle-avoidance pathfinder on a 5 cm spatial grid. When furniture is moved, dynamically calculate the shortest safe barrier-free path from entrance to destination.
-- **Door Swing Sweep**: Generate circular sector polygons representing the swing arc of each door. Flag furniture intersecting this sector as door-swing egress violations.
+### Option A: Retain Static Frontend + External Backend / Serverless API
+- **Architecture**:
+  - Frontend remains statically compiled on GitHub Pages (or static CDN / Cloudflare Pages / AWS S3).
+  - All interactive spatial math, 2D/3D rendering, and IndexedDB persistence run purely on the client.
+  - An independent, authenticated external API (e.g. Python FastAPI on Cloud Run, Node.js serverless functions, or Edge functions) handles private operations: AI vision calls, report PDF generation, and multi-tenant cloud persistence.
+  - **Secret Management**: Cloud provider API keys (e.g., vision/LLM keys) reside exclusively on the external backend. The static frontend never contains private secrets.
+- **Trade-offs**:
+  - *Pros*: Preserves free, zero-maintenance GitHub Pages deployment; clean architectural decoupling between frontend and compute backend; backend stack (e.g., Python for computer vision) is unconstrained by Next.js.
+  - *Cons*: Introduces cross-origin resource sharing (CORS), separate deployment pipelines, and dual CI/CD configuration.
 
-### 3. Rule-Based Fall Risk & Evidence Engine
-- **Standard Registry**: A decoupled TypeScript rules registry where each rule maps to an empirical building or health standard (e.g. HK BFD 2008, CIBSE LG2, CDC STEADI).
-- **Rule Evaluation**:
-  - *Rule R-01 (Corridor Clearance)*: Flag any transit corridor narrowing $< 90\text{ cm}$ (Walker) or $< 100\text{ cm}$ (Wheelchair).
-  - *Rule R-02 (Sharp Corner Proximity)*: Flag any rigid corner ($r < 5\text{ mm}$) within $60\text{ cm}$ of the critical route.
-  - *Rule R-03 (Illuminance)*: Flag floor zones where lux levels fall below profile requirement (e.g. $< 200\text{ Lux}$).
-  - *Rule R-04 (Support Continuity)*: Measure distance between fixed walls, handrails, or stable furniture. Flag gaps $> 1.5\text{ m}$.
-  - *Rule R-05 (Trip Threshold)*: Flag floor coverings or thresholds with vertical edges $> 6\text{ mm}$.
-- **Risk Score Calculation**: Compute continuous Environmental Fall Risk Index ($0\dots100$) using weighted factor penalties rather than arbitrary step numbers.
-- **Explicit Provenance**: Every hazard must state its origin (`calculated-geometry`, `photometric-site-reading`, `ai-intake-flag`, or `clinician-manual-entry`).
+### Option B: Migrate to Full-Stack Next.js Hosting (Server Runtime)
+- **Architecture**:
+  - Remove `output: "export"` and deploy to a host supporting the full Next.js Node.js/Edge server runtime (e.g., Vercel, AWS ECS/Amplify, GCP Cloud Run, or custom Docker container).
+  - Use native Next.js Server Actions and Route Handlers for AI orchestration, database queries, and session management.
+- **Trade-offs**:
+  - *Pros*: Single repository, unified build pipeline, zero CORS configuration, native Next.js 16 server actions.
+  - *Cons*: Cannot be hosted on standard GitHub Pages; requires paid or cloud infrastructure tier post-hackathon.
 
-### 4. Constraint-Based Layout Optimiser
-- **Optimization Strategy**: Do not use LLMs to guess furniture positions. Use a deterministic heuristic constraint solver:
-  - Objective: Minimize $\text{Risk} + \lambda_1 \cdot \text{Moves} + \lambda_2 \cdot \text{HardwareCost}$.
-  - Constraints: Keep furniture inside room polygons, preserve minimum $90\text{ cm}$ clearance to walls, avoid blocking doors or windows.
-  - Generates three distinct alternatives:
-    1. **Minimum Cost**: Furniture translation only, 0 hardware cost.
-    2. **Balanced**: 1–2 furniture translations, $+1$ handrail, $+1$ downlight.
-    3. **Maximum Safety**: Recessed mats, dual handrails, full sensor and lighting retrofit.
-
-### 5. Role-Bounded AI Integration
-- **Floorplan Ingestion**: Multimodal Vision API (e.g., Google Gemini 2.5 Flash / Pro) receives uploaded floorplan images or architectural PDFs. Returns structured JSON containing room polygons, doors, and bounding boxes with confidence scores ($0\dots1$).
-- **Mandatory Human Confirmation Gate**: AI extractions enter a "Draft / Unconfirmed" state. The user must explicitly confirm or calibrate boundaries and scales before risk analysis runs.
-- **Report & Narrative Generation**: LLM drafts executive summaries, OT clinical justifications, and contractor implementation notes based exclusively on calculated numerical findings. The LLM is never prompted to calculate distances or invent hazards.
-
-### 6. Persistence & Organization Infrastructure
-- **Tier 1 (Client Offline)**: IndexedDB (via Dexie.js or native IDB) for instant client-side offline saving. Changes persist across browser refreshes automatically.
-- **Tier 2 (Cloud / Multi-tenant)**: Supabase PostgreSQL backend with Row Level Security (RLS) for multi-facility management, OT audit signatures, and role-based access (caregivers, clinic managers, contractors).
-
-### 7. Unified 2D & 3D Rendering Architecture
-- **2D Canvas**: Consolidate into a single high-performance canvas engine (either optimized Konva or clean HTML5 Canvas) consuming the canonical scene graph.
-- **3D Digital Twin**: Single `@react-three/fiber` canvas wrapped in a robust `Spatial3DErrorBoundary`. Eliminate remote font downloading in Drei `<Text>`. For Stage 5 comparisons, use WebGL viewport splitting on a single canvas context to prevent context exhaustion.
+### Recommendation for Hackathon MVP
+**Recommendation: Retain Option A (Static Export with Client-Side IndexedDB) for Stages 1–6, and connect a lightweight serverless endpoint for Stage 7.**
+- *Rationale*: SafeSpace's core value is deterministic local spatial assessment. Stages 1–5 (intake, calibration, pathfinding, risk rules, and layout optimization) can run 100% in-browser without server dependencies. Keeping the frontend static on GitHub Pages guarantees instant demonstration reliability without cloud container startup lag or server cold-starts. When AI features are added in Stage 7, a dedicated external serverless function can securely proxy AI requests without forcing a full hosting overhaul.
 
 ---
 
-## 3. Technology Stack Evaluation & Recommendations
+## 3. Technology & Vendor Interchangeability
 
-| Technology Component | Current Choice | Recommendation | Justification & Upgrade Path |
-| :--- | :--- | :--- | :--- |
-| **Framework** | Next.js 16.3.6 (App Router) | **Retain** | Next.js App Router with Turbopack builds fast and supports static export for GitHub Pages while allowing dynamic server routes for cloud APIs. |
-| **Language** | TypeScript 6.0 | **Retain** | Strict type safety is essential for spatial math and clinical rules. |
-| **UI Styling** | Tailwind CSS v4 | **Retain** | Modern, performant CSS engine. Retain clean clinical slate/teal aesthetic. |
-| **State Management** | Zustand 5.0 | **Retain & Consolidate** | Zustand is ideal for high-frequency coordinate manipulation (dragging/panning). Unify into single store. |
-| **2D Renderer** | Konva + Custom DOM | **Consolidate** | Migrate fully to clean Canvas/Konva model to avoid dual maintenance. Isolate Konva from Node test environments to prevent test slowdowns. |
-| **3D Engine** | Three.js + R3F + Drei | **Retain with Hardening** | Keep Three.js r186 + R3F, but add explicit shadow map config, remove remote font fetching, and add error boundaries. |
-| **Geometry Math** | Custom basic math | **Adopt Robust Lib** | Integrate lightweight computational geometry utilities (e.g., `polygon-clipping`, `earcut`, or `robust-point-in-polygon`). |
-| **Client Storage** | None | **Add IndexedDB** | Add IndexedDB client persistence to eliminate the refresh data-loss blocker in Stage 1. |
-| **Backend Storage** | None | **Add Supabase / PG** | Introduce in Stage 8 for multi-user organizational accounts and signed audit trails. |
-| **AI Integration** | None | **Add Gemini API** | Introduce in Stage 2 (Floorplan Vision) and Stage 7 (Report Drafting) via secure server actions. |
+To prevent vendor lock-in, external service providers are treated as interchangeable implementation candidates:
+
+| Architectural Component | Candidate Implementations | Selection Criteria & Abstraction Strategy |
+| :--- | :--- | :--- |
+| **Multimodal Vision & LLM** | Google Gemini API, Anthropic Claude, OpenAI Vision | Abstracted via a generic `AIExtractionProvider` interface. The system passes base64 image data and receives validated GeoJSON/canonical objects. Provider keys remain server-side. |
+| **Cloud Database & Auth** | Supabase (PostgreSQL), Firebase, Neon + Auth0 | Abstracted via repository interfaces (`AssessmentRepository`). Local IndexedDB serves as the offline-first ground truth; cloud DB acts as a remote synchronization target. |
+| **Client Persistence** | Dexie.js (IndexedDB wrapper), Native `idb` | Lightweight client persistence implemented in Stage 1 to eliminate the refresh data-loss vulnerability. |
+
+---
+
+## 4. Core Subsystem Architectural Specifications
+
+### 1. Canonical State & Unified Scene Graph
+- Single store: Consolidate `safespace-store.ts` and `assessment-store.ts` into a unified `useSpatialStore`.
+- Strict schema validation with Zod on all ingest/export boundaries.
+- Consistent coordinate mapping: Centimeters (cm) in 2D plan space with top-left origin `(0, 0)`; Meters (m) in 3D scene space via `toM = (cm) => cm / 100`.
+
+### 2. Deterministic Computational Geometry Engine
+- **Corridor Dilation (Minkowski Sum)**: Construct walking corridor envelopes by expanding route polylines by the profile clearance radius (e.g., $r = 45\text{ cm}$ for a $90\text{ cm}$ walker).
+- **Obstacle Collisions**: Intersect furniture bounding polygons with the dilated corridor.
+- **Dynamic Obstacle-Avoidance Pathfinding**: Implement an A* grid pathfinder ($5\text{ cm}$ resolution) across walkable floor polygons to compute true navigable paths around moved objects.
+- **Door-Swing Egress Arc**: Calculate circular sector polygons representing door-swing trajectories; flag furniture intersections as door-swing hazards.
+
+### 3. Compliance & Fall Risk Rule Engine
+- Implement a decoupled rules registry (`src/lib/rules/`) referencing established building design manuals (HK BFA 2008) and lighting guidelines (CIBSE LG2).
+- Output individual rule compliance results with exact measurement deficits before computing composite indices.
+- Composite score designated as **Environmental Hazard Score (EHS)**, representing environmental guideline deviation density, **not** an individual's personal probability of falling.
+
+### 4. Constraint-Based Layout Optimiser
+- Deterministic heuristic solver: Evaluate candidate furniture translations and rotations against room boundaries and clearance corridors.
+- Objective function: Minimize $\text{EHS} + \lambda_1 \cdot \text{Moves} + \lambda_2 \cdot \text{Cost}$.
+- Generates 3 discrete alternatives:
+  1. *Minimum Cost*: Zero-hardware operational moves only.
+  2. *Balanced*: High-leverage operational moves + minimal targeted hardware (grab rails).
+  3. *Maximum Safety*: Full barrier-free architectural reconfiguration.
+
+### 5. Role-Bounded AI Integration
+- AI is restricted to two isolated stages:
+  - *Optional Floorplan Drafting (Stage 7)*: Extracts draft geometry with confidence ratings; requires mandatory human confirmation before analysis.
+  - *Report Authoring (Stage 7)*: Drafts plain-language clinical notes and contractor task lists using calculated metrics only.
+- AI is strictly prohibited from inventing dimensions, calculating clearances, or generating risk numbers.
+
+### 6. Unified 2D & Synchronized 3D Digital Twin
+- Consolidate 2D canvas into a single high-performance engine consuming the canonical scene graph.
+- Wrap 3D canvas in `Spatial3DErrorBoundary` with automatic 2D fallback.
+- In Stage 5 Before/After views, utilize a single WebGL canvas with split viewports to prevent context loss.
