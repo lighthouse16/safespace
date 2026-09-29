@@ -137,12 +137,13 @@ export interface CanonicalMobilityProfile {
   id: UUID;
   name: string;
   aidType: "none" | "walking-stick" | "quad-cane" | "rollator-walker" | "manual-wheelchair" | "power-wheelchair";
-  envelopeWidthCm: number; // e.g. 70 cm for walker
-  preferredClearanceCm: number; // e.g. 90 cm
-  turningDiameterCm: number; // e.g. 150 cm
-  maxUnsupportedWalkingSpanM: number; // e.g. 1.5 m
-  minIlluminanceLux: number; // e.g. 200 Lux
-  maxThresholdMm: number; // e.g. 6 mm
+  envelopeWidthCm: number; // Measured physical width of device/user
+  preferredClearanceCm: number; // User/device-specific or verified rule input
+  turningDiameterCm: number; // Verified device/user requirement
+  maxUnsupportedWalkingSpanM?: number; // Optional; requires validated source
+  minIlluminanceLux?: number; // Optional; requires verified environment-specific guidance
+  maxThresholdMm?: number; // Optional; requires verified applicable standard
+  thresholdProvenance?: "user-measurement" | "verified-rule" | "clinical-input"; // Provenance of mobility limits
 }
 
 export interface CanonicalRoute {
@@ -172,4 +173,4 @@ export interface CanonicalHazard {
 }
 ```
 
-*Note: This canonical specification will be implemented in Stage 1.*
+*Note: This canonical specification will be implemented in Stage 1. Every safety threshold must reference a verified rule ID, user/device measurement, or professional clinical input; unvalidated hardcoded numeric defaults are prohibited.*

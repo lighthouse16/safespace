@@ -98,7 +98,7 @@ To prevent vendor lock-in, external service providers are treated as interchange
 - Consistent coordinate mapping: Centimeters (cm) in 2D plan space with top-left origin `(0, 0)`; Meters (m) in 3D scene space via `toM = (cm) => cm / 100`.
 
 ### 2. Deterministic Computational Geometry Engine
-- **Corridor Dilation (Minkowski Sum)**: Construct walking corridor envelopes by expanding route polylines by the profile clearance radius (e.g., $r = 45\text{ cm}$ for a $90\text{ cm}$ walker).
+- **Corridor Dilation (Minkowski Sum)**: Construct walking corridor envelopes by expanding route polylines by the profile clearance radius ($r = \text{preferredClearanceCm} / 2$ derived from verified profile or rule input).
 - **Obstacle Collisions**: Intersect furniture bounding polygons with the dilated corridor.
 - **Dynamic Obstacle-Avoidance Pathfinding**: Implement an A* grid pathfinder ($5\text{ cm}$ resolution) across walkable floor polygons to compute true navigable paths around moved objects.
 - **Door-Swing Egress Arc**: Calculate circular sector polygons representing door-swing trajectories; flag furniture intersections as door-swing hazards.

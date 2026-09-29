@@ -68,7 +68,7 @@ This implementation plan defines the gated roadmap for SafeSpace from Stage 1 th
   - Polygon boundary containment and vertex editing tests.
   - Grid snap and boundary clamp assertion suite.
 - **Acceptance Criteria**:
-  - A user can upload an arbitrary floorplan image, calibrate a known doorway to 90 cm, draw an L-shaped room, place furniture, and save without AI involvement.
+  - A user can upload an arbitrary floorplan image, calibrate a doorway using its user-entered ground-truth measurement (e.g. 90 cm on test fixture), draw an L-shaped room, place furniture, and save without AI involvement.
 - **Risks**: High-resolution image canvas memory consumption on lower-end devices.
 - **Suggested Branch Name**: `stage-2-floorplan-intake-2d-editor`
 - **Expected Review Evidence**: Interactive intake demo uploading and calibrating a blank test floorplan.
@@ -124,16 +124,16 @@ This implementation plan defines the gated roadmap for SafeSpace from Stage 1 th
   - Sensor hardware procurement or procurement pricing (deferred to Stage 7).
 - **Dependencies**: Stage 3 (Geometry Engine & Dynamic Clearances).
 - **Major Implementation Tasks**:
-  1. Author rule evaluation modules for corridor clearance, door width, corner proximity, thresholds, and support gaps.
-  2. Implement experimental composite formula: $\text{EHS} = \min(100, \sum w_i \cdot P_i)$ (labeled: *Illustrative product hypothesis — not approved for implementation or user-facing safety decisions*).
-  3. Replace `INITIAL_HAZARDS` and `calculateLiveMetrics` in `spatial-model.ts` with dynamic rule evaluation output.
+  1. Author rule evaluation modules for corridor clearance, door width, corner proximity, thresholds, and support gaps, focusing strictly on individual rule evaluations, exact measurements, required versus measured values, provenance, severity, and resolution state.
+  2. Define a disabled experimental EHS interface and validation plan. Do not calculate, display, or use a composite EHS until its factors, weights, and categories have been reviewed and approved by relevant occupational therapy and architectural professionals.
+  3. Replace `INITIAL_HAZARDS` and `calculateLiveMetrics` in `spatial-model.ts` with dynamic individual rule evaluation output.
   4. Connect Stage 4 hazard list directly to live individual rule evaluation output.
 - **Required Tests**:
-  - Deterministic evaluation test suite verifying that placing a barrier produces the exact expected hazard code and severity.
+  - Deterministic evaluation test suite verifying that placing a barrier produces the exact expected hazard code, required vs. measured value, provenance, and severity.
   - Individual rule violation assertion suite checking measured vs. required physical dimensions.
 - **Acceptance Criteria**:
-  - Placing, removing, or resizing any object immediately generates or resolves the corresponding individual hazard in the live UI with verifiable evidence citations and measurements.
-  - Any displayed composite score is explicitly marked as an experimental product hypothesis.
+  - Placing, removing, or resizing any object immediately generates or resolves the corresponding individual hazard in the live UI with verifiable evidence citations, exact physical measurements, required versus measured values, provenance, severity, and resolution state.
+  - Stage 4 passes cleanly without calculating or displaying any composite risk score.
 - **Risks**: Weight tuning controversy between clinical guidelines.
 - **Suggested Branch Name**: `stage-4-evidence-risk-engine`
 - **Expected Review Evidence**: Traceability matrix proving every displayed hazard originates from an evaluated rule.
@@ -313,7 +313,7 @@ SafeSpace replaces generic "ready for clinical trials and public launch" claims 
 - **Intended Use**: Supervised pilot deployments in partnering clinics, NGOs, or care homes.
 - **Requirements**:
   - 100% of spatial assessments must be reviewed and confirmed by a certified Occupational Therapist.
-  - Real floorplan intake and calibrated measurements verified against physical ground truth ($\pm 2\text{ cm}$).
+  - Real floorplan intake and calibrated measurements verified against physical ground truth (measurement accuracy must meet a documented acceptance tolerance established through calibration testing and professional review).
   - Statutory alignment with primary local building standards (HK BFA 2008 for HK facilities).
   - Informed participant consent and facility data-sharing agreement executed.
 - **Restrictions**: Limited to controlled pilot cohorts under direct clinician oversight.
