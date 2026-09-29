@@ -41,7 +41,7 @@ The verified 6-stage end-to-end user journey agreed by product architecture:
 1. **Layout**: Ingest 2D floorplan (raster image, vector CAD, or manual drawing). Establish physical scale via two-point calibration. Define architectural boundaries (walls, doors, openings) and interior objects (furniture, fixtures). Require human confirmation for all geometry before analysis.
 2. **Mobility Profile**: Model assistive aid envelope (walking stick, cane, rollator walker, manual wheelchair), turning space requirements, gait asymmetry, fall history, tactile support dependency, and contrast/illuminance thresholds.
 3. **Critical Routes**: Map mandatory routine paths between functional destinations (e.g., Bed ↔ En-suite Bathroom, Entrance ↔ Reception ↔ Waiting Seat ↔ Consultation Room). Identify transit frequency and night-time transit risks.
-4. **Safety Analysis**: Evaluate dynamic spatial clearances, collision envelopes, door swing encroachments, illuminance levels, and continuous grab-support spans against empirical guidelines. Generate ranked hazard register with measured evidence.
+4. **Safety Analysis**: Evaluate dynamic spatial clearances, collision envelopes, door swing encroachments, illuminance levels, and continuous grab-support spans against statutory and clinical guidelines. Generate ranked hazard register with measured evidence.
 5. **Improve**: Generate three discrete optimisation tiers:
    - **Minimum Cost**: Non-structural operational re-arrangements (zero hardware spend).
    - **Balanced**: High-impact furniture shifts plus modest safety hardware (grab bars, downlights).
@@ -59,7 +59,7 @@ To maintain clinical trust, regulatory defensibility, and user safety, all imple
 3. **Deterministic Spatial Geometry**: Spatial facts—including wall collisions, clearance gaps, polygon envelopes, Minkowski route dilations, and door-swing arcs—must be evaluated using deterministic computational geometry. AI models must never invent spatial dimensions, clearances, or risk numbers.
 4. **Role-Bounded AI Integration**: AI is restricted to unstructured data interpretation (optional floorplan drafting assistance), conversational intake assistance, plain-language clinical explanations, and report authoring. Spatial metrics remain rule-governed.
 5. **Canonical Scene Synchronization**: 2D floorplans and 3D digital twins must consume identical underlying scene graph entities (rooms, walls, openings, furniture coordinates, hazard vectors). Editing in 2D must immediately reflect in 3D without state drift.
-6. **Professional Accountability & Provenance**: Every hazard and recommendation must display clear provenance (e.g., "Deterministic clearance engine · BFD 2008 clause 12.2" vs. "OT site observation"). Clinical outputs must support human sign-off without replacing professional liability.
+6. **Professional Accountability & Provenance**: Every hazard and recommendation must display clear provenance (e.g., "Deterministic clearance engine · BFA 2008 Chapter 4 Division 4 Para 12(1)" vs. "OT site observation"). Clinical outputs must support human sign-off without replacing professional liability.
 7. **Clean Clinical Design System**: Styling must remain functional, accessible, and high-contrast (WCAG AA minimum). No neon gradients, cyberpunk visual effects, decorative AI artifacts, or unreadable micro-typography.
 
 ---

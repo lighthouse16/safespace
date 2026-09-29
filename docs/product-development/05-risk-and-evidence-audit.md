@@ -8,28 +8,32 @@ In elder care, clinical environments, and residential planning, safety assessmen
 1. **Clinical Screening vs. Spatial Hazard Analysis**:
    - The CDC STEADI (Stopping Elderly Accidents, Deaths, & Injuries) framework is a **clinical screening, assessment, and intervention protocol** administered by healthcare providers to evaluate patient gait, balance, medication, and fall history.
    - **CDC STEADI does NOT supply a validated spatial floorplan risk formula or geometric penalty weighting.**
-   - STEADI principles can legitimately inform user mobility profile intake (e.g. screening questions on fall history, assistive device use, and balance asymmetry), but they cannot be cited as empirical validation for a spatial algorithm.
-2. **Neutral Terminology: Environmental Hazard Score**:
-   - The proposed composite metric is designated as an **Environmental Hazard Score (EHS)**, not an "individual fall probability" or clinical diagnosis.
-   - It represents an architectural heuristic reflecting environmental compliance and hazard severity, **not** an individual person's likelihood of falling.
-   - During early stages (Stages 1–4), the system must prioritize **transparent individual rule violations and hazard severity counts** over any single composite 0–100 index.
-3. **Primary-Source Standards Hierarchy**:
-   - For Hong Kong environments, the primary statutory design document is the **Hong Kong Buildings Department *Design Manual: Barrier Free Access 2008* (BFA 2008)**.
+   - STEADI principles can legitimately inform user mobility profile intake (e.g. screening questions on fall history, assistive device use, and balance asymmetry), but they cannot be cited as validation for a spatial algorithm.
+2. **Neutral Terminology & Primary Output**:
+   - The primary output of the safety engine must be **transparent individual rule violations, exact physical measurements, evidentiary provenance, and severity levels**.
+   - Any composite metric is designated as an **Environmental Hazard Score (EHS)**. It represents an architectural heuristic reflecting environmental compliance and hazard severity, **not** an individual person's likelihood of falling.
+   - A composite score is **optional and experimental**. It must not be implemented or displayed as validated until weights and category thresholds have been reviewed and calibrated by relevant occupational therapy and architectural professionals.
+   - The score must never be described as being validated by BFA, CIBSE, or CDC STEADI.
+3. **Primary-Source Standards Hierarchy & Applicability Scope**:
+   - For Hong Kong environments, the primary statutory design document is the **Hong Kong Buildings Department *Design Manual: Barrier Free Access 2008 (2025 Edition)*** (First issue: December 2008; Current revision: June 2025; Official URL: [BFA 2008 (2025 Edition)](https://www.bd.gov.hk/doc/en/resources/codes-and-references/code-and-design-manuals/BFA2008_e.pdf)).
+   - **Scope of Application & Statutory Limits**: Statutory BFA requirements depend strictly on building type, designated accessible routes, alteration/addition status, exemptions, and extent-of-application provisions under the Buildings Ordinance (Cap. 123) and Building (Planning) Regulations. Statutory requirements for commercial, institutional, or healthcare premises do not automatically apply to private domestic apartments.
    - US ADA 2010 standards and UK Building Regulations Part M are comparative international benchmarks only and must not be cited as default Hong Kong requirements.
 
 ---
 
 ## 2. Standards Traceability Matrix (Primary Sources vs. Product Assumptions)
 
-| Rule ID | Metric / Threshold | Jurisdiction | Primary Source Document | Edition / Year | Section, Clause, or Page | Official Primary-Source URL | Applicability | Classification |
+| Rule ID | Metric / Threshold | Jurisdiction | Primary Source Document | Edition / Year | Section, Clause, or Paragraph | Official Primary-Source URL | Applicability | Classification |
 | :--- | :--- | :---: | :--- | :---: | :--- | :--- | :--- | :--- |
-| **STD-01** | Minimum clear width of accessible corridor / path: **1050 mm** | Hong Kong | BD Design Manual: Barrier Free Access | 2008 | Division 2, Section 12, Clause 12.1 | [https://www.bd.gov.hk](https://www.bd.gov.hk/doc/en/resources/codes-and-references/code-and-design-manuals/bfa2008_e.pdf) | Clinics, care facilities, commercial & public buildings | **Statutory requirement** |
-| **STD-02** | Minimum clear width of doorway opening: **800 mm** | Hong Kong | BD Design Manual: Barrier Free Access | 2008 | Division 3, Section 17, Clause 17.1 | [https://www.bd.gov.hk](https://www.bd.gov.hk/doc/en/resources/codes-and-references/code-and-design-manuals/bfa2008_e.pdf) | Clinics, care facilities, accessible domestic units | **Statutory requirement** |
-| **STD-03** | Minimum wheelchair turning space: **1500 mm × 1500 mm** | Hong Kong | BD Design Manual: Barrier Free Access | 2008 | Division 2, Section 12, Clause 12.2 | [https://www.bd.gov.hk](https://www.bd.gov.hk/doc/en/resources/codes-and-references/code-and-design-manuals/bfa2008_e.pdf) | Clinics, care facilities, commercial & public buildings | **Statutory requirement** |
-| **STD-04** | Continuous handrail height: **850 mm – 950 mm** above finished floor level | Hong Kong | BD Design Manual: Barrier Free Access | 2008 | Division 3, Section 18, Clause 18.1 | [https://www.bd.gov.hk](https://www.bd.gov.hk/doc/en/resources/codes-and-references/code-and-design-manuals/bfa2008_e.pdf) | Corridors and ramps in public and care buildings | **Statutory requirement** |
-| **STD-05** | Healthcare circulation corridor maintained illuminance: **200 Lux** | UK / Intl | CIBSE / SLL Lighting Guide 2: Hospitals and Health Care Buildings | 2019 | Section 5.3 (Circulation areas), Table 2 | [https://www.cibse.org](https://www.cibse.org) | Hospitals, outpatient clinics, healthcare circulation | **Official design guidance** |
-| **STD-06** | General consulting room maintained illuminance: **500 Lux** (task) / **300 Lux** (ambient) | UK / Intl | CIBSE / SLL Code for Lighting | 2022 | Section 7.4 (Health care premises) | [https://www.cibse.org](https://www.cibse.org) | Consultation and examination rooms | **Official design guidance** |
-| **STD-07** | Clinical mobility screening protocol (TUG, 30s chair stand, 4-stage balance) | USA / Intl | CDC STEADI: Algorithm for Fall Risk Screening | 2019 | Provider Clinical Algorithm | [https://www.cdc.gov/steadi](https://www.cdc.gov/steadi) | Clinical patient intake and risk stratification | **Clinical guidance** |
+| **STD-01a** | Clear width of accessible route: not less than **1050 mm** | Hong Kong | BD Design Manual: Barrier Free Access 2008 (2025 Edition) | 2008 (Rev. Jun 2025) | Chapter 4, Division 4 — Access Route, Paragraph 12(1) | [BFA 2008 PDF](https://www.bd.gov.hk/doc/en/resources/codes-and-references/code-and-design-manuals/BFA2008_e.pdf) | Accessible routes within applicable building scope | **Obligatory Design Requirement** |
+| **STD-01b** | Clear width of internal corridors, lobbies, and paths: not less than **1050 mm** | Hong Kong | BD Design Manual: Barrier Free Access 2008 (2025 Edition) | 2008 (Rev. Jun 2025) | Chapter 4, Division 9 — Corridors, Lobbies, Paths, Paragraph 31(a) | [BFA 2008 PDF](https://www.bd.gov.hk/doc/en/resources/codes-and-references/code-and-design-manuals/BFA2008_e.pdf) | Internal corridors, lobbies, paths within applicable building scope | **Obligatory Design Requirement** |
+| **STD-02** | Clear width of doorway opening: not less than **800 mm** | Hong Kong | BD Design Manual: Barrier Free Access 2008 (2025 Edition) | 2008 (Rev. Jun 2025) | Chapter 4, Division 10 — Doors, Paragraph 38 | [BFA 2008 PDF](https://www.bd.gov.hk/doc/en/resources/codes-and-references/code-and-design-manuals/BFA2008_e.pdf) | Doors on accessible routes within applicable building scope | **Obligatory Design Requirement** |
+| **STD-03a** | Space not less than **1500 mm × 1500 mm** provided within 3500 mm of every dead end | Hong Kong | BD Design Manual: Barrier Free Access 2008 (2025 Edition) | 2008 (Rev. Jun 2025) | Chapter 4, Division 9 — Corridors, Lobbies, Paths, Paragraph 31(b) | [BFA 2008 PDF](https://www.bd.gov.hk/doc/en/resources/codes-and-references/code-and-design-manuals/BFA2008_e.pdf) | Internal corridors, lobbies, and paths with dead ends | **Obligatory Design Requirement** (dead-end specific) |
+| **STD-03b** | Universal wheelchair turning space across arbitrary rooms/junctions | N/A | None (Commonly cited international 1500 mm circle heuristic) | N/A | N/A | None | General room interiors | **TBD — requires verification of applicable primary provision** |
+| **STD-04** | Top of handrail between **850 mm and 950 mm** above finished floor level | Hong Kong | BD Design Manual: Barrier Free Access 2008 (2025 Edition) | 2008 (Rev. Jun 2025) | Chapter 4, Division 8 — Handrails, Paragraph 28(2) | [BFA 2008 PDF](https://www.bd.gov.hk/doc/en/resources/codes-and-references/code-and-design-manuals/BFA2008_e.pdf) | Handrails associated with ramps and steps under Division 8 (not universally mandated for every flat corridor) | **Obligatory Design Requirement (Ramps/Steps)** |
+| **STD-05** | Healthcare circulation corridor maintained illuminance: **200 Lux** | UK / Intl | CIBSE / SLL Lighting Guide 02: Lighting for healthcare premises | 2019 (Peer reviewed) | Circulation areas (unverified clause in licensed text) | [CIBSE LG02 Catalogue](https://www.cibse.org/knowledge-library/knowledge-items/detail?id=a0q0O00000G0l1KQAR) | Hospitals, outpatient clinics, healthcare circulation | **Source document identified; exact threshold and clause require verification from full licensed document before implementation** |
+| **STD-06** | General consulting room maintained illuminance: **500 Lux** (task) / **300 Lux** (ambient) | UK / Intl | CIBSE / SLL Lighting Guide 02: Lighting for healthcare premises | 2019 (Peer reviewed) | Consulting rooms (unverified clause in licensed text) | [CIBSE LG02 Catalogue](https://www.cibse.org/knowledge-library/knowledge-items/detail?id=a0q0O00000G0l1KQAR) | Consultation and examination rooms | **Source document identified; exact threshold and clause require verification from full licensed document before implementation** |
+| **STD-07** | Clinical mobility screening protocol (TUG, 30s chair stand, 4-stage balance) | USA / Intl | CDC STEADI: Algorithm for Fall Risk Screening | 2019 | Provider Clinical Algorithm | [CDC STEADI](https://www.cdc.gov/steadi) | Clinical patient intake and risk stratification | **Clinical guidance** |
 | **STD-08** | Preferred rollator walker corridor clearance: **90 cm** | N/A | None (Derived from 65 cm walker width + 25 cm sway buffer) | N/A | N/A | None | Domestic & clinic walking paths | **TBD — requires OT/building-code validation** |
 | **STD-09** | Maximum unsupported walking distance between handrails/resting points: **1.5 m** | N/A | None (Common clinical OT heuristic for frail elderly gait) | N/A | N/A | None | Corridor and residential transit routes | **TBD — requires OT validation** |
 | **STD-10** | Universal corridor illuminance: **200 Lux** across all domestic residences | N/A | None (Domestic night lighting requires 50–100 Lux to avoid circadian disruption) | N/A | N/A | None | Private apartments and residences | **TBD — requires OT/lighting validation** |
@@ -45,7 +49,7 @@ In elder care, clinical environments, and residential planning, safety assessmen
 
 | Displayed Metric / Claim | Currently Displayed Value | Code Symbol & Location | True Nature of Current Implementation | Evidentiary Assessment |
 | :--- | :--- | :--- | :--- | :--- |
-| **Environmental Risk Index** | `68 / 100 (High Risk)` | `spatial-model.ts:935` | Hardcoded step clamped based exclusively on `chair-c04` proximity. | **Unsupported product assumption**. Must be renamed to Environmental Hazard Score and calibrated with OTs. |
+| **Environmental Risk Index** | `68 / 100 (High Risk)` | `spatial-model.ts:935` | Hardcoded step clamped based exclusively on `chair-c04` proximity. | **Unsupported product assumption**. Must prioritize individual rule violations; composite score is experimental. |
 | **Narrowest Clearance** | `54 cm` | `spatial-model.ts:576, 905` | Hardcoded literal `54` if `chair-c04` is within 50 cm of point (235, 260). | **Unsupported hardcoding**. Must be replaced with Minkowski dilation corridor calculation. |
 | **Sharp Corner Clearance** | `28 cm` to table | `spatial-model.ts:593` | Static string in `INITIAL_HAZARDS[1]`. | **Unsupported static fixture**. |
 | **Corridor Illuminance** | `110 Lux` / `85 Lux` | `spatial-model.ts:609`, `risk-analysis.tsx:62` | Static text in fixture descriptions; values conflict between files. | **Unsupported static fixture**. |
@@ -60,9 +64,14 @@ In elder care, clinical environments, and residential planning, safety assessmen
 
 ## 4. Proposed Environmental Hazard Scoring Model (Product Hypothesis)
 
-Until empirical multi-center clinical validation is conducted, the software must avoid claiming that its score predicts a resident's clinical likelihood of falling. Instead, the system outputs an **Environmental Hazard Score (EHS)** representing the density and severity of physical guideline deviations.
+Until multi-center clinical validation is conducted, the software must avoid claiming that its score predicts a resident's clinical likelihood of falling. Instead, Stage 4's primary output must be transparent individual rule violations, measurements, provenance, and severity.
 
-### Product Hypothesis Formula (Subject to OT Panel Review)
+A composite Environmental Hazard Score (EHS) is an optional and experimental product hypothesis. Do not implement or display a composite score as validated until weights and category thresholds have been reviewed by relevant professionals. Do not describe the score as being validated by BFA, CIBSE, or CDC STEADI.
+
+### Illustrative Product Hypothesis Formula (Not Approved for Implementation or User-Facing Safety Decisions)
+
+> [!IMPORTANT]
+> Illustrative product hypothesis — not approved for implementation or user-facing safety decisions.
 
 $$\text{EHS} = \min\left(100, \sum_{k \in \text{Hazards}} S(k) \times W(\text{profile}, k)\right)$$
 
@@ -75,8 +84,8 @@ Where:
 - $W(\text{profile}, k)$ is a profile vulnerability multiplier ($1.0\dots1.5$) reflecting specific user limitations (e.g. a low-light deficit is weighted higher for a user with limited vision).
 
 ### Governance Rule
-During Stages 1 through 4, all UI screens must present:
+During Stages 1 through 4, all UI screens must prioritize:
 1. Exact measured dimensions (e.g. "Measured clear width: 72 cm · Standard: 105 cm · Deficit: 33 cm").
-2. The specific standard reference (e.g. "HK BFA 2008 Clause 12.1").
+2. The specific standard reference (e.g. "HK BFA 2008 Chapter 4 Division 4 Para 12(1)").
 3. Individual hazard counts by severity level.
-4. Composite EHS marked as an advisory product heuristic.
+4. Any composite EHS is optional, experimental, and must remain unvalidated until professional review.

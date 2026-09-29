@@ -104,9 +104,9 @@ To prevent vendor lock-in, external service providers are treated as interchange
 - **Door-Swing Egress Arc**: Calculate circular sector polygons representing door-swing trajectories; flag furniture intersections as door-swing hazards.
 
 ### 3. Compliance & Fall Risk Rule Engine
-- Implement a decoupled rules registry (`src/lib/rules/`) referencing established building design manuals (HK BFA 2008) and lighting guidelines (CIBSE LG2).
-- Output individual rule compliance results with exact measurement deficits before computing composite indices.
-- Composite score designated as **Environmental Hazard Score (EHS)**, representing environmental guideline deviation density, **not** an individual's personal probability of falling.
+- Implement a decoupled rules registry (`src/lib/rules/`) referencing established building design manuals (HK BFA 2008) and lighting guidelines (CIBSE LG02, subject to primary text verification).
+- Primary engine output: transparent individual rule compliance results with exact physical measurements, provenance, and severity ratings.
+- Composite score designated as an optional, experimental **Environmental Hazard Score (EHS)**, representing environmental guideline deviation density, **not** an individual's personal probability of falling, and not validated as a clinical prediction.
 
 ### 4. Constraint-Based Layout Optimiser
 - Deterministic heuristic solver: Evaluate candidate furniture translations and rotations against room boundaries and clearance corridors.

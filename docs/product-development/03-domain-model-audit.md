@@ -158,7 +158,7 @@ export interface CanonicalRoute {
 export interface CanonicalHazard {
   id: UUID;
   code: string; // e.g. HZ-01
-  ruleId: string; // Standard reference, e.g. "HK-BFD-2008-SEC12"
+  ruleId: string; // Standard reference, e.g. "HK-BFA-2008-DIV4-P12"
   severity: "low" | "medium" | "high" | "critical";
   position: Point2D;
   affectedObjectId?: UUID;

@@ -110,27 +110,30 @@ This implementation plan defines the gated roadmap for SafeSpace from Stage 1 th
 
 ## Stage 4: Evidence-Backed Fall Risk Engine
 
-- **Goal**: Replace hardcoded risk numbers (68, 41, 27) with an empirical, multi-factor Environmental Hazard Score (EHS) mapped to verified statutory standards (HK BFA 2008, CIBSE LG2), separating spatial hazard metrics from clinical patient screening (CDC STEADI).
+- **Goal**: Replace hardcoded risk numbers (68, 41, 27) with a deterministic compliance and hazard engine whose primary output is transparent individual rule violations, exact physical measurements, provenance, and severity. An optional, experimental Environmental Hazard Score (EHS) is formulated as a product hypothesis, strictly separated from clinical patient screening (CDC STEADI).
 - **In Scope**:
-  - Standard rule registry (`RuleRegistry.ts`) referencing HK BFA 2008 and CIBSE LG2 for spatial geometry and lighting.
-  - Explicit separation between spatial Environmental Hazard Score (EHS, $0\dots100$) and clinical functional fall screening (CDC STEADI).
+  - Standard rule registry (`RuleRegistry.ts`) referencing HK BFA 2008 (statutory provisions) and CIBSE LG02 (lighting guidance; lighting thresholds remain pending primary licensed document verification before implementation).
+  - Explicit separation between spatial environmental hazard identification and clinical patient fall screening (CDC STEADI). CDC STEADI does not validate spatial formulas.
+  - Primary engine output: transparent individual rule violations, measured dimensions, provenance, and severity grading.
   - Dynamic hazard generation: identifies pinch points, sharp corners, lighting deficits, unsupported spans, and trip thresholds from real geometry.
-  - Hazard queue sorting, severity grading (Critical, High, Medium, Low), and measured evidence formatting.
   - Clear flagging of unvalidated thresholds as "TBD — requires OT/building-code validation".
+  - Optional, experimental composite Environmental Hazard Score (EHS, $0\dots100$): not implemented or displayed as validated until reviewed by relevant professionals; never described as validated by BFA, CIBSE, or CDC STEADI.
 - **Out of Scope**:
+  - Implementing unverified CIBSE lighting rules (200/300/500 lux) before full licensed document verification.
   - Layout alternative optimization (deferred to Stage 5).
   - Sensor hardware procurement or procurement pricing (deferred to Stage 7).
 - **Dependencies**: Stage 3 (Geometry Engine & Dynamic Clearances).
 - **Major Implementation Tasks**:
-  1. Author rule evaluation modules for clearance, corner proximity, lighting, thresholds, and support gaps.
-  2. Implement multi-factor weighted risk formula: $\text{EHS} = \min(100, \sum w_i \cdot P_i)$.
-  3. Replace `INITIAL_HAZARDS` and `calculateLiveMetrics` in `spatial-model.ts`.
-  4. Connect Stage 4 hazard list directly to live evaluation output.
+  1. Author rule evaluation modules for corridor clearance, door width, corner proximity, thresholds, and support gaps.
+  2. Implement experimental composite formula: $\text{EHS} = \min(100, \sum w_i \cdot P_i)$ (labeled: *Illustrative product hypothesis — not approved for implementation or user-facing safety decisions*).
+  3. Replace `INITIAL_HAZARDS` and `calculateLiveMetrics` in `spatial-model.ts` with dynamic rule evaluation output.
+  4. Connect Stage 4 hazard list directly to live individual rule evaluation output.
 - **Required Tests**:
   - Deterministic evaluation test suite verifying that placing a barrier produces the exact expected hazard code and severity.
-  - Sensitivity analysis tests ensuring risk index scales smoothly without discrete jumps.
+  - Individual rule violation assertion suite checking measured vs. required physical dimensions.
 - **Acceptance Criteria**:
-  - Placing, removing, or resizing any object immediately generates or resolves the corresponding hazard in the live UI with verifiable evidence citations.
+  - Placing, removing, or resizing any object immediately generates or resolves the corresponding individual hazard in the live UI with verifiable evidence citations and measurements.
+  - Any displayed composite score is explicitly marked as an experimental product hypothesis.
 - **Risks**: Weight tuning controversy between clinical guidelines.
 - **Suggested Branch Name**: `stage-4-evidence-risk-engine`
 - **Expected Review Evidence**: Traceability matrix proving every displayed hazard originates from an evaluated rule.
@@ -218,7 +221,7 @@ This implementation plan defines the gated roadmap for SafeSpace from Stage 1 th
   - Commercial billing or paid subscription gates.
 - **Dependencies**: Stage 4 (Risk Engine) and Stage 5 (Layout Optimizer).
 - **Major Implementation Tasks**:
-  1. Implement AI endpoint invoking Gemini API with strict structured JSON output schemas.
+  1. Implement an AIExtractionProvider adapter and configure one approved multimodal provider through the external serverless backend. (Candidate providers such as Google Gemini, OpenAI, or Anthropic Claude may be considered; no provider has been selected by the team yet).
   2. Implement draft geometry preview and human confirmation workflow in 2D editor.
   3. Implement sensor placement heuristics targeting unmonitored high-risk zones.
   4. Build PDF generation pipeline (`@react-pdf/renderer` or server-side headless Chromium print).
@@ -292,10 +295,10 @@ This implementation plan defines the gated roadmap for SafeSpace from Stage 1 th
 SafeSpace replaces generic "ready for clinical trials and public launch" claims with four strictly separated operational readiness tiers:
 
 ```
-[ Gate 1: Hackathon Demo ] ──> [ Gate 2: Controlled Pilot ] ──> [ Gate 3: Public Release ] ──> [ Gate 4: Clinical Validation ]
-  - Simulated fixtures           - Real client floorplans       - General public               - Formal clinical trial
-  - Synthetic data disclaimer    - Human OT in the loop         - Multi-tenant accounts        - IRB / Ethics approval
-  - Zero fatal unhandled crash   - Statutory code alignment     - WCAG 2.1 AA & PII scrubbed   - SaMD regulatory review
+[ Gate 1: Hackathon Demo ] ──> [ Gate 2: Controlled Pilot ] ──> [ Gate 3: Public Release ] ──> [ Gate 4: Regulatory & Clinical Assessment ]
+  - Simulated fixtures           - Real client floorplans       - General public               - Intended-use assessment
+  - Synthetic data disclaimer    - Human OT in the loop         - Multi-tenant accounts        - Conditional SaMD / ethics review
+  - Zero fatal unhandled crash   - Statutory code alignment     - WCAG 2.1 AA & PII scrubbed   - Decision support vs medical device
 ```
 
 #### Gate 1: Hackathon Demo Readiness
@@ -324,14 +327,13 @@ SafeSpace replaces generic "ready for clinical trials and public launch" claims 
   - Comprehensive legal terms of service, privacy policy, and liability disclaimers stating the system provides spatial decision support, not medical diagnosis.
 - **Restrictions**: Cannot claim certified medical device or clinical diagnostic efficacy.
 
-#### Gate 4: Formal Clinical Validation Readiness
-- **Intended Use**: Certified clinical intervention tool with evidence-backed fall reduction claims.
+#### Gate 4: Intended-Use & Regulatory-Classification Assessment
+- **Intended Use**: Determine formal regulatory status and clinical evidence requirements based on product positioning.
 - **Requirements**:
-  - Prospective clinical trial or randomized controlled trial (RCT) protocol approved by an Institutional Review Board (IRB) or Human Research Ethics Committee (HREC).
-  - Statistically significant fall incidence reduction outcomes published in peer-reviewed clinical literature.
-  - Regulatory classification determination under Software as a Medical Device (SaMD) frameworks (e.g., US FDA 21 CFR Part 820 / EU MDR 2017/745 / HK MDCO).
-  - Formal clinical risk management system (ISO 14971) and quality management system (ISO 13485) implementation.
-- **Restrictions**: No clinical claims of fall reduction or diagnostic efficacy may be made until Gate 4 is fully completed.
+  - Conduct intended-use and regulatory-classification assessment first.
+  - **If SafeSpace makes clinical efficacy, diagnostic, or medical-device claims**: Determine the required clinical study (e.g. prospective trial or RCT), Institutional Review Board (IRB) / ethics approval, quality-management system (e.g. ISO 13485), risk management system (ISO 14971), and regulatory route under Software as a Medical Device (SaMD) frameworks (e.g. US FDA, EU MDR, HK MDCO).
+  - **If SafeSpace remains environmental decision support**: Document applicable building standards, data privacy, consumer protection, and professional clinical-review obligations without presenting or regulating the software as a medical device.
+- **Restrictions**: Do not make clinical fall-reduction or medical diagnostic claims that the team has not adopted or validated through the required regulatory pathway.
 
 - **Suggested Branch Name**: `stage-9-hardening-demo-readiness`
 - **Expected Review Evidence**: Full Playwright test run recording, Lighthouse audit report, and Stage Gate Verification Dossier.
