@@ -17,6 +17,8 @@ export type EditorShellProps = {
   /** External mode control */
   mode?: "current" | "proposed";
   onModeChange?: (mode: "current" | "proposed") => void;
+  facilityName?: string;
+  spaceName?: string;
 };
 
 export function EditorShell({
@@ -27,6 +29,8 @@ export function EditorShell({
   showBeforeAfter = false,
   mode: externalMode,
   onModeChange,
+  facilityName = "Queen Care Clinic",
+  spaceName = "Waiting Area & Consultation Corridor",
 }: EditorShellProps) {
   const [internalMode, setInternalMode] = useState<"current" | "proposed">("current");
   const mode = externalMode ?? internalMode;
@@ -102,8 +106,8 @@ export function EditorShell({
       }}>
         <div>
           <div style={{ font: "700 13px system-ui", color: "#26373b" }}>
-            Harmony Elder Care Centre{" "}
-            <span style={{ fontWeight: 500, color: "#7a888c" }}>/ Activity room</span>
+            {facilityName}{" "}
+            {spaceName && <span style={{ fontWeight: 500, color: "#7a888c" }}>/ {spaceName}</span>}
           </div>
           <div style={{ font: "500 11px system-ui", color: "#829094", marginTop: 2 }}>
             Scale 1:50 · {mode === "proposed" ? "Proposed layout" : "Current layout"}

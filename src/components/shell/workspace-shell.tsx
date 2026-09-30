@@ -27,19 +27,19 @@ export function WorkspaceShell({ children, activeStep, status = "Session only" }
           <span role="status" className="rounded-full bg-slate-100 px-2.5 py-1 text-xs font-medium text-slate-600 border border-slate-200">{status}</span>
         </div>
       </header>
-      <div className="grid lg:grid-cols-[13rem_minmax(0,1fr)]">
-        <aside className="border-b border-slate-200 bg-white p-3 lg:min-h-[calc(100dvh-4rem)] lg:border-b-0 lg:border-r">
+      <div className="grid lg:grid-cols-[15.5rem_minmax(0,1fr)]">
+        <aside className="border-b border-slate-200 bg-white p-3 lg:min-h-[calc(100dvh-4rem)] lg:border-b-0 lg:border-r overflow-x-hidden">
           <p className="px-3 py-2 text-[11px] font-bold uppercase tracking-wider text-slate-400">Assessment Workflow</p>
-          <ol className="flex gap-1 overflow-x-auto lg:grid lg:gap-1" aria-label="Assessment progress">
+          <ol className="flex gap-1 overflow-x-auto lg:overflow-x-visible lg:grid lg:gap-1" aria-label="Assessment progress">
             {steps.map((step, index) => (
               <li key={step.id}>
                 <Link
                   href={step.href}
                   aria-current={step.id === activeStep ? "step" : undefined}
-                  className="flex min-w-max items-center gap-2.5 rounded-lg px-3 py-2.5 text-xs font-medium text-slate-600 hover:bg-slate-100 aria-[current=step]:bg-teal-50 aria-[current=step]:font-semibold aria-[current=step]:text-teal-800"
+                  className="flex min-w-max lg:min-w-0 lg:w-full items-center gap-2.5 rounded-lg px-3 py-2.5 text-xs font-medium text-slate-600 hover:bg-slate-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-teal-700 aria-[current=step]:bg-teal-50 aria-[current=step]:font-semibold aria-[current=step]:text-teal-800"
                 >
                   <span
-                    className={`grid size-5 place-items-center rounded-full text-[11px] font-semibold ${
+                    className={`grid size-5 place-items-center rounded-full text-[11px] font-semibold shrink-0 ${
                       index < activeIndex
                         ? "bg-teal-700 text-white"
                         : index === activeIndex
@@ -49,7 +49,7 @@ export function WorkspaceShell({ children, activeStep, status = "Session only" }
                   >
                     {index + 1}
                   </span>
-                  {step.label.replace(/^\d+\.\s*/, '')}
+                  <span className="truncate lg:whitespace-normal">{step.label.replace(/^\d+\.\s*/, '')}</span>
                 </Link>
               </li>
             ))}
