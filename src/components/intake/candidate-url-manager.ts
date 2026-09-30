@@ -60,7 +60,42 @@ export function confirmCandidateUrl(
 }
 
 /**
- * Cleans up all managed URLs on unmount.
+ * Disposes any active candidate URL when superseding with a non-replacement action.
+ */
+export function disposeCandidateUrl(
+  state: CandidateUrlState,
+  revokeFn: (url: string) => void = (url) => URL.revokeObjectURL(url)
+): CandidateUrlState {
+  if (state.candidateUrl) {
+    revokeFn(state.candidateUrl);
+  }
+  return {
+    activeUrl: state.activeUrl,
+    candidateUrl: null,
+  };
+}
+
+/**
+ * Confirms remove_file action, revoking both the active URL and any candidate URL.
+ */
+export function confirmRemoveUrl(
+  state: CandidateUrlState,
+  revokeFn: (url: string) => void = (url) => URL.revokeObjectURL(url)
+): CandidateUrlState {
+  if (state.candidateUrl) {
+    revokeFn(state.candidateUrl);
+  }
+  if (state.activeUrl && state.activeUrl !== state.candidateUrl) {
+    revokeFn(state.activeUrl);
+  }
+  return {
+    activeUrl: null,
+    candidateUrl: null,
+  };
+}
+
+/**
+ * Cleans up all managed URLs on unmount idempotently.
  */
 export function cleanupAllUrls(
   state: CandidateUrlState,
@@ -69,7 +104,7 @@ export function cleanupAllUrls(
   if (state.candidateUrl) {
     revokeFn(state.candidateUrl);
   }
-  if (state.activeUrl) {
+  if (state.activeUrl && state.activeUrl !== state.candidateUrl) {
     revokeFn(state.activeUrl);
   }
   return {

@@ -8,6 +8,7 @@ import {
 import {
   formatFileSize,
   validateFloorplanFile,
+  verifyImageDecodable,
 } from "./intake-validation";
 
 export type FloorplanDropzoneProps = {
@@ -25,7 +26,7 @@ export function FloorplanDropzone({
   const [validationError, setValidationError] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  const processFile = (file: File) => {
+  const processFile = async (file: File) => {
     setValidationError(null);
     const validation = validateFloorplanFile(file);
     if (!validation.isValid) {
@@ -36,6 +37,20 @@ export function FloorplanDropzone({
     const objectUrl = URL.createObjectURL(file);
     const isPdf =
       file.type === "application/pdf" || file.name.toLowerCase().endsWith(".pdf");
+
+    if (!isPdf) {
+      const isDecodable = await verifyImageDecodable(objectUrl);
+      if (!isDecodable) {
+        URL.revokeObjectURL(objectUrl);
+        if (fileInputRef.current) {
+          fileInputRef.current.value = "";
+        }
+        setValidationError(
+          "This image could not be read. Choose a valid PNG, JPEG, or SVG file."
+        );
+        return;
+      }
+    }
 
     const fileInfo: UploadedFileInfo = {
       file,

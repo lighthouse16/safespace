@@ -7,7 +7,7 @@ const nav = [
 ];
 
 export type AppShellProps = {
-  children: ReactNode;
+  children?: ReactNode;
   activePath?: string;
   facilityName?: string | null;
   workspaceLabel?: string;
@@ -32,17 +32,17 @@ export function AppShell({
         </Link>
         <div className="flex items-center gap-3 text-sm">
           {facilityName ? (
-            <button className="hidden rounded-lg border border-slate-300 px-3 py-2 text-left sm:block">
+            <div className="hidden rounded-lg border border-slate-300 px-3 py-2 text-left sm:block">
               <span className="block text-xs text-slate-500">Facility</span>
               <span className="font-medium text-slate-900">{facilityName}</span>
-            </button>
+            </div>
           ) : null}
-          <button
-            className="grid size-9 place-items-center rounded-full bg-slate-200 font-semibold"
-            aria-label="Open profile for Maya Chen"
+          <div
+            className="grid size-9 select-none place-items-center rounded-full bg-slate-200 font-semibold text-slate-700"
+            aria-hidden="true"
           >
             MC
-          </button>
+          </div>
         </div>
       </header>
       <div className="mx-auto grid max-w-[1600px] md:grid-cols-[14rem_minmax(0,1fr)]">

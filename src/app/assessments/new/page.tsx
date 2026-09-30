@@ -12,6 +12,8 @@ import {
   registerCandidateUrl,
   cancelCandidateUrl,
   confirmCandidateUrl,
+  disposeCandidateUrl,
+  confirmRemoveUrl,
   cleanupAllUrls,
   type AssessmentDetails,
   type BoundaryState,
@@ -126,6 +128,10 @@ export default function NewAssessmentPage() {
     if (newSource === source) return;
     const hasWork = boundary.vertices.length > 0 || calibration.p1 !== null;
     if (hasWork) {
+      const nextCandidate = disposeCandidateUrl(
+        { activeUrl: activeUrlRef.current, candidateUrl: candidateUrlRef.current }
+      );
+      candidateUrlRef.current = nextCandidate.candidateUrl;
       setPendingChange({ type: "switch_source", targetSource: newSource });
     } else {
       setSource(newSource);
@@ -157,6 +163,10 @@ export default function NewAssessmentPage() {
   const handleFileRemove = () => {
     const hasWork = boundary.vertices.length > 0 || calibration.p1 !== null;
     if (hasWork) {
+      const nextCandidate = disposeCandidateUrl(
+        { activeUrl: activeUrlRef.current, candidateUrl: candidateUrlRef.current }
+      );
+      candidateUrlRef.current = nextCandidate.candidateUrl;
       setPendingChange({ type: "remove_file" });
     } else {
       if (activeUrlRef.current) {
@@ -182,15 +192,18 @@ export default function NewAssessmentPage() {
       setUploadedFile(pendingChange.candidateFile);
     } else if (pendingChange.type === "switch_source") {
       setSource(pendingChange.targetSource);
-      if (candidateUrlRef.current) {
-        URL.revokeObjectURL(candidateUrlRef.current);
-        candidateUrlRef.current = null;
-      }
+      const nextState = disposeCandidateUrl({
+        activeUrl: activeUrlRef.current,
+        candidateUrl: candidateUrlRef.current,
+      });
+      candidateUrlRef.current = nextState.candidateUrl;
     } else if (pendingChange.type === "remove_file") {
-      if (activeUrlRef.current) {
-        URL.revokeObjectURL(activeUrlRef.current);
-        activeUrlRef.current = null;
-      }
+      const nextState = confirmRemoveUrl({
+        activeUrl: activeUrlRef.current,
+        candidateUrl: candidateUrlRef.current,
+      });
+      activeUrlRef.current = nextState.activeUrl;
+      candidateUrlRef.current = nextState.candidateUrl;
       setUploadedFile(null);
     }
 

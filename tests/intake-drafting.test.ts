@@ -11,6 +11,7 @@ import {
   computePixelsPerCm,
   computePixelDistance,
   validateAssessmentDetails,
+  verifyImageDecodable,
   MAX_FILE_SIZE_BYTES,
 } from "../src/components/intake/intake-validation";
 import {
@@ -25,9 +26,12 @@ import {
   registerCandidateUrl,
   cancelCandidateUrl,
   confirmCandidateUrl,
+  disposeCandidateUrl,
+  confirmRemoveUrl,
   cleanupAllUrls,
 } from "../src/components/intake/candidate-url-manager";
 import { FloorplanSourceStep } from "../src/components/intake/FloorplanSourceStep";
+import { AppShell } from "../src/components/shell/app-shell";
 import {
   type Point2D,
   type BoundaryState,
@@ -450,4 +454,138 @@ test("assessments dashboard and new assessment do not render Harmony Elder Care 
   assert.doesNotMatch(newHtml, /Data saved locally/);
   assert.match(newHtml, /New assessment/);
   assert.match(newHtml, /Session only/);
+});
+
+// 10. Image decodability verification tests
+test("verifyImageDecodable returns true when image decodes successfully", async () => {
+  const result = await verifyImageDecodable("blob:valid-image", () => {
+    const mock = {
+      onload: null as (() => void) | null,
+      onerror: null as (() => void) | null,
+      src: "",
+      naturalWidth: 400,
+      naturalHeight: 300,
+      decode: async () => {},
+    };
+    queueMicrotask(() => mock.onload?.());
+    return mock;
+  });
+  assert.equal(result, true);
+});
+
+test("verifyImageDecodable returns false when image decoding rejects", async () => {
+  const result = await verifyImageDecodable("blob:corrupt-image", () => {
+    const mock = {
+      onload: null as (() => void) | null,
+      onerror: null as (() => void) | null,
+      src: "",
+      decode: async () => {
+        throw new Error("Decoding error");
+      },
+    };
+    queueMicrotask(() => mock.onload?.());
+    return mock;
+  });
+  assert.equal(result, false);
+});
+
+test("verifyImageDecodable returns false on image loading error", async () => {
+  const result = await verifyImageDecodable("blob:broken-image", () => {
+    const mock = {
+      onload: null as (() => void) | null,
+      onerror: null as (() => void) | null,
+      src: "",
+    };
+    queueMicrotask(() => mock.onerror?.());
+    return mock;
+  });
+  assert.equal(result, false);
+});
+
+test("verifyImageDecodable returns false when natural dimensions are 0 without decode method", async () => {
+  const result = await verifyImageDecodable("blob:zero-dim-image", () => {
+    const mock = {
+      onload: null as (() => void) | null,
+      onerror: null as (() => void) | null,
+      src: "",
+      naturalWidth: 0,
+      naturalHeight: 0,
+    };
+    queueMicrotask(() => mock.onload?.());
+    return mock;
+  });
+  assert.equal(result, false);
+});
+
+// 11. Extended candidate URL lifecycle edge cases
+test("candidate URL lifecycle: confirmRemoveUrl revokes both active and candidate URLs", () => {
+  const revoked: string[] = [];
+  const mockRevoke = (url: string) => revoked.push(url);
+
+  const initial = { activeUrl: "blob:active-1", candidateUrl: "blob:candidate-1" };
+  const result = confirmRemoveUrl(initial, mockRevoke);
+
+  assert.equal(result.activeUrl, null);
+  assert.equal(result.candidateUrl, null);
+  assert.deepEqual(revoked, ["blob:candidate-1", "blob:active-1"]);
+});
+
+test("candidate URL lifecycle: disposeCandidateUrl revokes pending candidate URL and preserves active", () => {
+  const revoked: string[] = [];
+  const mockRevoke = (url: string) => revoked.push(url);
+
+  const initial = { activeUrl: "blob:active-1", candidateUrl: "blob:candidate-1" };
+  const result = disposeCandidateUrl(initial, mockRevoke);
+
+  assert.equal(result.activeUrl, "blob:active-1");
+  assert.equal(result.candidateUrl, null);
+  assert.deepEqual(revoked, ["blob:candidate-1"]);
+
+  // No-op when candidateUrl is null
+  const noCandidate = { activeUrl: "blob:active-1", candidateUrl: null };
+  const resultNoCandidate = disposeCandidateUrl(noCandidate, mockRevoke);
+  assert.equal(resultNoCandidate.activeUrl, "blob:active-1");
+  assert.equal(resultNoCandidate.candidateUrl, null);
+  assert.deepEqual(revoked, ["blob:candidate-1"]);
+});
+
+test("candidate URL lifecycle: cleanupAllUrls is idempotent and does not double-revoke identical URLs", () => {
+  const revoked: string[] = [];
+  const mockRevoke = (url: string) => revoked.push(url);
+
+  const identical = { activeUrl: "blob:shared-url", candidateUrl: "blob:shared-url" };
+  const result = cleanupAllUrls(identical, mockRevoke);
+
+  assert.equal(result.activeUrl, null);
+  assert.equal(result.candidateUrl, null);
+  assert.deepEqual(revoked, ["blob:shared-url"]);
+
+  // Empty state cleanup causes 0 revocations
+  const emptyState = { activeUrl: null, candidateUrl: null };
+  const resultEmpty = cleanupAllUrls(emptyState, mockRevoke);
+  assert.equal(resultEmpty.activeUrl, null);
+  assert.equal(resultEmpty.candidateUrl, null);
+  assert.deepEqual(revoked, ["blob:shared-url"]);
+});
+
+// 12. Non-interactive shell header verification
+test("AppShell header renders facility identity and avatar as non-interactive elements without button semantics", () => {
+  const html = renderToStaticMarkup(
+    React.createElement(
+      AppShell,
+      { facilityName: "SafeSpace workspace" },
+      React.createElement("div", null, "Child content")
+    )
+  );
+
+  // Facility identity must NOT be a button
+  assert.doesNotMatch(html, /<button[^>]*>[\s\S]*SafeSpace workspace[\s\S]*<\/button>/);
+  assert.match(html, /<div[^>]*>[\s\S]*SafeSpace workspace[\s\S]*<\/div>/);
+
+  // Avatar must NOT be a button
+  assert.doesNotMatch(html, /<button[^>]*>[\s\S]*MC[\s\S]*<\/button>/);
+  assert.match(html, /<div[^>]*>[\s\S]*MC[\s\S]*<\/div>/);
+
+  // Misleading profile action label must be completely absent
+  assert.doesNotMatch(html, /Open profile for Maya Chen/);
 });

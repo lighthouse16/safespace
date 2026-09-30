@@ -133,3 +133,59 @@ export function validateAssessmentDetails(details: AssessmentDetails): Record<st
 
   return errors;
 }
+
+export type MockImageInstance = {
+  onload: (() => void) | null;
+  onerror: (() => void) | null;
+  src: string;
+  naturalWidth?: number;
+  naturalHeight?: number;
+  decode?: () => Promise<void>;
+};
+
+/**
+ * Verifies that the browser can decode and render an image (PNG, JPEG, SVG).
+ * Resolves true if decoding succeeds, false if decoding fails.
+ */
+export async function verifyImageDecodable(
+  objectUrl: string,
+  imageFactory?: () => MockImageInstance
+): Promise<boolean> {
+  return new Promise((resolve) => {
+    if (imageFactory) {
+      const img = imageFactory();
+      img.onload = () => {
+        if (typeof img.decode === "function") {
+          img.decode()
+            .then(() => resolve(true))
+            .catch(() => resolve(false));
+        } else {
+          resolve((img.naturalWidth ?? 1) > 0 && (img.naturalHeight ?? 1) > 0);
+        }
+      };
+      img.onerror = () => resolve(false);
+      img.src = objectUrl;
+      return;
+    }
+
+    if (typeof Image === "undefined") {
+      resolve(true);
+      return;
+    }
+
+    const img = new Image();
+    img.onload = () => {
+      if (typeof img.decode === "function") {
+        img.decode()
+          .then(() => resolve(img.naturalWidth > 0 && img.naturalHeight > 0))
+          .catch(() => resolve(false));
+      } else {
+        resolve(img.naturalWidth > 0 && img.naturalHeight > 0);
+      }
+    };
+    img.onerror = () => {
+      resolve(false);
+    };
+    img.src = objectUrl;
+  });
+}
