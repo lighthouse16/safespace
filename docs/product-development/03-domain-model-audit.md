@@ -91,16 +91,6 @@ export type UUID = string;
 export type Point2D = { readonly x: number; readonly y: number }; // cm
 export type Polygon2D = readonly Point2D[];
 
-export interface CanonicalRoom {
-  id: UUID;
-  floorId: UUID;
-  name: string;
-  category: "waiting" | "reception" | "corridor" | "bedroom" | "bathroom" | "consultation" | "general";
-  boundary: Polygon2D; // Supports non-rectangular rooms
-  targetIlluminanceLux: number;
-  measuredIlluminanceLux?: number;
-}
-
 export interface ThresholdSource {
   type: "user-measurement" | "verified-rule" | "clinical-input";
   referenceId: string;
@@ -114,6 +104,16 @@ export interface SourcedQuantity<U extends string> {
   value: number;
   unit: U;
   source: ThresholdSource;
+}
+
+export interface CanonicalRoom {
+  id: UUID;
+  floorId: UUID;
+  name: string;
+  category: "waiting" | "reception" | "corridor" | "bedroom" | "bathroom" | "consultation" | "general";
+  boundary: Polygon2D; // Supports non-rectangular rooms
+  targetIlluminance?: SourcedQuantity<"lux">;
+  measuredIlluminanceLux?: number;
 }
 
 export interface CanonicalOpening {
@@ -174,15 +174,19 @@ export interface CanonicalRoute {
 export interface CanonicalHazard {
   id: UUID;
   code: string; // e.g. HZ-01
-  ruleId: string; // Standard reference, e.g. "HK-BFA-2008-DIV4-P12"
+  ruleId?: string; // Standard reference, e.g. "HK-BFA-2008-DIV4-P12" (required for statutory rules, optional for user/clinical requirements)
   severity: "low" | "medium" | "high" | "critical";
   position: Point2D;
   affectedObjectId?: UUID;
   affectedOpeningId?: UUID;
   measuredValue: number;
+  measurementProvenance:
+    | "deterministic-geometry"
+    | "photometric-calculation"
+    | "manual-observation";
   requiredValue: number;
+  requirementSource: ThresholdSource;
   unit: "cm" | "lux" | "mm" | "m";
-  provenance: "deterministic-geometry" | "photometric-calc" | "manual-observation";
   reviewStatus: "pending" | "verified" | "waived" | "mitigated";
   clinicalRationale?: string;
 }

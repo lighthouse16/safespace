@@ -64,24 +64,13 @@ In elder care, clinical environments, and residential planning, safety assessmen
 
 ## 4. Proposed Environmental Hazard Scoring Model (Product Hypothesis — Reserved and Disabled)
 
-Until multi-center clinical validation is conducted, the software must avoid claiming that its score predicts a resident's clinical likelihood of falling. Instead, Stage 4's primary output must be transparent individual rule violations, measurements, provenance, and severity.
+Unless and until the team explicitly chooses to pursue a validated composite metric and completes the professional, intended-use, and evidence review required for that claim, the software must avoid claiming that its score predicts a resident's clinical likelihood of falling. Instead, Stage 4's primary output must be transparent individual rule violations, measurements, provenance, and severity.
 
 A composite Environmental Hazard Score (EHS) is a reserved, disabled experimental concept. Do not calculate, implement, or display a composite score until weights and category thresholds have been reviewed and approved by relevant occupational therapy and architectural professionals. EHS cannot be used in analysis, optimization, ranking, reports, or UI. Do not describe the score as being validated by BFA, CIBSE, or CDC STEADI.
 
-### Illustrative Product Hypothesis Formula (Reserved, Disabled, and Not Approved for Implementation or User-Facing Safety Decisions)
+### Status of Composite Formula
 
-> [!IMPORTANT]
-> Reserved, disabled product hypothesis — not approved for implementation, optimization, or user-facing safety decisions.
-
-$$\text{EHS} = \min\left(100, \sum_{k \in \text{Hazards}} S(k) \times W(\text{profile}, k)\right)$$
-
-Where:
-- $S(k)$ is the base severity penalty of hazard $k$:
-  - Critical (unpassable route, door blocked, step $> 13\text{ mm}$): $30\text{ points}$.
-  - High (clearance below profile minimum, unrounded corner in sweep zone): $15\text{ points}$.
-  - Medium (illuminance deficit, unsupported span $> \text{threshold}$): $8\text{ points}$.
-  - Low (minor operational clutter, non-optimal turning arc): $3\text{ points}$.
-- $W(\text{profile}, k)$ is a profile vulnerability multiplier ($1.0\dots1.5$) reflecting specific user limitations (e.g. a low-light deficit is weighted higher for a user with limited vision).
+No composite formula, weights, or category thresholds are approved or specified for implementation.
 
 ### Governance Rule
 During Stages 1 through 4, all UI screens must prioritize:

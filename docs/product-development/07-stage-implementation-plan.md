@@ -108,11 +108,11 @@ This implementation plan defines the gated roadmap for SafeSpace from Stage 1 th
 
 ---
 
-## Stage 4: Evidence-Backed Fall Risk Engine
+## Stage 4: Evidence-Backed Environmental Hazard Rule Engine
 
 - **Goal**: Replace hardcoded risk numbers (68, 41, 27) with a deterministic compliance and hazard engine whose primary output is transparent individual rule violations, exact physical measurements, provenance, and severity. An optional, experimental Environmental Hazard Score (EHS) is a reserved, disabled experimental concept, strictly separated from clinical patient screening (CDC STEADI).
 - **In Scope**:
-  - Standard rule registry (`RuleRegistry.ts`) referencing HK BFA 2008 (statutory provisions) and CIBSE LG02 (lighting guidance; lighting thresholds remain pending primary licensed document verification before implementation).
+  - Standard rule registry (`RuleRegistry.ts`) referencing HK BFA 2008 (statutory provisions) and CIBSE LG02 (lighting guidance; CIBSE LG02 recommendations remain inactive until their exact clauses and thresholds are verified from the licensed primary CIBSE document and confirmed applicable to the relevant environment).
   - Explicit separation between spatial environmental hazard identification and clinical patient fall screening (CDC STEADI). CDC STEADI does not validate spatial formulas.
   - Primary engine output: transparent individual rule violations, measured dimensions, provenance, and severity grading.
   - Dynamic hazard generation: identifies pinch points, sharp corners, lighting deficits, unsupported spans, and trip thresholds from real geometry.
@@ -126,7 +126,7 @@ This implementation plan defines the gated roadmap for SafeSpace from Stage 1 th
 - **Dependencies**: Stage 3 (Geometry Engine & Dynamic Clearances).
 - **Major Implementation Tasks**:
   1. Author rule evaluation modules for corridor clearance, door width, corner proximity, thresholds, and support gaps, focusing strictly on individual rule evaluations, exact measurements, required versus measured values, provenance, severity, and resolution state.
-  2. Define a disabled experimental EHS interface and validation plan. Do not calculate, display, or use a composite EHS until its factors, weights, and categories have been reviewed and approved by relevant occupational therapy and architectural professionals.
+  2. Document EHS as a deferred product hypothesis only. Do not create a runtime interface, formula, calculation path, stored field, API field, or UI component for EHS during Stage 4.
   3. Replace `INITIAL_HAZARDS` and `calculateLiveMetrics` in `spatial-model.ts` with dynamic individual rule evaluation output.
   4. Connect Stage 4 hazard list directly to live individual rule evaluation output.
 - **Required Tests**:
@@ -136,7 +136,7 @@ This implementation plan defines the gated roadmap for SafeSpace from Stage 1 th
   - Placing, removing, or resizing any object immediately generates or resolves the corresponding individual hazard in the live UI with verifiable evidence citations, exact physical measurements, required versus measured values, provenance, severity, and resolution state.
   - Stage 4 passes cleanly without calculating or displaying any composite risk score.
 - **Risks**: Premature reintroduction of an unvalidated composite score or arbitrary severity weights.
-- **Suggested Branch Name**: `stage-4-evidence-risk-engine`
+- **Suggested Branch Name**: `stage-4-evidence-hazard-engine`
 - **Expected Review Evidence**: Traceability matrix proving every displayed hazard originates from an evaluated rule.
 
 ---
@@ -155,7 +155,7 @@ This implementation plan defines the gated roadmap for SafeSpace from Stage 1 th
 - **Out of Scope**:
   - 3D rendering updates (deferred to Stage 6).
   - LLM text summaries (deferred to Stage 7).
-- **Dependencies**: Stage 4 (Evidence-Backed Risk Engine).
+- **Dependencies**: Stage 4 (Evidence-Backed Environmental Hazard Rule Engine).
 - **Major Implementation Tasks**:
   1. Implement heuristic layout generator (`src/lib/optimizer/layout-solver.ts`).
   2. Implement material pricing catalog (`src/lib/pricing/unit-rates.ts`) requiring source, jurisdiction, currency, effective date, and last verified date for every item.
@@ -226,7 +226,7 @@ This implementation plan defines the gated roadmap for SafeSpace from Stage 1 th
 - **Out of Scope**:
   - Allowing AI to calculate dimensions, distances, or risk scores independently.
   - Commercial billing or paid subscription gates.
-- **Dependencies**: Stage 4 (Risk Engine) and Stage 5 (Layout Optimizer).
+- **Dependencies**: Stage 4 (Environmental Hazard Rule Engine) and Stage 5 (Layout Optimizer).
 - **Major Implementation Tasks**:
   1. Implement an AIExtractionProvider adapter and configure one approved multimodal provider through the external serverless backend. (Candidate providers such as Google Gemini, OpenAI, or Anthropic Claude may be considered; no provider has been selected by the team yet).
   2. Implement draft geometry preview and human confirmation workflow in 2D editor.

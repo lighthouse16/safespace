@@ -104,7 +104,7 @@ Per Stage 0 audit standards, **every finding counted in the summary totals is in
   }
   ```
 - **Product Impact**: Zero multi-object geometric awareness. Deleting `chair-c04` permanently locks the system into a "safe" state regardless of actual room obstructions.
-- **Assigned Future Stage**: Stage 3 (Geometry Engine) & Stage 4 (Risk Engine).
+- **Assigned Future Stage**: Stage 3 (Geometry Engine) & Stage 4 (Environmental Hazard Rule Engine).
 - **Status**: **Blocking**.
 
 ---
@@ -122,7 +122,7 @@ Per Stage 0 audit standards, **every finding counted in the summary totals is in
   else { risk = 27; highHazards = 0; totalHazards = 2; }
   ```
 - **Product Impact**: Gives illusion of mathematical precision while running a rudimentary 3-step switch.
-- **Assigned Future Stage**: Stage 4 (Evidence-Backed Fall Risk Engine).
+- **Assigned Future Stage**: Stage 4 (Evidence-Backed Environmental Hazard Rule Engine).
 - **Status**: **Blocking**.
 
 ---
@@ -185,7 +185,7 @@ Per Stage 0 audit standards, **every finding counted in the summary totals is in
   }
   ```
 - **Product Impact**: Violates product principle banning fake loading states.
-- **Assigned Future Stage**: Stage 4 (Risk Engine).
+- **Assigned Future Stage**: Stage 4 (Environmental Hazard Rule Engine).
 - **Status**: **Non-blocking**.
 
 ---
@@ -213,7 +213,7 @@ Per Stage 0 audit standards, **every finding counted in the summary totals is in
       ...
   ```
 - **Product Impact**: Hazards never update when rooms are modified; cannot evaluate any new layout.
-- **Assigned Future Stage**: Stage 4 (Evidence-Backed Fall Risk Engine).
+- **Assigned Future Stage**: Stage 4 (Evidence-Backed Environmental Hazard Rule Engine).
 - **Status**: **Blocking**.
 
 ---
@@ -301,7 +301,7 @@ Per Stage 0 audit standards, **every finding counted in the summary totals is in
 - **Actual Behavior**: Fixed numbers placed in fixture files (`lightLevelLux: 160` in `INITIAL_ROOMS`, `110 Lux` in `INITIAL_HAZARDS`, `85 lux` in `risk-analysis.tsx`). No photometric raycasting or light simulation exists.
 - **Exact File & Symbol**: `src/lib/spatial-model.ts:163, 609`, `src/components/analysis/risk-analysis.tsx:62`.
 - **Product Impact**: Inability to assess real lighting conditions or glare in user spaces.
-- **Assigned Future Stage**: Stage 4 (Risk Engine).
+- **Assigned Future Stage**: Stage 4 (Environmental Hazard Rule Engine).
 - **Status**: **Non-blocking**.
 
 ---

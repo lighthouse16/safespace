@@ -104,16 +104,17 @@ To prevent vendor lock-in, external service providers are treated as interchange
 - **Dynamic Obstacle-Avoidance Pathfinding**: Implement an A* grid pathfinder ($5\text{ cm}$ resolution) across walkable floor polygons to compute true navigable paths around moved objects.
 - **Door-Swing Egress Arc**: Calculate circular sector polygons representing door-swing trajectories; flag furniture intersections as door-swing hazards.
 
-### 3. Compliance & Fall Risk Rule Engine
-- Implement a decoupled rules registry (`src/lib/rules/`) referencing established building design manuals (HK BFA 2008) and verified statutory/regulatory standards. Unverified recommendations (such as CIBSE LG02) remain non-active until verified against primary statutory or clinical literature.
+### 3. Compliance & Environmental Hazard Rule Engine
+- Implement a decoupled rules registry (`src/lib/rules/`) referencing established building design manuals (HK BFA 2008) and verified statutory/regulatory standards. CIBSE LG02 recommendations remain inactive until their exact clauses and thresholds are verified from the licensed primary CIBSE document and confirmed applicable to the relevant environment.
 - Primary engine output: transparent individual rule compliance findings with exact schema:
   - individual rule violation (`ruleId`, `name`);
   - measured value;
+  - measurement provenance (`deterministic-geometry`, `photometric-calculation`, `manual-observation`);
   - required value;
+  - requirement source (`user-measurement`, `verified-rule`, `clinical-input` via `ThresholdSource`);
+  - rule reference (clause, standard, year; required for statutory rules, optional for clinical/user-specific requirements);
   - unit;
   - applicability (room type, mobility profile, route purpose);
-  - source/rule reference (clause, standard, year);
-  - provenance (`user-measurement`, `verified-rule`, `clinical-input`);
   - severity (`critical`, `high`, `medium`, `low`);
   - resolution state (`open`, `resolved`, `dismissed`).
 - Composite score (EHS / risk score / risk index) remains completely disabled and cannot be used in analysis, optimization, ranking, reports, or UI until separately validated and approved by relevant occupational therapy and architectural consensus.
@@ -121,7 +122,7 @@ To prevent vendor lock-in, external service providers are treated as interchange
 ### 4. Constraint-Based Layout Optimiser
 - Deterministic heuristic solver: Evaluate candidate furniture translations and rotations against room boundaries and clearance corridors.
 - Objective order: Lexicographic multi-objective hierarchical evaluation (no arbitrary scalar weights):
-  1. Satisfy applicable hard spatial and statutory constraints (e.g., no collisions with walls or fixed structures, minimum statutory door egress).
+  1. Satisfy applicable hard spatial and statutory constraints (e.g., no collisions with walls or fixed structures, verified, applicable opening and protected-route constraints for the selected jurisdiction and building type; keeping accessible-route rules and fire-egress rules strictly separate without arbitrary numeric egress defaults).
   2. Eliminate critical and high-severity verified violations.
   3. Reduce the count and measured magnitude of remaining violations.
   4. Avoid introducing new violations.
