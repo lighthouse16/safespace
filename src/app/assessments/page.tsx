@@ -54,10 +54,10 @@ export default function AssessmentsPage() {
             </svg>
           </div>
           <h2 className="mt-3 text-sm font-semibold text-[#192329]">
-            No real assessments saved yet
+            No assessments saved yet
           </h2>
           <p className="mt-1 text-xs text-[#64748b] max-w-md mx-auto">
-            New assessments created in this session are held in local memory. Durable project storage will be connected through the canonical data layer.
+            Intake drafts exist only while the intake session remains open; leaving or refreshing discards unsaved session state until canonical project storage is connected.
           </p>
           <div className="mt-4">
             <Link

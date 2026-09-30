@@ -34,8 +34,10 @@ export function FloorplanSourceStep({
     onSelectSource(source);
   };
 
+  const isPdfSelected = selectedSource === "upload" && uploadedFile?.isPdf === true;
   const canContinue =
-    selectedSource === "manual" || (selectedSource === "upload" && uploadedFile !== null);
+    selectedSource === "manual" ||
+    (selectedSource === "upload" && uploadedFile !== null && !uploadedFile.isPdf);
 
   return (
     <div className="space-y-6">
@@ -148,7 +150,7 @@ export function FloorplanSourceStep({
                 </svg>
               </div>
               <div className="mt-3 text-sm font-semibold text-[#192329]">
-                Blank Grid Workspace Ready
+                Blank Grid Workspace
               </div>
               <p className="mt-1 text-xs text-[#64748b] max-w-md mx-auto">
                 Add points to trace the room boundary on an empty coordinate plane. You will establish physical scale using a reference segment.
@@ -162,13 +164,20 @@ export function FloorplanSourceStep({
         <Button type="button" variant="secondary" onClick={onBack}>
           Back to Details
         </Button>
-        <Button
-          type="button"
-          onClick={onContinue}
-          disabled={!canContinue}
-        >
-          Continue to Calibration & Drafting
-        </Button>
+        <div className="flex items-center gap-3">
+          {isPdfSelected && (
+            <span className="text-xs text-amber-800">
+              Visual drafting requires PNG, JPEG, or SVG. Replace PDF or switch to manual.
+            </span>
+          )}
+          <Button
+            type="button"
+            onClick={onContinue}
+            disabled={!canContinue}
+          >
+            Continue to Calibration & Drafting
+          </Button>
+        </div>
       </div>
     </div>
   );

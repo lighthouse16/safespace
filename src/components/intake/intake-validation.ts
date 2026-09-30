@@ -2,13 +2,18 @@ import type { AssessmentDetails, CalibrationUnit, Point2D } from "./intake-view-
 
 export const MAX_FILE_SIZE_BYTES = 25 * 1024 * 1024; // 25 MB
 
-export const SUPPORTED_EXTENSIONS = [".png", ".jpg", ".jpeg", ".svg", ".pdf"];
-export const SUPPORTED_MIME_TYPES = [
-  "image/png",
-  "image/jpeg",
-  "image/svg+xml",
-  "application/pdf",
-];
+export const EXTENSION_MIME_MAP: Record<string, string[]> = {
+  ".png": ["image/png"],
+  ".jpg": ["image/jpeg"],
+  ".jpeg": ["image/jpeg"],
+  ".svg": ["image/svg+xml"],
+  ".pdf": ["application/pdf"],
+};
+
+export const SUPPORTED_EXTENSIONS = Object.keys(EXTENSION_MIME_MAP);
+export const SUPPORTED_MIME_TYPES = Array.from(
+  new Set(Object.values(EXTENSION_MIME_MAP).flat())
+);
 
 export type FileValidationResult = {
   isValid: boolean;
@@ -21,15 +26,26 @@ export function formatFileSize(bytes: number): string {
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 }
 
-export function validateFloorplanFile(file: File): FileValidationResult {
-  const name = file.name.toLowerCase();
-  const hasValidExt = SUPPORTED_EXTENSIONS.some((ext) => name.endsWith(ext));
-  const hasValidMime = SUPPORTED_MIME_TYPES.includes(file.type);
+export function getFileExtension(filename: string): string {
+  const lastDot = filename.lastIndexOf(".");
+  return lastDot !== -1 ? filename.slice(lastDot).toLowerCase() : "";
+}
 
-  if (!hasValidExt || (!hasValidMime && file.type !== "")) {
+export function validateFloorplanFile(file: File): FileValidationResult {
+  const ext = getFileExtension(file.name);
+  const allowedMimes = EXTENSION_MIME_MAP[ext];
+
+  if (!allowedMimes) {
     return {
       isValid: false,
       error: "Unsupported file format. Please select a PNG, JPEG, SVG, or PDF file up to 25 MB.",
+    };
+  }
+
+  if (!file.type || !allowedMimes.includes(file.type)) {
+    return {
+      isValid: false,
+      error: "File format does not match its file extension. Please select a valid PNG, JPEG, SVG, or PDF file.",
     };
   }
 

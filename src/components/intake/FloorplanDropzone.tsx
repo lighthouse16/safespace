@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useEffect, useRef, useState } from "react";
+import React, { useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import {
   type UploadedFileInfo,
@@ -25,25 +25,12 @@ export function FloorplanDropzone({
   const [validationError, setValidationError] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  // Clean up object URL when component unmounts or file changes
-  useEffect(() => {
-    return () => {
-      if (currentFile?.objectUrl) {
-        URL.revokeObjectURL(currentFile.objectUrl);
-      }
-    };
-  }, [currentFile?.objectUrl]);
-
   const processFile = (file: File) => {
     setValidationError(null);
     const validation = validateFloorplanFile(file);
     if (!validation.isValid) {
       setValidationError(validation.error ?? "Invalid file selected.");
       return;
-    }
-
-    if (currentFile?.objectUrl) {
-      URL.revokeObjectURL(currentFile.objectUrl);
     }
 
     const objectUrl = URL.createObjectURL(file);
@@ -220,31 +207,50 @@ export function FloorplanDropzone({
                 />
               </div>
             ) : (
-              <div className="p-6 text-center">
-                <div className="mx-auto size-12 rounded-full bg-slate-100 border border-slate-200 grid place-items-center text-slate-500">
-                  <svg
-                    className="size-6 text-slate-600"
-                    fill="none"
-                    viewBox="0 0 24 24"
-                    stroke="currentColor"
-                  >
-                    <path
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                      strokeWidth={1.5}
-                      d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"
-                    />
-                  </svg>
+              <object
+                data={currentFile.objectUrl}
+                type="application/pdf"
+                className="h-80 w-full rounded border border-slate-200 block"
+                aria-label={`PDF preview of ${currentFile.name}`}
+              >
+                <div className="flex h-80 flex-col items-center justify-center p-6 text-center bg-slate-50">
+                  <div className="mx-auto size-12 rounded-full bg-slate-100 border border-slate-200 grid place-items-center text-slate-500">
+                    <svg
+                      className="size-6 text-slate-600"
+                      fill="none"
+                      viewBox="0 0 24 24"
+                      stroke="currentColor"
+                    >
+                      <path
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        strokeWidth={1.5}
+                        d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"
+                      />
+                    </svg>
+                  </div>
+                  <div className="mt-2 text-xs font-semibold text-[#192329]">
+                    {currentFile.name}
+                  </div>
+                  <div className="mt-0.5 text-[11px] text-[#64748b]">
+                    {formatFileSize(currentFile.size)} · PDF document
+                  </div>
+                  <p className="mt-2 text-[11px] text-[#64748b] max-w-sm">
+                    Embedded preview unavailable in this browser. File metadata recorded.
+                  </p>
                 </div>
-                <div className="mt-2 text-xs font-semibold text-[#192329]">
-                  PDF Selected ({currentFile.name})
-                </div>
-                <p className="mt-1 text-[11px] text-[#64748b] max-w-md mx-auto">
-                  PDF document is verified and loaded in memory for scale calibration and boundary tracing. Native visual rendering depends on browser PDF engine.
-                </p>
-              </div>
+              </object>
             )}
           </div>
+
+          {currentFile.isPdf && (
+            <div className="rounded-lg border border-amber-200 bg-amber-50/70 p-3 text-xs text-amber-900">
+              <div className="font-semibold">Visual drafting requires PNG, JPEG, or SVG</div>
+              <p className="mt-0.5 text-[11px] text-amber-800">
+                In-browser scale calibration and boundary drafting require an image file. PDF documents cannot be visually traced on the canvas. Replace this file with an image or choose manual drawing.
+              </p>
+            </div>
+          )}
         </div>
       )}
     </div>

@@ -21,6 +21,7 @@ export type IntakeReviewStepProps = {
   boundary: BoundaryState;
   onBackToDraft: () => void;
   onResetAll: () => void;
+  onExitToAssessments?: (e: React.MouseEvent) => void;
 };
 
 export function IntakeReviewStep({
@@ -31,6 +32,7 @@ export function IntakeReviewStep({
   boundary,
   onBackToDraft,
   onResetAll,
+  onExitToAssessments,
 }: IntakeReviewStepProps) {
   const [integrationAcknowledged, setIntegrationAcknowledged] = useState(false);
 
@@ -193,7 +195,7 @@ export function IntakeReviewStep({
               </svg>
             </div>
             <p className="text-[11px] text-[#64748b] text-center">
-              Boundary geometry verified with {boundary.vertices.length} calibrated points.
+              Boundary contains {boundary.vertices.length} traced vertices using the current scale calibration.
             </p>
           </div>
         </div>
@@ -205,10 +207,10 @@ export function IntakeReviewStep({
             className="rounded-lg border border-[#a7f3d0] bg-[#ecfdf5] p-4 text-xs text-[#065f46] space-y-1"
           >
             <div className="font-semibold text-sm">
-              Draft ready for workspace integration
+              Draft complete for session workspace integration
             </div>
             <p>
-              Your boundary draft and scale calibration are held in browser memory. When canonical database/IndexedDB storage is connected by the core collaborator, this intake payload will persist across sessions.
+              Your boundary draft and scale calibration are held in browser memory for this session. When canonical project storage is connected, intake drafts will be retained across sessions.
             </p>
           </div>
         )}
@@ -236,11 +238,12 @@ export function IntakeReviewStep({
             onClick={() => setIntegrationAcknowledged(true)}
             className="font-semibold"
           >
-            Draft ready for workspace integration
+            Draft complete for workspace integration
           </Button>
 
           <Link
             href="/assessments"
+            onClick={onExitToAssessments}
             className="text-xs font-semibold text-teal-700 hover:underline px-2"
           >
             Return to Assessments &rarr;

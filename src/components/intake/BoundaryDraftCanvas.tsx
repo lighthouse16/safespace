@@ -10,6 +10,13 @@ import {
   type UploadedFileInfo,
 } from "./intake-view-types";
 import { CalibrationTool } from "./CalibrationTool";
+import {
+  canCloseBoundary,
+  addBoundaryVertex,
+  undoBoundaryVertex,
+  closeBoundary,
+  moveBoundaryVertex,
+} from "./boundary-operations";
 
 export type BoundaryDraftCanvasProps = {
   source: SourceType;
@@ -76,8 +83,7 @@ export function BoundaryDraftCanvas({
     setPointerPos(pt);
 
     if (draggingVertexIdx !== null && boundary.isClosed) {
-      const nextVertices = [...boundary.vertices];
-      nextVertices[draggingVertexIdx] = pt;
+      const nextVertices = moveBoundaryVertex(boundary.vertices, draggingVertexIdx, pt);
       onUpdateBoundary({
         ...boundary,
         vertices: nextVertices,
@@ -120,21 +126,18 @@ export function BoundaryDraftCanvas({
       if (boundary.isClosed) return;
 
       // Check if clicking near first vertex to close
-      if (boundary.vertices.length >= 3) {
+      if (canCloseBoundary(boundary.vertices)) {
         const v0 = boundary.vertices[0];
         const dist = Math.hypot(pt.x - v0.x, pt.y - v0.y);
-        if (dist <= 18) {
-          onUpdateBoundary({
-            ...boundary,
-            isClosed: true,
-          });
+        if (dist <= 22) {
+          onUpdateBoundary(closeBoundary(boundary));
           return;
         }
       }
 
       onUpdateBoundary({
         ...boundary,
-        vertices: [...boundary.vertices, pt],
+        vertices: addBoundaryVertex(boundary.vertices, pt),
       });
     }
   };
@@ -143,17 +146,21 @@ export function BoundaryDraftCanvas({
     e.stopPropagation();
     if (!boundary.isClosed) return;
     setDraggingVertexIdx(index);
-    (e.target as Element).setPointerCapture(e.pointerId);
+    try {
+      (e.currentTarget as Element).setPointerCapture(e.pointerId);
+    } catch {
+      // Safe fallback
+    }
   };
 
   const handleVertexPointerUp = (e: React.PointerEvent) => {
     if (draggingVertexIdx !== null) {
-      setDraggingVertexIdx(null);
       try {
-        (e.target as Element).releasePointerCapture(e.pointerId);
+        (e.currentTarget as Element).releasePointerCapture(e.pointerId);
       } catch {
         // Safe fallback
       }
+      setDraggingVertexIdx(null);
     }
   };
 
@@ -161,16 +168,12 @@ export function BoundaryDraftCanvas({
     if (boundary.vertices.length === 0 || boundary.isClosed) return;
     onUpdateBoundary({
       ...boundary,
-      vertices: boundary.vertices.slice(0, -1),
+      vertices: undoBoundaryVertex(boundary.vertices),
     });
   };
 
   const handleCloseBoundary = () => {
-    if (boundary.vertices.length < 3 || boundary.isClosed) return;
-    onUpdateBoundary({
-      ...boundary,
-      isClosed: true,
-    });
+    onUpdateBoundary(closeBoundary(boundary));
   };
 
   const handleResetBoundary = () => {
@@ -535,16 +538,20 @@ export function BoundaryDraftCanvas({
                 {boundary.vertices.map((v, i) => {
                   const isFirst = i === 0;
                   return (
-                    <g key={i}>
-                      {/* Transparent touch hit-target */}
+                    <g
+                      key={i}
+                      data-testid={`vertex-handle-${i}`}
+                      className={boundary.isClosed ? "cursor-move" : "cursor-pointer"}
+                      onPointerDown={(e) => handleVertexPointerDown(i, e)}
+                      onPointerUp={handleVertexPointerUp}
+                      onPointerCancel={handleVertexPointerUp}
+                    >
+                      {/* Transparent touch hit-target (44x44 target, r=22) */}
                       <circle
                         cx={v.x}
                         cy={v.y}
-                        r={18}
+                        r={22}
                         fill="transparent"
-                        className={boundary.isClosed ? "cursor-move" : "cursor-pointer"}
-                        onPointerDown={(e) => handleVertexPointerDown(i, e)}
-                        onPointerUp={handleVertexPointerUp}
                       />
                       {/* Visual Vertex Handle */}
                       <circle
@@ -554,7 +561,7 @@ export function BoundaryDraftCanvas({
                         fill={isFirst && isNearFirstVertex ? "#16a34a" : "#ffffff"}
                         stroke="#1e7168"
                         strokeWidth={2.5}
-                        className={boundary.isClosed ? "cursor-move" : ""}
+                        className="pointer-events-none"
                       />
                       <text
                         x={v.x + 9}

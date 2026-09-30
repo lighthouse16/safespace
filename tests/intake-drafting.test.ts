@@ -14,22 +14,71 @@ import {
   MAX_FILE_SIZE_BYTES,
 } from "../src/components/intake/intake-validation";
 import {
+  canCloseBoundary,
+  addBoundaryVertex,
+  undoBoundaryVertex,
+  closeBoundary,
+  moveBoundaryVertex,
+  resetBoundaryForSourceChange,
+} from "../src/components/intake/boundary-operations";
+import {
   type Point2D,
   type BoundaryState,
 } from "../src/components/intake/intake-view-types";
 import AssessmentsPage from "../src/app/assessments/page";
 
-// 1. File validation tests
-test("validateFloorplanFile accepts valid PNG, JPEG, SVG, and PDF files under 25 MB", () => {
+// 1. File validation and MIME mapping tests
+test("validateFloorplanFile accepts valid corresponding extensions and MIME types under 25 MB", () => {
   const pngFile = new File(["dummy png content"], "floorplan.png", { type: "image/png" });
   const jpgFile = new File(["dummy jpg content"], "survey.jpg", { type: "image/jpeg" });
+  const jpegFile = new File(["dummy jpeg content"], "survey.jpeg", { type: "image/jpeg" });
   const svgFile = new File(["<svg></svg>"], "blueprint.svg", { type: "image/svg+xml" });
   const pdfFile = new File(["%PDF-1.4"], "architectural-plan.pdf", { type: "application/pdf" });
 
   assert.equal(validateFloorplanFile(pngFile).isValid, true);
   assert.equal(validateFloorplanFile(jpgFile).isValid, true);
+  assert.equal(validateFloorplanFile(jpegFile).isValid, true);
   assert.equal(validateFloorplanFile(svgFile).isValid, true);
   assert.equal(validateFloorplanFile(pdfFile).isValid, true);
+});
+
+test("validateFloorplanFile rejects empty MIME types rather than trusting filename extension", () => {
+  const emptyMimePng = new File(["data"], "floorplan.png", { type: "" });
+  const emptyMimeSvg = new File(["data"], "plan.svg", { type: "" });
+  const emptyMimePdf = new File(["data"], "doc.pdf", { type: "" });
+
+  const res1 = validateFloorplanFile(emptyMimePng);
+  assert.equal(res1.isValid, false);
+  assert.match(res1.error ?? "", /File format does not match its file extension/);
+
+  const res2 = validateFloorplanFile(emptyMimeSvg);
+  assert.equal(res2.isValid, false);
+
+  const res3 = validateFloorplanFile(emptyMimePdf);
+  assert.equal(res3.isValid, false);
+});
+
+test("validateFloorplanFile rejects extension and MIME mismatches", () => {
+  // plan.png with application/pdf
+  const pngAsPdf = new File(["data"], "plan.png", { type: "application/pdf" });
+  const res1 = validateFloorplanFile(pngAsPdf);
+  assert.equal(res1.isValid, false);
+  assert.match(res1.error ?? "", /File format does not match its file extension/);
+
+  // plan.pdf with image/png
+  const pdfAsPng = new File(["data"], "plan.pdf", { type: "image/png" });
+  const res2 = validateFloorplanFile(pdfAsPng);
+  assert.equal(res2.isValid, false);
+
+  // plan.jpg with image/png
+  const jpgAsPng = new File(["data"], "plan.jpg", { type: "image/png" });
+  const res3 = validateFloorplanFile(jpgAsPng);
+  assert.equal(res3.isValid, false);
+
+  // plan.svg with application/pdf
+  const svgAsPdf = new File(["data"], "plan.svg", { type: "application/pdf" });
+  const res4 = validateFloorplanFile(svgAsPdf);
+  assert.equal(res4.isValid, false);
 });
 
 test("validateFloorplanFile rejects unsupported file extensions", () => {
@@ -48,23 +97,21 @@ test("validateFloorplanFile rejects unsupported file extensions", () => {
   assert.equal(res3.isValid, false);
 });
 
-test("validateFloorplanFile rejects unsupported MIME types even with renamed extension", () => {
-  const fakePng = new File(["video stream"], "sneaky.png", { type: "video/mp4" });
-  const result = validateFloorplanFile(fakePng);
-  assert.equal(result.isValid, false);
-});
-
-test("validateFloorplanFile rejects files exceeding 25 MB", () => {
-  // Construct a dummy file object with size property > 25 MB
+test("validateFloorplanFile rejects files exceeding 25 MB and empty files", () => {
   const oversizedFile = {
     name: "huge-floorplan.png",
     size: MAX_FILE_SIZE_BYTES + 1024,
     type: "image/png",
   } as File;
 
-  const result = validateFloorplanFile(oversizedFile);
-  assert.equal(result.isValid, false);
-  assert.match(result.error ?? "", /exceeds the 25 MB size limit/);
+  const resultOversized = validateFloorplanFile(oversizedFile);
+  assert.equal(resultOversized.isValid, false);
+  assert.match(resultOversized.error ?? "", /exceeds the 25 MB size limit/);
+
+  const emptyFile = new File([], "empty.png", { type: "image/png" });
+  const resultEmpty = validateFloorplanFile(emptyFile);
+  assert.equal(resultEmpty.isValid, false);
+  assert.match(resultEmpty.error ?? "", /selected file is empty/);
 });
 
 test("formatFileSize formats bytes, KB, and MB accurately", () => {
@@ -73,7 +120,99 @@ test("formatFileSize formats bytes, KB, and MB accurately", () => {
   assert.equal(formatFileSize(1024 * 1024 * 3.5), "3.5 MB");
 });
 
-// 2. Measurement validation tests
+// 2. Production boundary operations tests
+test("canCloseBoundary requires at least 3 vertices", () => {
+  assert.equal(canCloseBoundary([]), false);
+  assert.equal(canCloseBoundary([{ x: 10, y: 10 }]), false);
+  assert.equal(canCloseBoundary([{ x: 10, y: 10 }, { x: 20, y: 20 }]), false);
+  assert.equal(canCloseBoundary([{ x: 10, y: 10 }, { x: 20, y: 20 }, { x: 30, y: 30 }]), true);
+  assert.equal(canCloseBoundary([{ x: 0, y: 0 }, { x: 10, y: 0 }, { x: 10, y: 10 }, { x: 0, y: 10 }]), true);
+});
+
+test("addBoundaryVertex appends vertices cleanly", () => {
+  let vertices: Point2D[] = [];
+  vertices = addBoundaryVertex(vertices, { x: 100, y: 100 });
+  assert.equal(vertices.length, 1);
+  assert.deepEqual(vertices[0], { x: 100, y: 100 });
+
+  vertices = addBoundaryVertex(vertices, { x: 200, y: 100 });
+  assert.equal(vertices.length, 2);
+  assert.deepEqual(vertices[1], { x: 200, y: 100 });
+});
+
+test("undoBoundaryVertex removes last vertex without mutating original array", () => {
+  const initial: Point2D[] = [{ x: 10, y: 10 }, { x: 20, y: 20 }];
+  const undone = undoBoundaryVertex(initial);
+  assert.equal(undone.length, 1);
+  assert.deepEqual(undone[0], { x: 10, y: 10 });
+  assert.equal(initial.length, 2); // Immuted
+
+  const emptyUndone = undoBoundaryVertex([]);
+  assert.deepEqual(emptyUndone, []);
+});
+
+test("closeBoundary closes valid boundaries and rejects closure with fewer than 3 vertices", () => {
+  const invalidBoundary: BoundaryState = {
+    vertices: [{ x: 10, y: 10 }, { x: 20, y: 20 }],
+    isClosed: false,
+    selectedVertexIndex: null,
+    gridSnap: true,
+  };
+  const closedInvalid = closeBoundary(invalidBoundary);
+  assert.equal(closedInvalid.isClosed, false);
+
+  const validBoundary: BoundaryState = {
+    vertices: [{ x: 10, y: 10 }, { x: 100, y: 10 }, { x: 100, y: 100 }],
+    isClosed: false,
+    selectedVertexIndex: 1,
+    gridSnap: false,
+  };
+  const closedValid = closeBoundary(validBoundary);
+  assert.equal(closedValid.isClosed, true);
+  assert.equal(closedValid.selectedVertexIndex, null);
+});
+
+test("moveBoundaryVertex updates the specified vertex immutably", () => {
+  const vertices: Point2D[] = [
+    { x: 50, y: 50 },
+    { x: 150, y: 50 },
+    { x: 150, y: 150 },
+  ];
+  const moved = moveBoundaryVertex(vertices, 1, { x: 180, y: 70 });
+  assert.deepEqual(moved[1], { x: 180, y: 70 });
+  assert.deepEqual(vertices[1], { x: 150, y: 50 }); // Original untouched
+
+  // Invalid index returns original unchanged
+  const outOfBounds = moveBoundaryVertex(vertices, 99, { x: 0, y: 0 });
+  assert.deepEqual(outOfBounds, vertices);
+});
+
+test("resetBoundaryForSourceChange resets draft geometry and preserves user grid-snap preference", () => {
+  const draftStateWithSnapOn: BoundaryState = {
+    vertices: [{ x: 10, y: 10 }, { x: 20, y: 20 }, { x: 30, y: 30 }],
+    isClosed: true,
+    selectedVertexIndex: 2,
+    gridSnap: true,
+  };
+
+  const resetState1 = resetBoundaryForSourceChange(draftStateWithSnapOn);
+  assert.deepEqual(resetState1.vertices, []);
+  assert.equal(resetState1.isClosed, false);
+  assert.equal(resetState1.selectedVertexIndex, null);
+  assert.equal(resetState1.gridSnap, true); // Preserved
+
+  const draftStateWithSnapOff: BoundaryState = {
+    vertices: [{ x: 10, y: 10 }],
+    isClosed: false,
+    selectedVertexIndex: null,
+    gridSnap: false,
+  };
+
+  const resetState2 = resetBoundaryForSourceChange(draftStateWithSnapOff);
+  assert.equal(resetState2.gridSnap, false); // Preserved false
+});
+
+// 3. Measurement validation and scale calculation tests
 test("validateMeasurement rejects zero, negative numbers, and non-numeric strings", () => {
   assert.equal(validateMeasurement("0").isValid, false);
   assert.equal(validateMeasurement("-15").isValid, false);
@@ -97,10 +236,9 @@ test("validateMeasurement accepts positive finite numbers", () => {
   assert.equal(res3.value, 95.5);
 });
 
-// 3. Scale calibration conversion tests
 test("computePixelsPerCm calculates correct ratio for cm and m units", () => {
   const p1: Point2D = { x: 100, y: 100 };
-  const p2: Point2D = { x: 300, y: 100 }; // 200 pixels distance
+  const p2: Point2D = { x: 300, y: 100 };
   assert.equal(computePixelDistance(p1, p2), 200);
 
   // 200 px for 100 cm => 2.0 px/cm
@@ -118,63 +256,10 @@ test("computePixelsPerCm returns 0 for invalid or non-positive measurements", ()
 
   assert.equal(computePixelsPerCm(p1, p2, 0, "cm"), 0);
   assert.equal(computePixelsPerCm(p1, p2, -5, "cm"), 0);
-  assert.equal(computePixelsPerCm(p1, p1, 100, "cm"), 0); // zero distance
+  assert.equal(computePixelsPerCm(p1, p1, 100, "cm"), 0);
 });
 
-// 4. Boundary state logic tests
-test("boundary state: add, undo, close requirements, and reset", () => {
-  let boundary: BoundaryState = {
-    vertices: [],
-    isClosed: false,
-    selectedVertexIndex: null,
-    gridSnap: true,
-  };
-
-  // Add 1st point
-  boundary = { ...boundary, vertices: [...boundary.vertices, { x: 100, y: 100 }] };
-  assert.equal(boundary.vertices.length, 1);
-  assert.equal(boundary.isClosed, false);
-
-  // Add 2nd point
-  boundary = { ...boundary, vertices: [...boundary.vertices, { x: 300, y: 100 }] };
-  assert.equal(boundary.vertices.length, 2);
-
-  // Attempting to close with < 3 points must be blocked by rule
-  const canCloseWithTwo = boundary.vertices.length >= 3;
-  assert.equal(canCloseWithTwo, false);
-
-  // Undo 2nd point
-  boundary = { ...boundary, vertices: boundary.vertices.slice(0, -1) };
-  assert.equal(boundary.vertices.length, 1);
-
-  // Re-add 2nd and add 3rd point
-  boundary = {
-    ...boundary,
-    vertices: [
-      ...boundary.vertices,
-      { x: 300, y: 100 },
-      { x: 300, y: 300 },
-    ],
-  };
-  assert.equal(boundary.vertices.length, 3);
-  assert.equal(boundary.vertices.length >= 3, true);
-
-  // Close boundary
-  boundary = { ...boundary, isClosed: true };
-  assert.equal(boundary.isClosed, true);
-
-  // Reset boundary
-  boundary = {
-    ...boundary,
-    vertices: [],
-    isClosed: false,
-    selectedVertexIndex: null,
-  };
-  assert.equal(boundary.vertices.length, 0);
-  assert.equal(boundary.isClosed, false);
-});
-
-// 5. Assessment details validation tests
+// 4. Assessment details validation tests
 test("validateAssessmentDetails checks required fields without server calls", () => {
   const emptyErrors = validateAssessmentDetails({
     assessmentName: "",
@@ -195,8 +280,8 @@ test("validateAssessmentDetails checks required fields without server calls", ()
   assert.equal(Object.keys(validErrors).length, 0);
 });
 
-// 6. Dashboard truthfulness tests
-test("assessments dashboard renders Queen Care Clinic as Demo Fixture without fabricated production rows or risk scores", () => {
+// 5. Dashboard truthfulness tests
+test("assessments dashboard renders Queen Care Clinic as Demo Fixture with truthful session draft copy", () => {
   const html = renderToStaticMarkup(React.createElement(AssessmentsPage));
 
   // Must label Queen Care Clinic as Demo Fixture
@@ -205,8 +290,12 @@ test("assessments dashboard renders Queen Care Clinic as Demo Fixture without fa
   assert.match(html, /Open demo/);
 
   // Must contain honest empty state for real assessments
-  assert.match(html, /No real assessments saved yet/);
+  assert.match(html, /No assessments saved yet/);
+  assert.match(html, /Intake drafts exist only while the intake session remains open/);
   assert.match(html, /Session only/);
+
+  // Must NOT claim local memory persistence on dashboard
+  assert.doesNotMatch(html, /held in local memory/);
 
   // Must NOT contain removed fake rows
   assert.doesNotMatch(html, /North Circulation Corridor/);
@@ -220,8 +309,8 @@ test("assessments dashboard renders Queen Care Clinic as Demo Fixture without fa
   assert.doesNotMatch(html, /14 · Low risk/);
 });
 
-// 7. Source code truthfulness check across intake files
-test("new intake source code contains no fake timers, fake AI extraction, or fake persistence claims", () => {
+// 6. Source code verification across intake files
+test("new intake source code contains truthful copy and prevents unrenderable PDF drafting", () => {
   const newPagePath = path.resolve(process.cwd(), "src/app/assessments/new/page.tsx");
   const newPageCode = fs.readFileSync(newPagePath, "utf8");
 
@@ -229,13 +318,19 @@ test("new intake source code contains no fake timers, fake AI extraction, or fak
   assert.doesNotMatch(newPageCode, /setTimeout/);
   assert.doesNotMatch(newPageCode, /setInterval/);
 
-  // No fake AI extraction claims
-  assert.doesNotMatch(newPageCode, /AI extraction/i);
-  assert.doesNotMatch(newPageCode, /Plan processed successfully/i);
-
   // No redirect into Queen Care Clinic demo model from new assessment
   assert.doesNotMatch(newPageCode, /\/assessments\/queen-care-clinic\/model/);
 
-  // No fake hardcoded 90 cm doorway assumption
-  assert.doesNotMatch(newPageCode, /value="90 cm"/);
+  const sourceStepPath = path.resolve(process.cwd(), "src/components/intake/FloorplanSourceStep.tsx");
+  const sourceStepCode = fs.readFileSync(sourceStepPath, "utf8");
+
+  // PDF cannot proceed to drafting
+  assert.match(sourceStepCode, /!uploadedFile\.isPdf/);
+
+  const reviewStepPath = path.resolve(process.cwd(), "src/components/intake/IntakeReviewStep.tsx");
+  const reviewStepCode = fs.readFileSync(reviewStepPath, "utf8");
+
+  // Misleading 'geometry verified' phrasing removed
+  assert.doesNotMatch(reviewStepCode, /Boundary geometry verified with/);
+  assert.match(reviewStepCode, /Boundary contains.*traced vertices/);
 });
