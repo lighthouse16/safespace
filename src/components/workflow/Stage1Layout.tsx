@@ -108,24 +108,28 @@ export function Stage1Layout() {
                 </div>
               </div>
 
-              {/* Option 3: Create Manually */}
-              <button
-                onClick={() => setImportMode("ready")}
-                className="flex items-center gap-3.5 p-3.5 rounded-lg border border-[#e2e8e4] bg-white hover:border-slate-300 hover:bg-slate-50 transition text-left cursor-pointer group"
+              {/* Option 3: Create Manually (Pending Integration) */}
+              <div
+                className="flex items-center gap-3.5 p-3.5 rounded-lg border border-[#e2e8e4] bg-slate-50/70 text-left select-none opacity-75"
+                title="Manual setup integration pending"
               >
-                <div className="w-9 h-9 rounded-md bg-slate-100 text-slate-700 flex items-center justify-center shrink-0">
+                <div className="w-9 h-9 rounded-md bg-slate-100 text-slate-400 flex items-center justify-center shrink-0">
                   <FileText className="w-4 h-4" />
                 </div>
                 <div className="flex-1">
-                  <span className="font-semibold text-xs text-[#192329] block">
-                    Create Manually
-                  </span>
+                  <div className="flex items-center gap-2">
+                    <span className="font-semibold text-xs text-slate-700 block">
+                      Create Manually
+                    </span>
+                    <span className="px-1.5 py-0.2 rounded text-[9px] font-bold uppercase bg-slate-200 text-slate-600">
+                      Pending
+                    </span>
+                  </div>
                   <p className="text-[11px] text-slate-500 mt-0.5">
-                    Empty room template
+                    Manual setup integration pending
                   </p>
                 </div>
-                <ChevronRight className="w-4 h-4 text-slate-400 shrink-0" />
-              </button>
+              </div>
             </div>
           </div>
         </div>
