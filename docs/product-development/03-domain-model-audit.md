@@ -101,6 +101,21 @@ export interface CanonicalRoom {
   measuredIlluminanceLux?: number;
 }
 
+export interface ThresholdSource {
+  type: "user-measurement" | "verified-rule" | "clinical-input";
+  referenceId: string;
+  verificationStatus:
+    | "unverified"
+    | "verified"
+    | "professionally-confirmed";
+}
+
+export interface SourcedQuantity<U extends string> {
+  value: number;
+  unit: U;
+  source: ThresholdSource;
+}
+
 export interface CanonicalOpening {
   id: UUID;
   roomId: UUID;
@@ -108,7 +123,7 @@ export interface CanonicalOpening {
   start: Point2D;
   end: Point2D;
   clearWidthCm: number;
-  thresholdHeightMm: number; // For trip hazard detection
+  thresholdHeight: SourcedQuantity<"mm">; // For trip hazard detection with explicit provenance
   swing?: {
     arcDeg: number;
     direction: "inward-left" | "inward-right" | "outward-left" | "outward-right";
@@ -137,13 +152,12 @@ export interface CanonicalMobilityProfile {
   id: UUID;
   name: string;
   aidType: "none" | "walking-stick" | "quad-cane" | "rollator-walker" | "manual-wheelchair" | "power-wheelchair";
-  envelopeWidthCm: number; // Measured physical width of device/user
-  preferredClearanceCm: number; // User/device-specific or verified rule input
-  turningDiameterCm: number; // Verified device/user requirement
-  maxUnsupportedWalkingSpanM?: number; // Optional; requires validated source
-  minIlluminanceLux?: number; // Optional; requires verified environment-specific guidance
-  maxThresholdMm?: number; // Optional; requires verified applicable standard
-  thresholdProvenance?: "user-measurement" | "verified-rule" | "clinical-input"; // Provenance of mobility limits
+  envelopeWidth: SourcedQuantity<"cm">; // Measured physical width of device/user
+  preferredClearance: SourcedQuantity<"cm">; // User/device-specific or verified rule input
+  turningDiameter: SourcedQuantity<"cm">; // Verified device/user requirement
+  maxUnsupportedWalkingSpan?: SourcedQuantity<"m">; // Optional; requires validated source
+  minIlluminance?: SourcedQuantity<"lux">; // Optional; requires verified environment-specific guidance
+  maxThresholdHeight?: SourcedQuantity<"mm">; // Optional; requires verified applicable standard
 }
 
 export interface CanonicalRoute {
@@ -152,7 +166,8 @@ export interface CanonicalRoute {
   name: string;
   profileId: UUID;
   waypoints: readonly Point2D[];
-  isEmergencyEgress: boolean;
+  purposes: readonly ("routine" | "accessible" | "fire-egress")[];
+  applicableRuleIds: readonly string[];
   transitFrequency: "low" | "medium" | "high";
 }
 

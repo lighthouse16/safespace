@@ -110,16 +110,17 @@ This implementation plan defines the gated roadmap for SafeSpace from Stage 1 th
 
 ## Stage 4: Evidence-Backed Fall Risk Engine
 
-- **Goal**: Replace hardcoded risk numbers (68, 41, 27) with a deterministic compliance and hazard engine whose primary output is transparent individual rule violations, exact physical measurements, provenance, and severity. An optional, experimental Environmental Hazard Score (EHS) is formulated as a product hypothesis, strictly separated from clinical patient screening (CDC STEADI).
+- **Goal**: Replace hardcoded risk numbers (68, 41, 27) with a deterministic compliance and hazard engine whose primary output is transparent individual rule violations, exact physical measurements, provenance, and severity. An optional, experimental Environmental Hazard Score (EHS) is a reserved, disabled experimental concept, strictly separated from clinical patient screening (CDC STEADI).
 - **In Scope**:
   - Standard rule registry (`RuleRegistry.ts`) referencing HK BFA 2008 (statutory provisions) and CIBSE LG02 (lighting guidance; lighting thresholds remain pending primary licensed document verification before implementation).
   - Explicit separation between spatial environmental hazard identification and clinical patient fall screening (CDC STEADI). CDC STEADI does not validate spatial formulas.
   - Primary engine output: transparent individual rule violations, measured dimensions, provenance, and severity grading.
   - Dynamic hazard generation: identifies pinch points, sharp corners, lighting deficits, unsupported spans, and trip thresholds from real geometry.
   - Clear flagging of unvalidated thresholds as "TBD — requires OT/building-code validation".
-  - Optional, experimental composite Environmental Hazard Score (EHS, $0\dots100$): not implemented or displayed as validated until reviewed by relevant professionals; never described as validated by BFA, CIBSE, or CDC STEADI.
+  - Composite Environmental Hazard Score (EHS) remains a reserved, disabled experimental concept: completely disabled, not calculated, not displayed, and not used in analysis, optimization, ranking, reports, or UI until separately validated and approved by relevant occupational therapy and architectural consensus; never described as validated by BFA, CIBSE, or CDC STEADI.
 - **Out of Scope**:
   - Implementing unverified CIBSE lighting rules (200/300/500 lux) before full licensed document verification.
+  - Calculating, displaying, or utilizing any composite risk score or index.
   - Layout alternative optimization (deferred to Stage 5).
   - Sensor hardware procurement or procurement pricing (deferred to Stage 7).
 - **Dependencies**: Stage 3 (Geometry Engine & Dynamic Clearances).
@@ -134,7 +135,7 @@ This implementation plan defines the gated roadmap for SafeSpace from Stage 1 th
 - **Acceptance Criteria**:
   - Placing, removing, or resizing any object immediately generates or resolves the corresponding individual hazard in the live UI with verifiable evidence citations, exact physical measurements, required versus measured values, provenance, severity, and resolution state.
   - Stage 4 passes cleanly without calculating or displaying any composite risk score.
-- **Risks**: Weight tuning controversy between clinical guidelines.
+- **Risks**: Premature reintroduction of an unvalidated composite score or arbitrary severity weights.
 - **Suggested Branch Name**: `stage-4-evidence-risk-engine`
 - **Expected Review Evidence**: Traceability matrix proving every displayed hazard originates from an evaluated rule.
 
@@ -149,7 +150,7 @@ This implementation plan defines the gated roadmap for SafeSpace from Stage 1 th
     - **Minimum Cost**: Zero-hardware operational moves only.
     - **Balanced**: 1–2 high-leverage moves + minimal targeted safety hardware.
     - **Maximum Safety**: Comprehensive barrier-free layout reconfiguration + full retrofit.
-  - Real material takeoff and cost estimation (HKD) based on transparent unit-rate tables.
+  - Real material takeoff and cost estimation (HKD) based on transparent unit-rate tables. Every unit rate must include source, jurisdiction, currency, effective date, and last verified date. Do not present invented or unsourced prices as real estimates.
   - Interactive Before/After comparison in 2D (side-by-side and split slider).
 - **Out of Scope**:
   - 3D rendering updates (deferred to Stage 6).
@@ -157,17 +158,23 @@ This implementation plan defines the gated roadmap for SafeSpace from Stage 1 th
 - **Dependencies**: Stage 4 (Evidence-Backed Risk Engine).
 - **Major Implementation Tasks**:
   1. Implement heuristic layout generator (`src/lib/optimizer/layout-solver.ts`).
-  2. Implement material pricing catalog (`src/lib/pricing/unit-rates.ts`).
+  2. Implement material pricing catalog (`src/lib/pricing/unit-rates.ts`) requiring source, jurisdiction, currency, effective date, and last verified date for every item.
   3. Connect Stage 5 alternative selection buttons to the computed alternative sets.
   4. Enable manual fine-tuning of proposed furniture with real-time constraint warnings.
 - **Required Tests**:
   - Solver convergence tests ensuring generated layouts never place furniture outside walls or into door swings.
-  - Cost computation tests verifying bill of materials matches published unit rates.
+  - Cost computation tests verifying bill of materials matches published unit rates with complete date, jurisdiction, and source provenance.
 - **Acceptance Criteria**:
-  - On an arbitrary room layout, the optimizer successfully generates three valid, collision-free alternatives that demonstrably reduce the risk score.
+  - On an arbitrary room layout, the optimizer successfully generates three valid alternatives, where every alternative:
+    - reduces the number, severity, or measured magnitude of verified individual violations;
+    - provides exact before/after measurements for every affected rule;
+    - introduces no new critical or high-severity violation;
+    - remains collision-free;
+    - remains inside room boundaries;
+    - respects protected routes and door constraints.
 - **Risks**: Heuristic solver getting trapped in local minima on dense floorplans.
 - **Suggested Branch Name**: `stage-5-layout-optimization`
-- **Expected Review Evidence**: Benchmark report demonstrating risk index reduction across 5 distinct test floorplans.
+- **Expected Review Evidence**: A benchmark report showing per-rule before/after measurements, resolved and remaining violations, newly introduced violations, move count, and verified cost estimate across at least five distinct test floorplans.
 
 ---
 

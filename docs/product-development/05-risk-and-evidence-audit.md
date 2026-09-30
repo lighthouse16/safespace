@@ -11,8 +11,8 @@ In elder care, clinical environments, and residential planning, safety assessmen
    - STEADI principles can legitimately inform user mobility profile intake (e.g. screening questions on fall history, assistive device use, and balance asymmetry), but they cannot be cited as validation for a spatial algorithm.
 2. **Neutral Terminology & Primary Output**:
    - The primary output of the safety engine must be **transparent individual rule violations, exact physical measurements, evidentiary provenance, and severity levels**.
-   - Any composite metric is designated as an **Environmental Hazard Score (EHS)**. It represents an architectural heuristic reflecting environmental compliance and hazard severity, **not** an individual person's likelihood of falling.
-   - A composite score is **optional and experimental**. It must not be implemented or displayed as validated until weights and category thresholds have been reviewed and calibrated by relevant occupational therapy and architectural professionals.
+   - Any composite metric is designated as a reserved, disabled concept: **Environmental Hazard Score (EHS)**. It represents an architectural heuristic reflecting environmental compliance and hazard severity, **not** an individual person's likelihood of falling.
+   - A composite score is **optional, experimental, and completely disabled**. It must not be calculated, displayed, or used in analysis, optimization, ranking, reports, or UI until weights and category thresholds have been reviewed, calibrated, and approved by relevant occupational therapy and architectural professionals.
    - The score must never be described as being validated by BFA, CIBSE, or CDC STEADI.
 3. **Primary-Source Standards Hierarchy & Applicability Scope**:
    - For Hong Kong environments, the primary statutory design document is the **Hong Kong Buildings Department *Design Manual: Barrier Free Access 2008 (2025 Edition)*** (First issue: December 2008; Current revision: June 2025; Official URL: [BFA 2008 (2025 Edition)](https://www.bd.gov.hk/doc/en/resources/codes-and-references/code-and-design-manuals/BFA2008_e.pdf)).
@@ -62,16 +62,16 @@ In elder care, clinical environments, and residential planning, safety assessmen
 
 ---
 
-## 4. Proposed Environmental Hazard Scoring Model (Product Hypothesis)
+## 4. Proposed Environmental Hazard Scoring Model (Product Hypothesis — Reserved and Disabled)
 
 Until multi-center clinical validation is conducted, the software must avoid claiming that its score predicts a resident's clinical likelihood of falling. Instead, Stage 4's primary output must be transparent individual rule violations, measurements, provenance, and severity.
 
-A composite Environmental Hazard Score (EHS) is an optional and experimental product hypothesis. Do not implement or display a composite score as validated until weights and category thresholds have been reviewed by relevant professionals. Do not describe the score as being validated by BFA, CIBSE, or CDC STEADI.
+A composite Environmental Hazard Score (EHS) is a reserved, disabled experimental concept. Do not calculate, implement, or display a composite score until weights and category thresholds have been reviewed and approved by relevant occupational therapy and architectural professionals. EHS cannot be used in analysis, optimization, ranking, reports, or UI. Do not describe the score as being validated by BFA, CIBSE, or CDC STEADI.
 
-### Illustrative Product Hypothesis Formula (Not Approved for Implementation or User-Facing Safety Decisions)
+### Illustrative Product Hypothesis Formula (Reserved, Disabled, and Not Approved for Implementation or User-Facing Safety Decisions)
 
 > [!IMPORTANT]
-> Illustrative product hypothesis — not approved for implementation or user-facing safety decisions.
+> Reserved, disabled product hypothesis — not approved for implementation, optimization, or user-facing safety decisions.
 
 $$\text{EHS} = \min\left(100, \sum_{k \in \text{Hazards}} S(k) \times W(\text{profile}, k)\right)$$
 
@@ -88,4 +88,4 @@ During Stages 1 through 4, all UI screens must prioritize:
 1. Exact measured dimensions (e.g. "Measured clear width: 72 cm · Standard: 105 cm · Deficit: 33 cm").
 2. The specific standard reference (e.g. "HK BFA 2008 Chapter 4 Division 4 Para 12(1)").
 3. Individual hazard counts by severity level.
-4. Any composite EHS is optional, experimental, and must remain unvalidated until professional review.
+4. Any composite EHS is a reserved, disabled experimental concept, and must remain uncalculated and unvalidated until professional review.

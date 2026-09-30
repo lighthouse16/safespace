@@ -26,15 +26,16 @@ The target architecture for SafeSpace separates deterministic spatial geometry a
                    │                                 │
 ┌──────────────────▼─────────────────┐     ┌─────────▼──────────────────┐
 │   Deterministic Geometry Engine    │     │    Compliance & Rule Engine│
-│   • Minkowski Dilation Corridor    │     │   • Standard Rule Registry │
-│   • Polygon-Line Intersections     │     │   • HK BFA 2008 & CIBSE LG2│
-│   • Dynamic A* Pathfinding         │     │   • Environmental Hazard   │
-│   • Door-Swing Clearance Sweeps    │     │     Score (EHS) Formulation│
+│   • Minkowski Dilation Corridor    │     │   • Verified Rule Registry │
+│   • Polygon-Line Intersections     │     │   • Statutory Standards    │
+│   • Dynamic A* Pathfinding         │     │     (e.g., HK BFA 2008)    │
+│   • Door-Swing Clearance Sweeps    │     │   • Individual Rule        │
+│                                    │     │     Findings               │
 └──────────────────┬─────────────────┘     └─────────┬──────────────────┘
                    │                                 │
 ┌──────────────────▼─────────────────────────────────▼───────────────────┐
 │                 Constraint-Based Layout Optimiser                      │
-│   • Heuristic Penalty Minimiser: Clearance, Moves, Hardware Cost       │
+│   • Lexicographic Objective: Constraints, Violations, Moves, Cost      │
 │   • Generates 3 Tiers: Min-Cost, Balanced, Maximum Safety              │
 └──────────────────┬─────────────────────────────────┬───────────────────┘
                    │                                 │
@@ -104,23 +105,38 @@ To prevent vendor lock-in, external service providers are treated as interchange
 - **Door-Swing Egress Arc**: Calculate circular sector polygons representing door-swing trajectories; flag furniture intersections as door-swing hazards.
 
 ### 3. Compliance & Fall Risk Rule Engine
-- Implement a decoupled rules registry (`src/lib/rules/`) referencing established building design manuals (HK BFA 2008) and lighting guidelines (CIBSE LG02, subject to primary text verification).
-- Primary engine output: transparent individual rule compliance results with exact physical measurements, provenance, and severity ratings.
-- Composite score designated as an optional, experimental **Environmental Hazard Score (EHS)**, representing environmental guideline deviation density, **not** an individual's personal probability of falling, and not validated as a clinical prediction.
+- Implement a decoupled rules registry (`src/lib/rules/`) referencing established building design manuals (HK BFA 2008) and verified statutory/regulatory standards. Unverified recommendations (such as CIBSE LG02) remain non-active until verified against primary statutory or clinical literature.
+- Primary engine output: transparent individual rule compliance findings with exact schema:
+  - individual rule violation (`ruleId`, `name`);
+  - measured value;
+  - required value;
+  - unit;
+  - applicability (room type, mobility profile, route purpose);
+  - source/rule reference (clause, standard, year);
+  - provenance (`user-measurement`, `verified-rule`, `clinical-input`);
+  - severity (`critical`, `high`, `medium`, `low`);
+  - resolution state (`open`, `resolved`, `dismissed`).
+- Composite score (EHS / risk score / risk index) remains completely disabled and cannot be used in analysis, optimization, ranking, reports, or UI until separately validated and approved by relevant occupational therapy and architectural consensus.
 
 ### 4. Constraint-Based Layout Optimiser
 - Deterministic heuristic solver: Evaluate candidate furniture translations and rotations against room boundaries and clearance corridors.
-- Objective function: Minimize $\text{EHS} + \lambda_1 \cdot \text{Moves} + \lambda_2 \cdot \text{Cost}$.
-- Generates 3 discrete alternatives:
-  1. *Minimum Cost*: Zero-hardware operational moves only.
-  2. *Balanced*: High-leverage operational moves + minimal targeted hardware (grab rails).
-  3. *Maximum Safety*: Full barrier-free architectural reconfiguration.
+- Objective order: Lexicographic multi-objective hierarchical evaluation (no arbitrary scalar weights):
+  1. Satisfy applicable hard spatial and statutory constraints (e.g., no collisions with walls or fixed structures, minimum statutory door egress).
+  2. Eliminate critical and high-severity verified violations.
+  3. Reduce the count and measured magnitude of remaining violations.
+  4. Avoid introducing new violations.
+  5. Minimize furniture moves (prefer stationary or low-displacement arrangements).
+  6. Minimize verified intervention cost (prefer zero-cost rearrangement over hardware interventions).
+- Generates 3 discrete alternatives based on intervention tier:
+  1. *Minimum Cost (Operational moves only)*: Zero-hardware operational moves only to eliminate path obstructions.
+  2. *Balanced*: High-leverage operational moves + minimal verified hardware (e.g., grab rails).
+  3. *Maximum Safety*: Full barrier-free architectural reconfiguration + verified hardware retrofits.
 
 ### 5. Role-Bounded AI Integration
 - AI is restricted to two isolated stages:
   - *Optional Floorplan Drafting (Stage 7)*: Extracts draft geometry with confidence ratings; requires mandatory human confirmation before analysis.
   - *Report Authoring (Stage 7)*: Drafts plain-language clinical notes and contractor task lists using calculated metrics only.
-- AI is strictly prohibited from inventing dimensions, calculating clearances, or generating risk numbers.
+- AI is strictly prohibited from inventing dimensions, calculating clearances, or generating risk scores or composite numbers.
 
 ### 6. Unified 2D & Synchronized 3D Digital Twin
 - Consolidate 2D canvas into a single high-performance engine consuming the canonical scene graph.
