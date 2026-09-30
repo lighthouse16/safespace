@@ -1,5 +1,9 @@
 import test from "node:test";
 import assert from "node:assert/strict";
+import fs from "node:fs";
+import path from "node:path";
+import React from "react";
+import { renderToStaticMarkup } from "react-dom/server";
 import { isWebGLAvailable, Spatial3DErrorBoundary } from "../src/components/spatial/Spatial3DErrorBoundary";
 import { tokens } from "../src/components/ui/tokens";
 import { useSafeSpaceStore } from "../src/store/safespace-store";
@@ -11,20 +15,18 @@ test("isWebGLAvailable safely returns false in headless environment without thro
   assert.equal(available, false);
 });
 
-test("Spatial3DErrorBoundary.getDerivedStateFromError sets error state and message", () => {
-  const testError = new Error("WebGL context creation failed");
-  const state = Spatial3DErrorBoundary.getDerivedStateFromError(testError);
+test("Spatial3DErrorBoundary.getDerivedStateFromError activates fallback state without saving raw error", () => {
+  const rawTechError = new Error("THREE.WebGLRenderer shader compilation failed at internal/file/path");
+  const state = Spatial3DErrorBoundary.getDerivedStateFromError(rawTechError);
 
   assert.equal(state.hasError, true);
   assert.equal(state.isContextLost, false);
-  assert.equal(state.errorMessage, "WebGL context creation failed");
 });
 
-test("Spatial3DErrorBoundary.getDerivedStateFromContextLost sets context lost state and error message", () => {
+test("Spatial3DErrorBoundary.getDerivedStateFromContextLost activates context lost state", () => {
   const state = Spatial3DErrorBoundary.getDerivedStateFromContextLost();
   assert.equal(state.hasError, true);
   assert.equal(state.isContextLost, true);
-  assert.match(state.errorMessage ?? "", /lost or reset/);
 });
 
 test("Spatial3DErrorBoundary.getDerivedStateFromRetry handles unavailable and retry increments", () => {
@@ -32,7 +34,96 @@ test("Spatial3DErrorBoundary.getDerivedStateFromRetry handles unavailable and re
   const state = Spatial3DErrorBoundary.getDerivedStateFromRetry(0);
   assert.equal(state.hasError, true);
   assert.equal(state.isContextLost, false);
-  assert.match(state.errorMessage ?? "", /unavailable/);
+});
+
+test("raw technical errors never appear in user-facing fallback output, controlled copy is rendered", () => {
+  const boundary = new Spatial3DErrorBoundary({
+    children: null,
+    onFallbackTo2D: () => {},
+  });
+
+  // Simulate caught error state
+  boundary.state = {
+    hasError: true,
+    isContextLost: false,
+    retryKey: 0,
+  };
+
+  const renderedHtml = renderToStaticMarkup(boundary.render() as React.ReactElement);
+
+  // Technical terms and paths must never appear
+  const forbiddenTerms = [
+    "THREE.WebGLRenderer",
+    "shader compilation failed",
+    "internal/file/path",
+    "driver",
+    "stack",
+    "worker",
+    "Graphics Context Interrupted",
+    "remain fully active",
+  ];
+
+  for (const term of forbiddenTerms) {
+    assert.equal(
+      renderedHtml.includes(term),
+      false,
+      `Forbidden technical term or unsupported claim "${term}" found in user-facing fallback output`
+    );
+  }
+
+  // Controlled user copy must appear
+  assert.match(renderedHtml, /3D view is unavailable/);
+  assert.match(renderedHtml, /3D could not be displayed\. You can continue with the current 2D plan\./);
+  assert.match(renderedHtml, /Continue in 2D Plan/);
+  assert.match(renderedHtml, /Retry 3D view/);
+});
+
+test("context loss renders controlled interrupted copy without technical jargon", () => {
+  const boundary = new Spatial3DErrorBoundary({
+    children: null,
+    onFallbackTo2D: () => {},
+  });
+
+  // Simulate context loss state
+  boundary.state = {
+    hasError: true,
+    isContextLost: true,
+    retryKey: 0,
+  };
+
+  const renderedHtml = renderToStaticMarkup(boundary.render() as React.ReactElement);
+
+  assert.equal(
+    renderedHtml.includes("Graphics Context Interrupted"),
+    false,
+    "Raw technical term 'Graphics Context Interrupted' must not appear"
+  );
+  assert.match(renderedHtml, /3D view was interrupted/);
+  assert.match(renderedHtml, /The 3D view stopped unexpectedly\. You can retry or continue with the current 2D plan\./);
+});
+
+test("unsupported phrase 'remain fully active' has zero occurrences across all files in src/", () => {
+  const srcDir = path.resolve(import.meta.dirname, "../src");
+
+  function scanDir(dir: string): string[] {
+    const matches: string[] = [];
+    const entries = fs.readdirSync(dir, { withFileTypes: true });
+    for (const entry of entries) {
+      const fullPath = path.join(dir, entry.name);
+      if (entry.isDirectory()) {
+        matches.push(...scanDir(fullPath));
+      } else if (/\.(ts|tsx|js|jsx)$/.test(entry.name)) {
+        const content = fs.readFileSync(fullPath, "utf-8");
+        if (content.includes("remain fully active")) {
+          matches.push(fullPath);
+        }
+      }
+    }
+    return matches;
+  }
+
+  const offendingFiles = scanDir(srcDir);
+  assert.deepEqual(offendingFiles, [], "Files in src/ containing 'remain fully active'");
 });
 
 test("switching between 2D and 3D preserves spatial state perfectly", () => {

@@ -31,7 +31,6 @@ export interface Spatial3DErrorBoundaryProps {
 export interface Spatial3DErrorBoundaryState {
   hasError: boolean;
   isContextLost: boolean;
-  errorMessage?: string;
   retryKey: number;
 }
 
@@ -47,16 +46,15 @@ export class Spatial3DErrorBoundary extends Component<
     this.state = {
       hasError: false,
       isContextLost: false,
-      errorMessage: undefined,
       retryKey: 0,
     };
   }
 
-  static getDerivedStateFromError(error: Error): Partial<Spatial3DErrorBoundaryState> {
+  static getDerivedStateFromError(error?: Error): Partial<Spatial3DErrorBoundaryState> {
+    void error;
     return {
       hasError: true,
       isContextLost: false,
-      errorMessage: error.message || "Failed to initialize 3D canvas context.",
     };
   }
 
@@ -64,7 +62,6 @@ export class Spatial3DErrorBoundary extends Component<
     return {
       hasError: true,
       isContextLost: true,
-      errorMessage: "Graphics device context was lost or reset by the operating system.",
     };
   }
 
@@ -73,20 +70,18 @@ export class Spatial3DErrorBoundary extends Component<
       return {
         hasError: true,
         isContextLost: false,
-        errorMessage: "WebGL remains unavailable on this device.",
       };
     }
     return {
       hasError: false,
       isContextLost: false,
-      errorMessage: undefined,
       retryKey: (prevKey || 0) + 1,
     };
   }
 
   componentDidCatch(error: Error, errorInfo: ErrorInfo): void {
     if (process.env.NODE_ENV !== "production") {
-      console.warn(
+      console.error(
         "[SafeSpace 3D Isolation] Caught 3D spatial rendering failure:",
         error,
         errorInfo
@@ -98,9 +93,14 @@ export class Spatial3DErrorBoundary extends Component<
     this._isMounted = true;
     // Client-side pre-mount check (avoids SSR hydration mismatch)
     if (!isWebGLAvailable()) {
+      if (process.env.NODE_ENV !== "production") {
+        console.warn(
+          "[SafeSpace 3D Isolation] WebGL is unavailable on this device."
+        );
+      }
       this.setState({
         hasError: true,
-        errorMessage: "WebGL is disabled or unsupported by your graphics hardware/driver.",
+        isContextLost: false,
       });
     }
 
@@ -191,13 +191,20 @@ export class Spatial3DErrorBoundary extends Component<
   };
 
   render(): ReactNode {
-    const { hasError, isContextLost, errorMessage, retryKey } = this.state;
+    const { hasError, isContextLost, retryKey } = this.state;
     const {
       children,
       onFallbackTo2D,
-      fallbackTitle = "3D view is unavailable on this device",
-      fallbackMessage = "Spatial calculations, route clearances, and hazard analyses remain fully active in 2D Plan view.",
+      fallbackTitle = "3D view is unavailable",
+      fallbackMessage = "3D could not be displayed. You can continue with the current 2D plan.",
     } = this.props;
+
+    const resolvedTitle = isContextLost
+      ? "3D view was interrupted"
+      : fallbackTitle;
+    const resolvedMessage = isContextLost
+      ? "The 3D view stopped unexpectedly. You can retry or continue with the current 2D plan."
+      : fallbackMessage;
 
     return (
       <div ref={this.containerRef} className="h-full w-full">
@@ -213,18 +220,12 @@ export class Spatial3DErrorBoundary extends Component<
               </div>
 
               <h3 className="text-base font-bold text-[#192329]">
-                {isContextLost ? "3D Graphics Context Interrupted" : fallbackTitle}
+                {resolvedTitle}
               </h3>
 
               <p className="mt-2 text-xs text-[#64748b] leading-relaxed">
-                {fallbackMessage}
+                {resolvedMessage}
               </p>
-
-              {errorMessage && (
-                <p className="mt-2.5 rounded bg-slate-50 border border-slate-200 px-2 py-1 font-mono text-[11px] text-[#475569]">
-                  {errorMessage}
-                </p>
-              )}
 
               <div className="mt-5 flex flex-wrap items-center justify-center gap-2.5">
                 {onFallbackTo2D && (
