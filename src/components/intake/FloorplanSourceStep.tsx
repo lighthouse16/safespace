@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState } from "react";
+import React from "react";
 import { Button } from "@/components/ui/button";
 import {
   type SourceType,
@@ -27,17 +27,10 @@ export function FloorplanSourceStep({
   onContinue,
   onBack,
 }: FloorplanSourceStepProps) {
-  const [selectedSource, setSelectedSource] = useState<SourceType>(currentSource);
-
-  const handleSelectSource = (source: SourceType) => {
-    setSelectedSource(source);
-    onSelectSource(source);
-  };
-
-  const isPdfSelected = selectedSource === "upload" && uploadedFile?.isPdf === true;
+  const isPdfSelected = currentSource === "upload" && uploadedFile?.isPdf === true;
   const canContinue =
-    selectedSource === "manual" ||
-    (selectedSource === "upload" && uploadedFile !== null && !uploadedFile.isPdf);
+    currentSource === "manual" ||
+    (currentSource === "upload" && uploadedFile !== null && !uploadedFile.isPdf);
 
   return (
     <div className="space-y-6">
@@ -53,9 +46,9 @@ export function FloorplanSourceStep({
           {/* Card 1: Upload */}
           <button
             type="button"
-            onClick={() => handleSelectSource("upload")}
+            onClick={() => onSelectSource("upload")}
             className={`flex flex-col text-left p-5 rounded-xl border-2 transition cursor-pointer ${
-              selectedSource === "upload"
+              currentSource === "upload"
                 ? "border-[#1e7168] bg-[#e8f3f1]/30"
                 : "border-slate-200 bg-white hover:border-slate-300"
             }`}
@@ -66,27 +59,27 @@ export function FloorplanSourceStep({
               </span>
               <span
                 className={`size-4 rounded-full border-2 flex items-center justify-center ${
-                  selectedSource === "upload"
+                  currentSource === "upload"
                     ? "border-[#1e7168] bg-[#1e7168]"
                     : "border-slate-300"
                 }`}
               >
-                {selectedSource === "upload" && (
+                {currentSource === "upload" && (
                   <span className="size-1.5 rounded-full bg-white" />
                 )}
               </span>
             </div>
             <p className="mt-2 text-xs text-[#64748b]">
-              Import an image (PNG, JPEG, SVG) or PDF to calibrate scale and trace room perimeters.
+              Import PNG, JPEG, or SVG to calibrate scale and trace boundaries. PDF supports browser preview only; replace with an image or choose manual before drafting.
             </p>
           </button>
 
           {/* Card 2: Manual */}
           <button
             type="button"
-            onClick={() => handleSelectSource("manual")}
+            onClick={() => onSelectSource("manual")}
             className={`flex flex-col text-left p-5 rounded-xl border-2 transition cursor-pointer ${
-              selectedSource === "manual"
+              currentSource === "manual"
                 ? "border-[#1e7168] bg-[#e8f3f1]/30"
                 : "border-slate-200 bg-white hover:border-slate-300"
             }`}
@@ -97,12 +90,12 @@ export function FloorplanSourceStep({
               </span>
               <span
                 className={`size-4 rounded-full border-2 flex items-center justify-center ${
-                  selectedSource === "manual"
+                  currentSource === "manual"
                     ? "border-[#1e7168] bg-[#1e7168]"
                     : "border-slate-300"
                 }`}
               >
-                {selectedSource === "manual" && (
+                {currentSource === "manual" && (
                   <span className="size-1.5 rounded-full bg-white" />
                 )}
               </span>
@@ -115,7 +108,7 @@ export function FloorplanSourceStep({
 
         {/* Selected Source Section */}
         <div className="mt-6 border-t border-slate-200 pt-6">
-          {selectedSource === "upload" ? (
+          {currentSource === "upload" ? (
             <div>
               <h3 className="text-xs font-semibold uppercase tracking-wider text-slate-400 mb-3">
                 Floorplan File Upload

@@ -3,7 +3,12 @@ import { AppShell } from "@/components/shell";
 
 export default function AssessmentsPage() {
   return (
-    <AppShell activePath="/assessments">
+    <AppShell
+      activePath="/assessments"
+      facilityName={null}
+      workspaceLabel="SafeSpace workspace"
+      storageLabel="Storage not connected"
+    >
       <div className="mx-auto max-w-5xl space-y-6">
         {/* Header */}
         <header className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">

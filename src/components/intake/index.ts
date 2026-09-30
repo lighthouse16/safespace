@@ -6,4 +6,5 @@ export * from "./FloorplanSourceStep";
 export * from "./CalibrationTool";
 export * from "./BoundaryDraftCanvas";
 export * from "./boundary-operations";
+export * from "./candidate-url-manager";
 export * from "./IntakeReviewStep";

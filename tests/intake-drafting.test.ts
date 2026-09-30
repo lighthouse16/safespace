@@ -22,10 +22,18 @@ import {
   resetBoundaryForSourceChange,
 } from "../src/components/intake/boundary-operations";
 import {
+  registerCandidateUrl,
+  cancelCandidateUrl,
+  confirmCandidateUrl,
+  cleanupAllUrls,
+} from "../src/components/intake/candidate-url-manager";
+import { FloorplanSourceStep } from "../src/components/intake/FloorplanSourceStep";
+import {
   type Point2D,
   type BoundaryState,
 } from "../src/components/intake/intake-view-types";
 import AssessmentsPage from "../src/app/assessments/page";
+import NewAssessmentPage from "../src/app/assessments/new/page";
 
 // 1. File validation and MIME mapping tests
 test("validateFloorplanFile accepts valid corresponding extensions and MIME types under 25 MB", () => {
@@ -333,4 +341,113 @@ test("new intake source code contains truthful copy and prevents unrenderable PD
   // Misleading 'geometry verified' phrasing removed
   assert.doesNotMatch(reviewStepCode, /Boundary geometry verified with/);
   assert.match(reviewStepCode, /Boundary contains.*traced vertices/);
+});
+
+// 7. Candidate URL lifecycle management tests
+test("candidate URL lifecycle: cancel replacement revokes candidate URL and preserves active URL", () => {
+  const revoked: string[] = [];
+  const mockRevoke = (url: string) => revoked.push(url);
+
+  const initial = { activeUrl: "blob:active-1", candidateUrl: "blob:candidate-1" };
+  const result = cancelCandidateUrl(initial, mockRevoke);
+
+  assert.equal(result.activeUrl, "blob:active-1");
+  assert.equal(result.candidateUrl, null);
+  assert.deepEqual(revoked, ["blob:candidate-1"]);
+});
+
+test("candidate URL lifecycle: confirm replacement revokes previous active URL and adopts candidate", () => {
+  const revoked: string[] = [];
+  const mockRevoke = (url: string) => revoked.push(url);
+
+  const initial = { activeUrl: "blob:active-1", candidateUrl: "blob:candidate-2" };
+  const result = confirmCandidateUrl(initial, mockRevoke);
+
+  assert.equal(result.activeUrl, "blob:candidate-2");
+  assert.equal(result.candidateUrl, null);
+  assert.deepEqual(revoked, ["blob:active-1"]);
+});
+
+test("candidate URL lifecycle: replace pending candidate revokes previously abandoned candidate URL", () => {
+  const revoked: string[] = [];
+  const mockRevoke = (url: string) => revoked.push(url);
+
+  const initial = { activeUrl: "blob:active-1", candidateUrl: "blob:candidate-1" };
+  const result = registerCandidateUrl(initial, "blob:candidate-2", mockRevoke);
+
+  assert.equal(result.activeUrl, "blob:active-1");
+  assert.equal(result.candidateUrl, "blob:candidate-2");
+  assert.deepEqual(revoked, ["blob:candidate-1"]);
+});
+
+test("candidate URL lifecycle: page cleanup revokes both active and candidate URLs", () => {
+  const revoked: string[] = [];
+  const mockRevoke = (url: string) => revoked.push(url);
+
+  const initial = { activeUrl: "blob:active-1", candidateUrl: "blob:candidate-2" };
+  const result = cleanupAllUrls(initial, mockRevoke);
+
+  assert.equal(result.activeUrl, null);
+  assert.equal(result.candidateUrl, null);
+  assert.deepEqual(revoked, ["blob:candidate-2", "blob:active-1"]);
+});
+
+// 8. Controlled source selection tests
+test("FloorplanSourceStep renders selection strictly from parent-owned currentSource", () => {
+  const noop = () => {};
+
+  // Render when parent currentSource is "upload"
+  const uploadHtml = renderToStaticMarkup(
+    React.createElement(FloorplanSourceStep, {
+      currentSource: "upload",
+      uploadedFile: null,
+      onFileSelect: noop,
+      onFileRemove: noop,
+      onSelectSource: noop,
+      onContinue: noop,
+      onBack: noop,
+    })
+  );
+  // Upload button has active highlight, manual does not
+  assert.match(uploadHtml, /border-\[#1e7168\] bg-\[#e8f3f1\]\/30[\s\S]*Upload an existing floorplan/);
+  assert.match(uploadHtml, /border-slate-200 bg-white hover:border-slate-300[\s\S]*Draw the space manually/);
+
+  // Render when parent currentSource is "manual"
+  const manualHtml = renderToStaticMarkup(
+    React.createElement(FloorplanSourceStep, {
+      currentSource: "manual",
+      uploadedFile: null,
+      onFileSelect: noop,
+      onFileRemove: noop,
+      onSelectSource: noop,
+      onContinue: noop,
+      onBack: noop,
+    })
+  );
+  assert.match(manualHtml, /border-slate-200 bg-white hover:border-slate-300[\s\S]*Upload an existing floorplan/);
+  assert.match(manualHtml, /border-\[#1e7168\] bg-\[#e8f3f1\]\/30[\s\S]*Draw the space manually/);
+});
+
+test("FloorplanSourceStep contains updated truthful PDF copy on upload card", () => {
+  const sourceStepPath = path.resolve(process.cwd(), "src/components/intake/FloorplanSourceStep.tsx");
+  const sourceStepCode = fs.readFileSync(sourceStepPath, "utf8");
+
+  assert.match(sourceStepCode, /Import PNG, JPEG, or SVG to calibrate scale and trace boundaries/);
+  assert.match(sourceStepCode, /PDF supports browser preview only/);
+  assert.doesNotMatch(sourceStepCode, /Import an image \(PNG, JPEG, SVG\) or PDF to calibrate scale and trace room perimeters/);
+});
+
+// 9. AppShell truthfulness tests
+test("assessments dashboard and new assessment do not render Harmony Elder Care Centre or Data saved locally", () => {
+  const dashHtml = renderToStaticMarkup(React.createElement(AssessmentsPage));
+  assert.doesNotMatch(dashHtml, /Harmony Elder Care Centre/);
+  assert.doesNotMatch(dashHtml, /Data saved locally/);
+  assert.match(dashHtml, /SafeSpace workspace/);
+  assert.match(dashHtml, /Storage not connected/);
+
+  const newHtml = renderToStaticMarkup(React.createElement(NewAssessmentPage));
+  assert.doesNotMatch(newHtml, /Harmony Elder Care Centre/);
+  assert.doesNotMatch(newHtml, /Data saved locally/);
+  assert.match(newHtml, /New assessment/);
+  assert.match(newHtml, /Session only/);
 });

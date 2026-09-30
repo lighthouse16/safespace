@@ -9,10 +9,15 @@ import {
   FloorplanSourceStep,
   IntakeReviewStep,
   resetBoundaryForSourceChange,
+  registerCandidateUrl,
+  cancelCandidateUrl,
+  confirmCandidateUrl,
+  cleanupAllUrls,
   type AssessmentDetails,
   type BoundaryState,
   type CalibrationState,
   type IntakeStep,
+  type PendingSourceChange,
   type SourceType,
   type UploadedFileInfo,
 } from "@/components/intake";
@@ -58,29 +63,20 @@ export default function NewAssessmentPage() {
     gridSnap: true,
   });
 
-  // Track active blob URL for single-point ownership and cleanup on unmount
+  // Track active and candidate blob URLs for single-point ownership and lifecycle safety
   const activeUrlRef = useRef<string | null>(null);
-
-  useEffect(() => {
-    activeUrlRef.current = uploadedFile?.objectUrl ?? null;
-  }, [uploadedFile]);
+  const candidateUrlRef = useRef<string | null>(null);
 
   useEffect(() => {
     return () => {
-      if (activeUrlRef.current) {
-        URL.revokeObjectURL(activeUrlRef.current);
-        activeUrlRef.current = null;
-      }
+      const cleaned = cleanupAllUrls({
+        activeUrl: activeUrlRef.current,
+        candidateUrl: candidateUrlRef.current,
+      });
+      activeUrlRef.current = cleaned.activeUrl;
+      candidateUrlRef.current = cleaned.candidateUrl;
     };
   }, []);
-
-  const setUploadedFileAndManageUrl = (file: UploadedFileInfo | null) => {
-    if (activeUrlRef.current && activeUrlRef.current !== file?.objectUrl) {
-      URL.revokeObjectURL(activeUrlRef.current);
-    }
-    activeUrlRef.current = file?.objectUrl ?? null;
-    setUploadedFile(file);
-  };
 
   // Determine whether meaningful intake progress exists
   const hasMeaningfulWork =
@@ -95,7 +91,7 @@ export default function NewAssessmentPage() {
     calibration.p1 !== null;
 
   const [showExitConfirm, setShowExitConfirm] = useState(false);
-  const [pendingSourceAction, setPendingSourceAction] = useState<(() => void) | null>(null);
+  const [pendingChange, setPendingChange] = useState<PendingSourceChange | null>(null);
 
   // Browser beforeunload guard when unsaved session work exists
   useEffect(() => {
@@ -128,42 +124,88 @@ export default function NewAssessmentPage() {
 
   const handleSourceSelect = (newSource: SourceType) => {
     if (newSource === source) return;
-    const execute = () => {
+    const hasWork = boundary.vertices.length > 0 || calibration.p1 !== null;
+    if (hasWork) {
+      setPendingChange({ type: "switch_source", targetSource: newSource });
+    } else {
       setSource(newSource);
       setCalibration(INITIAL_CALIBRATION_STATE);
       setBoundary(resetBoundaryForSourceChange(boundary));
-    };
-    if (boundary.vertices.length > 0) {
-      setPendingSourceAction(() => execute);
-    } else {
-      execute();
     }
   };
 
   const handleFileSelect = (file: UploadedFileInfo) => {
-    const execute = () => {
-      setUploadedFileAndManageUrl(file);
+    const hasWork = boundary.vertices.length > 0 || calibration.p1 !== null;
+    if (uploadedFile && hasWork) {
+      const nextCandidate = registerCandidateUrl(
+        { activeUrl: activeUrlRef.current, candidateUrl: candidateUrlRef.current },
+        file.objectUrl
+      );
+      candidateUrlRef.current = nextCandidate.candidateUrl;
+      setPendingChange({ type: "replace_file", candidateFile: file });
+    } else {
+      if (activeUrlRef.current && activeUrlRef.current !== file.objectUrl) {
+        URL.revokeObjectURL(activeUrlRef.current);
+      }
+      activeUrlRef.current = file.objectUrl;
+      setUploadedFile(file);
       setCalibration(INITIAL_CALIBRATION_STATE);
       setBoundary(resetBoundaryForSourceChange(boundary));
-    };
-    if (uploadedFile && boundary.vertices.length > 0) {
-      setPendingSourceAction(() => execute);
-    } else {
-      execute();
     }
   };
 
   const handleFileRemove = () => {
-    const execute = () => {
-      setUploadedFileAndManageUrl(null);
+    const hasWork = boundary.vertices.length > 0 || calibration.p1 !== null;
+    if (hasWork) {
+      setPendingChange({ type: "remove_file" });
+    } else {
+      if (activeUrlRef.current) {
+        URL.revokeObjectURL(activeUrlRef.current);
+        activeUrlRef.current = null;
+      }
+      setUploadedFile(null);
       setCalibration(INITIAL_CALIBRATION_STATE);
       setBoundary(resetBoundaryForSourceChange(boundary));
-    };
-    if (boundary.vertices.length > 0) {
-      setPendingSourceAction(() => execute);
-    } else {
-      execute();
     }
+  };
+
+  const handleConfirmSourceChange = () => {
+    if (!pendingChange) return;
+
+    if (pendingChange.type === "replace_file") {
+      const nextState = confirmCandidateUrl({
+        activeUrl: activeUrlRef.current,
+        candidateUrl: candidateUrlRef.current,
+      });
+      activeUrlRef.current = nextState.activeUrl;
+      candidateUrlRef.current = nextState.candidateUrl;
+      setUploadedFile(pendingChange.candidateFile);
+    } else if (pendingChange.type === "switch_source") {
+      setSource(pendingChange.targetSource);
+      if (candidateUrlRef.current) {
+        URL.revokeObjectURL(candidateUrlRef.current);
+        candidateUrlRef.current = null;
+      }
+    } else if (pendingChange.type === "remove_file") {
+      if (activeUrlRef.current) {
+        URL.revokeObjectURL(activeUrlRef.current);
+        activeUrlRef.current = null;
+      }
+      setUploadedFile(null);
+    }
+
+    setCalibration(INITIAL_CALIBRATION_STATE);
+    setBoundary(resetBoundaryForSourceChange(boundary));
+    setPendingChange(null);
+  };
+
+  const handleCancelSourceChange = () => {
+    const nextState = cancelCandidateUrl({
+      activeUrl: activeUrlRef.current,
+      candidateUrl: candidateUrlRef.current,
+    });
+    candidateUrlRef.current = nextState.candidateUrl;
+    setPendingChange(null);
   };
 
   const handleResetAll = () => {
@@ -173,15 +215,25 @@ export default function NewAssessmentPage() {
       );
       if (!confirmed) return;
     }
+    if (activeUrlRef.current) {
+      URL.revokeObjectURL(activeUrlRef.current);
+      activeUrlRef.current = null;
+    }
+    if (candidateUrlRef.current) {
+      URL.revokeObjectURL(candidateUrlRef.current);
+      candidateUrlRef.current = null;
+    }
+    setPendingChange(null);
     setDetails({
       assessmentName: "",
       facilityName: "",
       spaceName: "",
       environmentType: "residence",
+
       notes: "",
     });
     setSource("upload");
-    setUploadedFileAndManageUrl(null);
+    setUploadedFile(null);
     setCalibration(INITIAL_CALIBRATION_STATE);
     setBoundary({
       vertices: [],
@@ -195,7 +247,16 @@ export default function NewAssessmentPage() {
   const stepIndex = STEPS.findIndex((s) => s.id === currentStep);
 
   return (
-    <AppShell activePath="/assessments">
+    <AppShell
+      activePath="/assessments"
+      facilityName={
+        currentStep !== "details" && details.facilityName.trim().length > 0
+          ? details.facilityName.trim()
+          : null
+      }
+      workspaceLabel="New assessment"
+      storageLabel="Session only"
+    >
       <div className="mx-auto max-w-5xl space-y-6">
         {/* Header with truthful Session-only badge */}
         <header className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
@@ -225,15 +286,14 @@ export default function NewAssessmentPage() {
           </Link>
         </header>
 
-        {/* Restrained Session Exit Warning Dialog */}
+        {/* Restrained Session Exit Warning Banner */}
         {showExitConfirm && (
           <div
-            role="alertdialog"
-            aria-labelledby="exit-dialog-title"
+            role="alert"
             className="rounded-xl border border-amber-300 bg-amber-50 p-4 text-xs text-amber-900 shadow-md flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3"
           >
             <div>
-              <div id="exit-dialog-title" className="font-semibold text-sm">
+              <div className="font-semibold text-sm">
                 Discard current intake draft?
               </div>
               <p className="mt-0.5 text-amber-800">
@@ -259,15 +319,14 @@ export default function NewAssessmentPage() {
           </div>
         )}
 
-        {/* Restrained Source Change Reset Confirmation Dialog */}
-        {pendingSourceAction !== null && (
+        {/* Restrained Source Change Reset Confirmation Banner */}
+        {pendingChange !== null && (
           <div
-            role="alertdialog"
-            aria-labelledby="source-change-title"
+            role="alert"
             className="rounded-xl border border-amber-300 bg-amber-50 p-4 text-xs text-amber-900 shadow-md flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3"
           >
             <div>
-              <div id="source-change-title" className="font-semibold text-sm">
+              <div className="font-semibold text-sm">
                 Reset existing boundary and calibration?
               </div>
               <p className="mt-0.5 text-amber-800">
@@ -279,11 +338,7 @@ export default function NewAssessmentPage() {
                 type="button"
                 variant="danger"
                 size="sm"
-                onClick={() => {
-                  const act = pendingSourceAction;
-                  setPendingSourceAction(null);
-                  act();
-                }}
+                onClick={handleConfirmSourceChange}
               >
                 Discard & Update Source
               </Button>
@@ -291,7 +346,7 @@ export default function NewAssessmentPage() {
                 type="button"
                 variant="secondary"
                 size="sm"
-                onClick={() => setPendingSourceAction(null)}
+                onClick={handleCancelSourceChange}
               >
                 Keep Current Draft
               </Button>
@@ -324,7 +379,7 @@ export default function NewAssessmentPage() {
         </nav>
 
         {/* Step Content */}
-        <main>
+        <div>
           {currentStep === "details" && (
             <AssessmentDetailsStep
               initialDetails={details}
@@ -394,7 +449,7 @@ export default function NewAssessmentPage() {
               onExitToAssessments={handleExitNavigation}
             />
           )}
-        </main>
+        </div>
       </div>
     </AppShell>
   );
