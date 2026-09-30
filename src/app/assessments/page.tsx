@@ -1,125 +1,124 @@
 import Link from "next/link";
 import { AppShell } from "@/components/shell";
 
-const spaces = [
-  {
-    id: "queen-care-clinic",
-    name: "Waiting Area & Consultation Corridor",
-    category: "Waiting & Transit",
-    status: "Analysis Complete",
-    risk: "68 · High risk",
-    riskClass: "bg-red-50 text-red-700 border-red-200",
-    updated: "12 min ago",
-    targetRoute: "Entrance → Reception → Waiting Seat → Consultation Room",
-    href: "/assessments/queen-care-clinic/analysis",
-  },
-  {
-    id: "north-corridor",
-    name: "North Circulation Corridor",
-    category: "Circulation Hallway",
-    status: "Review Pending",
-    risk: "34 · Moderate",
-    riskClass: "bg-amber-50 text-amber-700 border-amber-200",
-    updated: "Yesterday",
-    targetRoute: "Foyer → Accessible WC",
-    href: "/reviews/queen-care-clinic",
-  },
-  {
-    id: "consultation-2",
-    name: "Consultation Room 2",
-    category: "Clinical Consultation",
-    status: "Safe",
-    risk: "14 · Low risk",
-    riskClass: "bg-teal-50 text-teal-700 border-teal-200",
-    updated: "24 Sep",
-    targetRoute: "Doorway → Examination Table",
-    href: "/assessments/queen-care-clinic/model",
-  },
-  {
-    id: "rehab-hall",
-    name: "Physiotherapy & Exercise Hall",
-    category: "Rehabilitation",
-    status: "Draft",
-    risk: "Not analyzed",
-    riskClass: "bg-slate-100 text-slate-600 border-slate-200",
-    updated: "3 days ago",
-    targetRoute: "Parallel Bars → Rest Bench",
-    href: "/assessments/new",
-  },
-];
-
 export default function AssessmentsPage() {
   return (
     <AppShell activePath="/assessments">
-      <div className="mx-auto max-w-6xl">
+      <div className="mx-auto max-w-5xl space-y-6">
+        {/* Header */}
         <header className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
           <div>
-            <p className="text-xs font-semibold uppercase tracking-wider text-slate-500">Queen Care Clinic</p>
-            <h1 className="mt-1 text-3xl font-semibold tracking-tight">Spaces & Assessments</h1>
-            <p className="mt-2 text-slate-600">
-              Manage environmental fall-risk evaluations, 2D/3D floorplans, and route audits across clinic spaces.
+            <div className="flex items-center gap-2">
+              <p className="text-xs font-semibold uppercase tracking-wider text-slate-500">
+                SafeSpace Workspace
+              </p>
+              <span
+                role="status"
+                className="rounded-full bg-slate-100 px-2.5 py-0.5 text-[11px] font-medium text-slate-600 border border-slate-200"
+              >
+                Session only
+              </span>
+            </div>
+            <h1 className="mt-1 text-2xl font-semibold tracking-tight text-[#192329] sm:text-3xl">
+              Assessments & Spaces
+            </h1>
+            <p className="mt-1.5 text-xs text-[#64748b]">
+              Evaluate environmental fall risks, calibrate floorplans, and audit critical routes across living and care environments.
             </p>
           </div>
+
           <Link
             href="/assessments/new"
-            className="rounded-lg bg-teal-700 px-4 py-2.5 text-center text-sm font-semibold text-white hover:bg-teal-800"
+            className="inline-flex items-center justify-center rounded-lg bg-[#1e7168] px-4 py-2 text-xs font-semibold text-white shadow-xs hover:bg-[#175b54] transition cursor-pointer shrink-0"
           >
             + New assessment
           </Link>
         </header>
 
-        <div className="mt-6 flex flex-wrap gap-3 border-y border-slate-200 py-4">
-          <input
-            aria-label="Search facility areas"
-            placeholder="Search room, corridor, or area name..."
-            className="min-w-64 flex-1 rounded-lg border border-slate-300 bg-white px-3.5 py-2 text-sm focus:border-teal-700 focus:outline-none"
-          />
-          <select aria-label="Filter status" className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm">
-            <option>All statuses</option>
-            <option>Analysis Complete</option>
-            <option>Review Pending</option>
-            <option>Draft</option>
-          </select>
+        {/* Real Assessments Empty State */}
+        <div className="rounded-xl border border-slate-200 bg-white p-8 text-center shadow-xs">
+          <div className="mx-auto size-11 rounded-full bg-slate-100 border border-slate-200 grid place-items-center text-slate-500">
+            <svg
+              className="size-5"
+              fill="none"
+              viewBox="0 0 24 24"
+              stroke="currentColor"
+              aria-hidden="true"
+            >
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth={1.5}
+                d="M9 13h6m-3-3v6m5 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"
+              />
+            </svg>
+          </div>
+          <h2 className="mt-3 text-sm font-semibold text-[#192329]">
+            No real assessments saved yet
+          </h2>
+          <p className="mt-1 text-xs text-[#64748b] max-w-md mx-auto">
+            New assessments created in this session are held in local memory. Durable project storage will be connected through the canonical data layer.
+          </p>
+          <div className="mt-4">
+            <Link
+              href="/assessments/new"
+              className="inline-flex items-center justify-center rounded-lg border border-slate-300 bg-white px-3.5 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-50 transition"
+            >
+              Start an assessment
+            </Link>
+          </div>
         </div>
 
-        <div className="mt-6 overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
-          <div className="hidden border-b border-slate-200 bg-slate-50 px-5 py-3 text-xs font-semibold text-slate-500 md:grid md:grid-cols-[1fr_12rem_10rem_7rem]">
-            <span>Space / Critical Route</span>
-            <span>Category & Status</span>
-            <span>Safety Risk</span>
-            <span className="text-right">Action</span>
+        {/* Labelled Demo Fixture Section */}
+        <section aria-labelledby="demo-fixtures-heading" className="space-y-3">
+          <div className="flex items-center justify-between">
+            <h2
+              id="demo-fixtures-heading"
+              className="text-xs font-semibold uppercase tracking-wider text-slate-400"
+            >
+              Pre-Configured Demo Fixture
+            </h2>
+            <span className="text-[11px] text-slate-500">
+              Interactive sample scenario
+            </span>
           </div>
 
-          <div className="divide-y divide-slate-200">
-            {spaces.map((s) => (
-              <div
-                key={s.id}
-                className="grid gap-3 p-5 transition hover:bg-slate-50 md:grid-cols-[1fr_12rem_10rem_7rem] md:items-center"
-              >
-                <div>
-                  <Link href={s.href} className="text-base font-semibold text-slate-900 hover:text-teal-700">
-                    {s.name}
-                  </Link>
-                  <p className="mt-1 text-xs text-slate-500">Route: {s.targetRoute}</p>
-                </div>
-                <div>
-                  <span className="text-xs font-medium text-slate-700">{s.category}</span>
-                  <span className="block text-xs text-slate-400">{s.status} · {s.updated}</span>
-                </div>
-                <div>
-                  <span className={`inline-flex rounded-full px-2.5 py-0.5 text-xs font-semibold border ${s.riskClass}`}>
-                    {s.risk}
+          <div className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-xs">
+            <div className="p-5 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+              <div className="space-y-1">
+                <div className="flex items-center gap-2">
+                  <span className="font-semibold text-sm text-[#192329]">
+                    Queen Care Clinic
+                  </span>
+                  <span className="rounded bg-amber-50 px-2 py-0.5 text-[10px] font-semibold text-amber-800 border border-amber-200">
+                    Demo Fixture
                   </span>
                 </div>
-                <div className="text-right">
-                  <Link href={s.href} className="text-xs font-semibold text-teal-700 hover:underline">
-                    Open &rarr;
-                  </Link>
-                </div>
+                <p className="text-xs text-slate-600">
+                  Waiting Area & Consultation Corridor · Pre-scripted baseline floorplan
+                </p>
+                <p className="text-[11px] text-slate-400">
+                  Critical Route: Entrance &rarr; Reception &rarr; Waiting Seat &rarr; Consultation Room
+                </p>
               </div>
-            ))}
+
+              <div className="flex items-center gap-3 shrink-0">
+                <Link
+                  href="/assessments/queen-care-clinic/analysis"
+                  className="rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-50 transition"
+                >
+                  View analysis demo
+                </Link>
+                <Link
+                  href="/assessments/queen-care-clinic/model"
+                  className="rounded-lg bg-[#1e7168] px-3.5 py-1.5 text-xs font-semibold text-white hover:bg-[#175b54] transition"
+                >
+                  Open demo &rarr;
+                </Link>
+              </div>
+            </div>
           </div>
-        </div>
+        </section>
       </div>
     </AppShell>
   );
