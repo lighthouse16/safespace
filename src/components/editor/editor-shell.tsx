@@ -3,6 +3,7 @@ import { useState, useEffect, useCallback, useRef, useMemo } from "react";
 import { EditorControls } from "./editor-controls";
 import { Floorplan2D } from "./floorplan-2d";
 import { Floorplan3D } from "./floorplan-3d";
+import { Spatial3DErrorBoundary } from "@/components/spatial/Spatial3DErrorBoundary";
 import { currentPlan, proposedPlan, type EditorPlan, type Point, type EditorFurniture } from "./editor-model";
 export type { EditorFurniture };
 
@@ -16,6 +17,8 @@ export type EditorShellProps = {
   /** External mode control */
   mode?: "current" | "proposed";
   onModeChange?: (mode: "current" | "proposed") => void;
+  facilityName?: string;
+  spaceName?: string;
 };
 
 export function EditorShell({
@@ -26,6 +29,8 @@ export function EditorShell({
   showBeforeAfter = false,
   mode: externalMode,
   onModeChange,
+  facilityName = "Queen Care Clinic",
+  spaceName = "Waiting Area & Consultation Corridor",
 }: EditorShellProps) {
   const [internalMode, setInternalMode] = useState<"current" | "proposed">("current");
   const mode = externalMode ?? internalMode;
@@ -101,8 +106,8 @@ export function EditorShell({
       }}>
         <div>
           <div style={{ font: "700 13px system-ui", color: "#26373b" }}>
-            Harmony Elder Care Centre{" "}
-            <span style={{ fontWeight: 500, color: "#7a888c" }}>/ Activity room</span>
+            {facilityName}{" "}
+            {spaceName && <span style={{ fontWeight: 500, color: "#7a888c" }}>/ {spaceName}</span>}
           </div>
           <div style={{ font: "500 11px system-ui", color: "#829094", marginTop: 2 }}>
             Scale 1:50 · {mode === "proposed" ? "Proposed layout" : "Current layout"}
@@ -143,7 +148,13 @@ export function EditorShell({
         </div>
       </header>
 
-      {view === "2d" ? <Floorplan2D {...shared} /> : <Floorplan3D {...shared} />}
+      {view === "2d" ? (
+        <Floorplan2D {...shared} />
+      ) : (
+        <Spatial3DErrorBoundary onFallbackTo2D={() => setView("2d")}>
+          <Floorplan3D {...shared} />
+        </Spatial3DErrorBoundary>
+      )}
 
       <footer
         aria-live="polite"

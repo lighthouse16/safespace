@@ -12,7 +12,6 @@ import {
   Undo2,
   Redo2,
   Upload,
-  Sparkles,
   CheckCircle2,
   Trash2,
   RotateCw,
@@ -43,32 +42,11 @@ export function Stage1Layout() {
     setImportMode,
   } = useSafeSpaceStore();
 
-  const [isSimulatingUpload, setIsSimulatingUpload] = useState(false);
-  const [uploadStep, setUploadStep] = useState("");
   const [showAddMenu, setShowAddMenu] = useState(false);
 
   const selectedItem = furniture.find((f) => f.id === selectedFurnitureId);
   const unconfirmedCount = furniture.filter((f) => !f.isConfirmed).length;
   const totalCount = furniture.length;
-
-  const handleSimulatedUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
-    if (!e.target.files?.length) return;
-    setIsSimulatingUpload(true);
-    setUploadStep("Reading drawing layers...");
-
-    setTimeout(() => {
-      setUploadStep("Detecting boundaries...");
-    }, 500);
-
-    setTimeout(() => {
-      setUploadStep("Classifying 18 spatial objects...");
-    }, 1000);
-
-    setTimeout(() => {
-      setIsSimulatingUpload(false);
-      setImportMode("ready");
-    }, 1500);
-  };
 
   return (
     <div className="flex flex-col h-[calc(100vh-3.5rem)] w-full overflow-hidden bg-[#f7f8f6]">
@@ -101,70 +79,57 @@ export function Stage1Layout() {
                     </span>
                   </div>
                   <p className="text-[11px] text-slate-600 mt-0.5">
-                    Queen Care Clinic · Waiting Area & Corridor (18 objects)
+                    Queen Care Clinic (Demo Fixture) · Waiting Area & Corridor (18 objects)
                   </p>
                 </div>
                 <ChevronRight className="w-4 h-4 text-[#1e7168] shrink-0" />
               </button>
 
-              {/* Option 2: Upload */}
-              <label className="flex items-center gap-3.5 p-3.5 rounded-lg border border-[#e2e8e4] bg-white hover:border-slate-300 hover:bg-slate-50 transition text-left cursor-pointer group">
-                <input
-                  type="file"
-                  accept="image/*,.pdf,.dwg"
-                  onChange={handleSimulatedUpload}
-                  className="hidden"
-                />
-                <div className="w-9 h-9 rounded-md bg-slate-100 text-slate-700 flex items-center justify-center shrink-0">
+              {/* Option 2: Upload (Pending Integration) */}
+              <div
+                className="flex items-center gap-3.5 p-3.5 rounded-lg border border-[#e2e8e4] bg-slate-50/70 text-left select-none opacity-75"
+                title="Extraction integration pending"
+              >
+                <div className="w-9 h-9 rounded-md bg-slate-100 text-slate-400 flex items-center justify-center shrink-0">
                   <Upload className="w-4 h-4" />
                 </div>
                 <div className="flex-1">
-                  <span className="font-semibold text-xs text-[#192329] block">
-                    Upload Plan (CAD / PDF / Image)
-                  </span>
+                  <div className="flex items-center gap-2">
+                    <span className="font-semibold text-xs text-slate-700 block">
+                      Upload Plan (CAD / PDF / Image)
+                    </span>
+                    <span className="px-1.5 py-0.2 rounded text-[9px] font-bold uppercase bg-slate-200 text-slate-600">
+                      Pending
+                    </span>
+                  </div>
                   <p className="text-[11px] text-slate-500 mt-0.5">
-                    Prototype extraction demo
+                    Extraction integration pending
                   </p>
                 </div>
-                <ChevronRight className="w-4 h-4 text-slate-400 shrink-0" />
-              </label>
+              </div>
 
-              {/* Option 3: Create Manually */}
-              <button
-                onClick={() => setImportMode("ready")}
-                className="flex items-center gap-3.5 p-3.5 rounded-lg border border-[#e2e8e4] bg-white hover:border-slate-300 hover:bg-slate-50 transition text-left cursor-pointer group"
+              {/* Option 3: Create Manually (Pending Integration) */}
+              <div
+                className="flex items-center gap-3.5 p-3.5 rounded-lg border border-[#e2e8e4] bg-slate-50/70 text-left select-none opacity-75"
+                title="Manual setup integration pending"
               >
-                <div className="w-9 h-9 rounded-md bg-slate-100 text-slate-700 flex items-center justify-center shrink-0">
+                <div className="w-9 h-9 rounded-md bg-slate-100 text-slate-400 flex items-center justify-center shrink-0">
                   <FileText className="w-4 h-4" />
                 </div>
                 <div className="flex-1">
-                  <span className="font-semibold text-xs text-[#192329] block">
-                    Create Manually
-                  </span>
+                  <div className="flex items-center gap-2">
+                    <span className="font-semibold text-xs text-slate-700 block">
+                      Create Manually
+                    </span>
+                    <span className="px-1.5 py-0.2 rounded text-[9px] font-bold uppercase bg-slate-200 text-slate-600">
+                      Pending
+                    </span>
+                  </div>
                   <p className="text-[11px] text-slate-500 mt-0.5">
-                    Empty room template
+                    Manual setup integration pending
                   </p>
                 </div>
-                <ChevronRight className="w-4 h-4 text-slate-400 shrink-0" />
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Upload Progress Modal */}
-      {isSimulatingUpload && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-xs p-4">
-          <div className="bg-white rounded-xl p-5 max-w-sm w-full shadow-2xl border border-slate-200 text-center space-y-3">
-            <div className="w-10 h-10 rounded-full bg-[#e8f3f1] text-[#1e7168] flex items-center justify-center mx-auto animate-pulse">
-              <Sparkles className="w-5 h-5" />
-            </div>
-            <h3 className="font-semibold text-xs text-slate-900">Prototype Plan Extraction</h3>
-            <div className="p-2 bg-slate-50 rounded text-xs font-mono text-[#1e7168]">
-              {uploadStep}
-            </div>
-            <div className="w-full bg-slate-100 h-1 rounded-full overflow-hidden">
-              <div className="bg-[#1e7168] h-full w-2/3 animate-pulse"></div>
+              </div>
             </div>
           </div>
         </div>

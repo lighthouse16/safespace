@@ -7,6 +7,7 @@ import {
   ChevronRight,
   RotateCcw,
 } from "lucide-react";
+import { Tooltip } from "@/components/ui";
 
 const STAGES: { id: WorkflowStage; label: string; stepNumber: number }[] = [
   { id: "layout", label: "Layout", stepNumber: 1 },
@@ -40,20 +41,28 @@ export function TopAppBar() {
           <span className="text-xs font-semibold text-[#1e293b]">
             Queen Care Clinic
           </span>
+          <span className="rounded bg-slate-100 px-1.5 py-0.5 text-[10px] font-medium text-slate-500 border border-slate-200">
+            Demo Fixture
+          </span>
           <span className="text-[#94a3b8] text-xs">·</span>
           <span className="text-xs text-[#64748b] hidden sm:inline">
             Waiting Area & Consultation Corridor
           </span>
         </div>
 
-        <div className="hidden lg:flex items-center gap-1.5 ml-2 px-2 py-0.5 rounded-full bg-[#f1f5f3] text-[11px] text-[#3d5a54]">
-          <span className="w-1.5 h-1.5 rounded-full bg-[#16a34a]"></span>
-          <span>All changes saved</span>
-        </div>
+        <Tooltip
+          position="bottom"
+          label="Session only: in-memory state. Persistent storage will connect to canonical store."
+        >
+          <div className="hidden lg:flex items-center gap-1.5 ml-2 px-2 py-0.5 rounded-full bg-[#f1f5f3] border border-[#e2e8e4] text-[11px] text-[#475569] cursor-help">
+            <span className="w-1.5 h-1.5 rounded-full bg-[#d97706]" aria-hidden="true" />
+            <span className="font-medium">Session only</span>
+          </div>
+        </Tooltip>
       </div>
 
       {/* 5-Step Progress Stepper Indicator */}
-      <nav className="flex items-center gap-1 sm:gap-2">
+      <nav className="flex items-center gap-1 sm:gap-2" aria-label="Assessment stages">
         {STAGES.map((s, idx) => {
           const isCurrent = s.id === activeStage;
           const isPassed = idx < currentStageIndex;
@@ -62,7 +71,8 @@ export function TopAppBar() {
             <button
               key={s.id}
               onClick={() => setStage(s.id)}
-              className={`flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs font-medium transition cursor-pointer ${
+              aria-current={isCurrent ? "step" : undefined}
+              className={`flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs font-medium transition cursor-pointer focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-[#1e7168] ${
                 isCurrent
                   ? "bg-[#e8f3f1] text-[#1e7168] ring-1 ring-[#1e7168]/20 font-semibold"
                   : isPassed
@@ -94,7 +104,7 @@ export function TopAppBar() {
       <div className="flex items-center gap-2">
         <button
           onClick={resetToDemo}
-          className="text-xs text-[#64748b] hover:text-[#1e7168] px-2 py-1 rounded hover:bg-slate-100 transition flex items-center gap-1"
+          className="text-xs text-[#64748b] hover:text-[#1e7168] px-2.5 py-1 rounded-md border border-transparent hover:border-[#cbd5e1] hover:bg-slate-50 transition flex items-center gap-1.5 cursor-pointer focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-[#1e7168]"
           title="Reset to initial Queen Care Clinic scenario"
         >
           <RotateCcw className="w-3.5 h-3.5" />

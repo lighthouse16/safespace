@@ -39,7 +39,7 @@ export function ReportModal() {
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 p-3.5 bg-slate-50 rounded-lg border border-slate-100 text-xs font-mono">
             <div>
               <span className="text-slate-400 block text-[10px]">FACILITY</span>
-              <span className="font-semibold text-slate-900">Queen Care Clinic</span>
+              <span className="font-semibold text-slate-900">Queen Care Clinic <span className="font-normal text-[10px] text-slate-500">(Demo Fixture)</span></span>
             </div>
             <div>
               <span className="text-slate-400 block text-[10px]">ASSESSED SPACE</span>

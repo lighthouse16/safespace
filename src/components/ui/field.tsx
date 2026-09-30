@@ -1,6 +1,91 @@
-import { forwardRef, type InputHTMLAttributes, type SelectHTMLAttributes } from "react";
-type FieldProps = { label: string; error?: string; hint?: string };
-export const Input = forwardRef<HTMLInputElement, InputHTMLAttributes<HTMLInputElement> & FieldProps>(({ label, error, hint, id, className = "", ...props }, ref) => { const fieldId = id ?? props.name; const described = error ? `${fieldId}-error` : hint ? `${fieldId}-hint` : undefined; return <label className="grid gap-1.5 text-sm font-medium text-slate-800" htmlFor={fieldId}>{label}<input ref={ref} id={fieldId} aria-invalid={!!error} aria-describedby={described} className={`min-h-11 rounded-lg border bg-white px-3 text-slate-950 outline-none placeholder:text-slate-500 focus:border-teal-700 focus:ring-2 focus:ring-teal-100 ${error ? "border-red-600" : "border-slate-300"} ${className}`} {...props}/>{(error || hint) && <span id={described} className={`text-xs ${error ? "text-red-700" : "text-slate-600"}`}>{error || hint}</span>}</label> });
+"use client";
+
+import React, { forwardRef, type InputHTMLAttributes, type SelectHTMLAttributes } from "react";
+
+export type FieldProps = {
+  label: string;
+  error?: string;
+  hint?: string;
+  optional?: boolean;
+};
+
+export const Input = forwardRef<HTMLInputElement, InputHTMLAttributes<HTMLInputElement> & FieldProps>(
+  ({ label, error, hint, optional, id, className = "", ...props }, ref) => {
+    const fieldId = id ?? (props.name ? `field-${props.name}` : undefined);
+    const errorId = error && fieldId ? `${fieldId}-error` : undefined;
+    const hintId = hint && fieldId ? `${fieldId}-hint` : undefined;
+    const describedBy = errorId ?? hintId;
+
+    return (
+      <label className="grid gap-1.5 text-xs font-semibold text-[#192329]" htmlFor={fieldId}>
+        <div className="flex items-center justify-between">
+          <span>{label}</span>
+          {optional && <span className="text-[11px] font-normal text-[#94a3b8]">Optional</span>}
+        </div>
+        <input
+          ref={ref}
+          id={fieldId}
+          aria-invalid={!!error}
+          aria-describedby={describedBy}
+          className={`min-h-9 rounded-lg border bg-white px-3 text-xs text-[#192329] outline-none transition placeholder:text-[#94a3b8] focus:border-[#1e7168] focus:ring-2 focus:ring-[#1e7168]/20 disabled:cursor-not-allowed disabled:bg-slate-50 disabled:text-[#94a3b8] ${
+            error ? "border-[#dc2626]" : "border-[#cbd5e1]"
+          } ${className}`}
+          {...props}
+        />
+        {error ? (
+          <span id={errorId} className="text-[11px] font-normal text-[#dc2626]">
+            {error}
+          </span>
+        ) : hint ? (
+          <span id={hintId} className="text-[11px] font-normal text-[#64748b]">
+            {hint}
+          </span>
+        ) : null}
+      </label>
+    );
+  }
+);
+
 Input.displayName = "Input";
-export const Select = forwardRef<HTMLSelectElement, SelectHTMLAttributes<HTMLSelectElement> & FieldProps>(({ label, error, hint, id, className = "", children, ...props }, ref) => { const fieldId = id ?? props.name; return <label className="grid gap-1.5 text-sm font-medium text-slate-800" htmlFor={fieldId}>{label}<select ref={ref} id={fieldId} aria-invalid={!!error} className={`min-h-11 rounded-lg border border-slate-300 bg-white px-3 text-slate-950 outline-none focus:border-teal-700 focus:ring-2 focus:ring-teal-100 ${className}`} {...props}>{children}</select>{(error || hint) && <span className={`text-xs ${error ? "text-red-700" : "text-slate-600"}`}>{error || hint}</span>}</label> });
+
+export const Select = forwardRef<
+  HTMLSelectElement,
+  SelectHTMLAttributes<HTMLSelectElement> & FieldProps
+>(({ label, error, hint, optional, id, className = "", children, ...props }, ref) => {
+  const fieldId = id ?? (props.name ? `field-${props.name}` : undefined);
+  const errorId = error && fieldId ? `${fieldId}-error` : undefined;
+  const hintId = hint && fieldId ? `${fieldId}-hint` : undefined;
+  const describedBy = errorId ?? hintId;
+
+  return (
+    <label className="grid gap-1.5 text-xs font-semibold text-[#192329]" htmlFor={fieldId}>
+      <div className="flex items-center justify-between">
+        <span>{label}</span>
+        {optional && <span className="text-[11px] font-normal text-[#94a3b8]">Optional</span>}
+      </div>
+      <select
+        ref={ref}
+        id={fieldId}
+        aria-invalid={!!error}
+        aria-describedby={describedBy}
+        className={`min-h-9 rounded-lg border bg-white px-3 text-xs text-[#192329] outline-none transition focus:border-[#1e7168] focus:ring-2 focus:ring-[#1e7168]/20 disabled:cursor-not-allowed disabled:bg-slate-50 disabled:text-[#94a3b8] ${
+          error ? "border-[#dc2626]" : "border-[#cbd5e1]"
+        } ${className}`}
+        {...props}
+      >
+        {children}
+      </select>
+      {error ? (
+        <span id={errorId} className="text-[11px] font-normal text-[#dc2626]">
+          {error}
+        </span>
+      ) : hint ? (
+        <span id={hintId} className="text-[11px] font-normal text-[#64748b]">
+          {hint}
+        </span>
+      ) : null}
+    </label>
+  );
+});
+
 Select.displayName = "Select";
