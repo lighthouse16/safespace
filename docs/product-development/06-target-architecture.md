@@ -116,7 +116,8 @@ To prevent vendor lock-in, external service providers are treated as interchange
   - unit;
   - applicability (room type, mobility profile, route purpose);
   - severity (`critical`, `high`, `medium`, `low`);
-  - resolution state (`open`, `resolved`, `dismissed`).
+  - professional review status (`pending`, `verified`, `waived`);
+  - resolution status (`open`, `mitigated`, `resolved`).
 - Composite score (EHS / risk score / risk index) remains completely disabled and cannot be used in analysis, optimization, ranking, reports, or UI until separately validated and approved by relevant occupational therapy and architectural consensus.
 
 ### 4. Constraint-Based Layout Optimiser

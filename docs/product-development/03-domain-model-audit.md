@@ -187,9 +187,20 @@ export interface CanonicalHazard {
   requiredValue: number;
   requirementSource: ThresholdSource;
   unit: "cm" | "lux" | "mm" | "m";
-  reviewStatus: "pending" | "verified" | "waived" | "mitigated";
+  reviewStatus: "pending" | "verified" | "waived";
+  resolutionStatus: "open" | "mitigated" | "resolved";
   clinicalRationale?: string;
 }
 ```
+
+*Note on Hazard Lifecycle*:
+- `reviewStatus` (`"pending" | "verified" | "waived"`):
+  - `pending`: not yet professionally reviewed
+  - `verified`: finding confirmed by reviewer
+  - `waived`: reviewer accepts or excludes the finding with recorded rationale
+- `resolutionStatus` (`"open" | "mitigated" | "resolved"`):
+  - `open`: no corrective action completed
+  - `mitigated`: corrective action reduces the issue but the finding still applies
+  - `resolved`: current geometry or verified site evidence no longer violates the requirement
 
 *Note: This canonical specification will be implemented in Stage 1. Every safety threshold must reference a verified rule ID, user/device measurement, or professional clinical input; unvalidated hardcoded numeric defaults are prohibited.*

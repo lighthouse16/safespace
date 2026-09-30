@@ -125,7 +125,7 @@ This implementation plan defines the gated roadmap for SafeSpace from Stage 1 th
   - Sensor hardware procurement or procurement pricing (deferred to Stage 7).
 - **Dependencies**: Stage 3 (Geometry Engine & Dynamic Clearances).
 - **Major Implementation Tasks**:
-  1. Author rule evaluation modules for corridor clearance, door width, corner proximity, thresholds, and support gaps, focusing strictly on individual rule evaluations, exact measurements, required versus measured values, provenance, severity, and resolution state.
+  1. Author rule evaluation modules for corridor clearance, door width, corner proximity, thresholds, and support gaps, focusing strictly on individual rule evaluations, exact measurements, required versus measured values, provenance, severity, professional review status (`pending`, `verified`, `waived`), and resolution status (`open`, `mitigated`, `resolved`).
   2. Document EHS as a deferred product hypothesis only. Do not create a runtime interface, formula, calculation path, stored field, API field, or UI component for EHS during Stage 4.
   3. Replace `INITIAL_HAZARDS` and `calculateLiveMetrics` in `spatial-model.ts` with dynamic individual rule evaluation output.
   4. Connect Stage 4 hazard list directly to live individual rule evaluation output.
@@ -133,7 +133,7 @@ This implementation plan defines the gated roadmap for SafeSpace from Stage 1 th
   - Deterministic evaluation test suite verifying that placing a barrier produces the exact expected hazard code, required vs. measured value, provenance, and severity.
   - Individual rule violation assertion suite checking measured vs. required physical dimensions.
 - **Acceptance Criteria**:
-  - Placing, removing, or resizing any object immediately generates or resolves the corresponding individual hazard in the live UI with verifiable evidence citations, exact physical measurements, required versus measured values, provenance, severity, and resolution state.
+  - Placing, removing, or resizing any object immediately generates or resolves the corresponding individual hazard in the live UI with verifiable evidence citations, exact physical measurements, required versus measured values, provenance, severity, professional review status, and resolution status.
   - Stage 4 passes cleanly without calculating or displaying any composite risk score.
 - **Risks**: Premature reintroduction of an unvalidated composite score or arbitrary severity weights.
 - **Suggested Branch Name**: `stage-4-evidence-hazard-engine`
