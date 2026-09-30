@@ -7,7 +7,7 @@ const steps: readonly { id: WorkflowStep; label: string; href: string }[] = [
   { id: "options", label: "3. Layout Options", href: "/assessments/queen-care-clinic/options" },
   { id: "report", label: "4. Implementation Report", href: "/assessments/queen-care-clinic/report" },
 ];
-export function WorkspaceShell({ children, activeStep, status = "Saved" }: { children: ReactNode; activeStep: WorkflowStep; status?: string }) {
+export function WorkspaceShell({ children, activeStep, status = "Session only" }: { children: ReactNode; activeStep: WorkflowStep; status?: string }) {
   const activeIndex = Math.max(0, steps.findIndex((step) => step.id === activeStep));
   return (
     <div className="min-h-dvh bg-slate-100 text-slate-950">
@@ -15,7 +15,10 @@ export function WorkspaceShell({ children, activeStep, status = "Saved" }: { chi
         <div className="flex min-w-0 items-center gap-3">
           <Link href="/assessments" className="text-sm font-medium text-slate-600 hover:text-slate-950">&larr; Assessments</Link>
           <span className="text-slate-300">/</span>
-          <strong className="truncate text-sm font-semibold text-slate-900">Queen Care Clinic — Waiting Area & Consultation Corridor</strong>
+          <strong className="truncate text-sm font-semibold text-slate-900">Queen Care Clinic</strong>
+          <span className="rounded bg-slate-100 px-1.5 py-0.5 text-[10px] font-medium text-slate-500 border border-slate-200 shrink-0">Demo Fixture</span>
+          <span className="text-slate-300 hidden md:inline">·</span>
+          <span className="text-xs text-slate-500 hidden md:inline truncate">Waiting Area & Consultation Corridor</span>
         </div>
         <div className="flex items-center gap-3">
           <Link href="/reviews/queen-care-clinic" className="hidden sm:inline-block rounded-md border border-slate-300 bg-white px-2.5 py-1 text-xs font-semibold text-slate-700 hover:bg-slate-50">

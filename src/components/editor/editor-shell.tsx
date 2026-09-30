@@ -3,6 +3,7 @@ import { useState, useEffect, useCallback, useRef, useMemo } from "react";
 import { EditorControls } from "./editor-controls";
 import { Floorplan2D } from "./floorplan-2d";
 import { Floorplan3D } from "./floorplan-3d";
+import { Spatial3DErrorBoundary } from "@/components/spatial/Spatial3DErrorBoundary";
 import { currentPlan, proposedPlan, type EditorPlan, type Point, type EditorFurniture } from "./editor-model";
 export type { EditorFurniture };
 
@@ -143,7 +144,13 @@ export function EditorShell({
         </div>
       </header>
 
-      {view === "2d" ? <Floorplan2D {...shared} /> : <Floorplan3D {...shared} />}
+      {view === "2d" ? (
+        <Floorplan2D {...shared} />
+      ) : (
+        <Spatial3DErrorBoundary onFallbackTo2D={() => setView("2d")}>
+          <Floorplan3D {...shared} />
+        </Spatial3DErrorBoundary>
+      )}
 
       <footer
         aria-live="polite"

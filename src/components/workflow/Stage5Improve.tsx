@@ -4,6 +4,7 @@ import React, { useState } from "react";
 import { useSafeSpaceStore } from "@/store/safespace-store";
 import { Floorplan2D } from "@/components/spatial/Floorplan2D";
 import { Floorplan3D } from "@/components/spatial/Floorplan3D";
+import { Spatial3DErrorBoundary } from "@/components/spatial/Spatial3DErrorBoundary";
 import { LAYOUT_ALTERNATIVES } from "@/lib/spatial-model";
 import {
   Check,
@@ -176,10 +177,12 @@ export function Stage5Improve() {
                         isBeforeCondition={true}
                       />
                     ) : (
-                      <Floorplan3D
-                        customFurniture={originalFurniture}
-                        isBeforeCondition={true}
-                      />
+                      <Spatial3DErrorBoundary onFallbackTo2D={() => setViewMode("2d")}>
+                        <Floorplan3D
+                          customFurniture={originalFurniture}
+                          isBeforeCondition={true}
+                        />
+                      </Spatial3DErrorBoundary>
                     )}
                   </div>
                 </div>
@@ -211,7 +214,9 @@ export function Stage5Improve() {
                         showChangedOnly={showChangedOnly}
                       />
                     ) : (
-                      <Floorplan3D customFurniture={proposedFurniture} />
+                      <Spatial3DErrorBoundary onFallbackTo2D={() => setViewMode("2d")}>
+                        <Floorplan3D customFurniture={proposedFurniture} />
+                      </Spatial3DErrorBoundary>
                     )}
                   </div>
                 </div>
@@ -229,7 +234,9 @@ export function Stage5Improve() {
                       showChangedOnly={showChangedOnly}
                     />
                   ) : (
-                    <Floorplan3D customFurniture={proposedFurniture} />
+                    <Spatial3DErrorBoundary onFallbackTo2D={() => setViewMode("2d")}>
+                      <Floorplan3D customFurniture={proposedFurniture} />
+                    </Spatial3DErrorBoundary>
                   )}
                 </div>
 
@@ -245,10 +252,12 @@ export function Stage5Improve() {
                         isBeforeCondition={true}
                       />
                     ) : (
-                      <Floorplan3D
-                        customFurniture={originalFurniture}
-                        isBeforeCondition={true}
-                      />
+                      <Spatial3DErrorBoundary onFallbackTo2D={() => setViewMode("2d")}>
+                        <Floorplan3D
+                          customFurniture={originalFurniture}
+                          isBeforeCondition={true}
+                        />
+                      </Spatial3DErrorBoundary>
                     )}
                   </div>
                 </div>

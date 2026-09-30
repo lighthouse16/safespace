@@ -9,6 +9,7 @@ import { type SpatialFurniture } from "@/lib/spatial-model";
 import {
   RotateCcw,
 } from "lucide-react";
+import { Spatial3DErrorBoundary } from "./Spatial3DErrorBoundary";
 
 /* Scale: 800 x 600 cm -> divide by 100 for Three.js meters
  * Center of the scene is (4.0, 3.0) -> offset to origin (-4.0, -3.0)
@@ -508,10 +509,11 @@ export function Floorplan3D({
   isBeforeCondition?: boolean;
   className?: string;
 }) {
-  const { setCameraPreset, layerToggles, toggleLayer } = useSafeSpaceStore();
+  const { setCameraPreset, layerToggles, toggleLayer, setViewMode } = useSafeSpaceStore();
 
   return (
-    <div className={`relative flex flex-col h-full w-full select-none overflow-hidden bg-[#f1f3f0] border border-[#e2e8e4] rounded-lg ${className}`}>
+    <Spatial3DErrorBoundary onFallbackTo2D={() => setViewMode("2d")}>
+      <div className={`relative flex flex-col h-full w-full select-none overflow-hidden bg-[#f1f3f0] border border-[#e2e8e4] rounded-lg ${className}`}>
       {/* 3D Control overlay (top-left) */}
       <div className="absolute top-3 left-3 z-10 flex items-center gap-1.5 bg-white/95 backdrop-blur-sm border border-[#e2e8e4] px-2.5 py-1.5 rounded-md shadow-xs text-xs text-[#2c3d3a]">
         <span className="font-semibold tracking-wide text-[#1e7168]">3D ISOMETRIC</span>
@@ -594,5 +596,6 @@ export function Floorplan3D({
         <span>Left-click: Rotate | Right-click: Pan | Scroll: Zoom</span>
       </div>
     </div>
+    </Spatial3DErrorBoundary>
   );
 }
