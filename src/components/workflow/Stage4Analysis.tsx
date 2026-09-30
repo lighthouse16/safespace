@@ -4,7 +4,6 @@ import React, { useState } from "react";
 import { useSafeSpaceStore } from "@/store/safespace-store";
 import { Floorplan2D } from "@/components/spatial/Floorplan2D";
 import { Floorplan3D } from "@/components/spatial/Floorplan3D";
-import { Spatial3DErrorBoundary } from "@/components/spatial/Spatial3DErrorBoundary";
 import {
   ShieldAlert,
   ChevronRight,
@@ -122,9 +121,7 @@ export function Stage4Analysis() {
           {viewMode === "2d" ? (
             <Floorplan2D className="flex-1" />
           ) : (
-            <Spatial3DErrorBoundary onFallbackTo2D={() => setViewMode("2d")}>
-              <Floorplan3D className="flex-1" />
-            </Spatial3DErrorBoundary>
+            <Floorplan3D className="flex-1" />
           )}
         </main>
 

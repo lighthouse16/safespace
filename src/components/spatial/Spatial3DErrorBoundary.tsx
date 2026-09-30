@@ -21,17 +21,18 @@ export function isWebGLAvailable(): boolean {
   }
 }
 
-interface Spatial3DErrorBoundaryProps {
+export interface Spatial3DErrorBoundaryProps {
   children: ReactNode;
   onFallbackTo2D?: () => void;
   fallbackTitle?: string;
   fallbackMessage?: string;
 }
 
-interface Spatial3DErrorBoundaryState {
+export interface Spatial3DErrorBoundaryState {
   hasError: boolean;
   isContextLost: boolean;
   errorMessage?: string;
+  retryKey: number;
 }
 
 export class Spatial3DErrorBoundary extends Component<
@@ -39,25 +40,47 @@ export class Spatial3DErrorBoundary extends Component<
   Spatial3DErrorBoundaryState
 > {
   private containerRef = React.createRef<HTMLDivElement>();
+  private _isMounted = false;
 
   constructor(props: Spatial3DErrorBoundaryProps) {
     super(props);
-    // Pre-mount check
-    const supported = isWebGLAvailable();
     this.state = {
-      hasError: !supported,
+      hasError: false,
       isContextLost: false,
-      errorMessage: supported
-        ? undefined
-        : "WebGL is disabled or unsupported by your graphics hardware/driver.",
+      errorMessage: undefined,
+      retryKey: 0,
     };
   }
 
-  static getDerivedStateFromError(error: Error): Spatial3DErrorBoundaryState {
+  static getDerivedStateFromError(error: Error): Partial<Spatial3DErrorBoundaryState> {
     return {
       hasError: true,
       isContextLost: false,
       errorMessage: error.message || "Failed to initialize 3D canvas context.",
+    };
+  }
+
+  static getDerivedStateFromContextLost(): Partial<Spatial3DErrorBoundaryState> {
+    return {
+      hasError: true,
+      isContextLost: true,
+      errorMessage: "Graphics device context was lost or reset by the operating system.",
+    };
+  }
+
+  static getDerivedStateFromRetry(prevKey: number): Partial<Spatial3DErrorBoundaryState> {
+    if (!isWebGLAvailable()) {
+      return {
+        hasError: true,
+        isContextLost: false,
+        errorMessage: "WebGL remains unavailable on this device.",
+      };
+    }
+    return {
+      hasError: false,
+      isContextLost: false,
+      errorMessage: undefined,
+      retryKey: (prevKey || 0) + 1,
     };
   }
 
@@ -72,60 +95,103 @@ export class Spatial3DErrorBoundary extends Component<
   }
 
   componentDidMount(): void {
+    this._isMounted = true;
+    // Client-side pre-mount check (avoids SSR hydration mismatch)
+    if (!isWebGLAvailable()) {
+      this.setState({
+        hasError: true,
+        errorMessage: "WebGL is disabled or unsupported by your graphics hardware/driver.",
+      });
+    }
+
     const el = this.containerRef.current;
     if (el) {
-      el.addEventListener("webglcontextlost", this.handleContextLost as EventListener);
+      // Use capture: true because webglcontextlost does NOT bubble
+      el.addEventListener(
+        "webglcontextlost",
+        this.handleContextLost as EventListener,
+        true
+      );
+      el.addEventListener(
+        "webglcontextrestored",
+        this.handleContextRestored as EventListener,
+        true
+      );
     }
+
     window.addEventListener(
       "webglcontextlost",
-      this.handleContextLost as EventListener
+      this.handleContextLost as EventListener,
+      true
+    );
+    window.addEventListener(
+      "webglcontextrestored",
+      this.handleContextRestored as EventListener,
+      true
     );
   }
 
   componentWillUnmount(): void {
+    this._isMounted = false;
     const el = this.containerRef.current;
     if (el) {
-      el.removeEventListener("webglcontextlost", this.handleContextLost as EventListener);
+      el.removeEventListener(
+        "webglcontextlost",
+        this.handleContextLost as EventListener,
+        true
+      );
+      el.removeEventListener(
+        "webglcontextrestored",
+        this.handleContextRestored as EventListener,
+        true
+      );
     }
+
     window.removeEventListener(
       "webglcontextlost",
-      this.handleContextLost as EventListener
+      this.handleContextLost as EventListener,
+      true
+    );
+    window.removeEventListener(
+      "webglcontextrestored",
+      this.handleContextRestored as EventListener,
+      true
     );
   }
 
-  private handleContextLost = (event: Event): void => {
-    // Calling preventDefault tells the browser we handle context loss ourselves
+  public handleContextLost = (event: Event): void => {
+    // Calling preventDefault informs the browser the app manages context restoration
     event.preventDefault();
     if (process.env.NODE_ENV !== "production") {
       console.warn(
         "[SafeSpace 3D Isolation] WebGL context lost on canvas. Switching to fallback state."
       );
     }
-    this.setState({
-      hasError: true,
-      isContextLost: true,
-      errorMessage: "Graphics device context was lost or reset by the operating system.",
-    });
+    this.setState(
+      Spatial3DErrorBoundary.getDerivedStateFromContextLost() as Spatial3DErrorBoundaryState
+    );
   };
 
-  private handleRetry = (): void => {
-    if (!isWebGLAvailable()) {
-      this.setState({
-        hasError: true,
-        isContextLost: false,
-        errorMessage: "WebGL remains unavailable on this device.",
-      });
-      return;
+  public handleContextRestored = (): void => {
+    if (process.env.NODE_ENV !== "production") {
+      console.info(
+        "[SafeSpace 3D Isolation] WebGL context restored. Reconstructing 3D scene."
+      );
     }
-    this.setState({
-      hasError: false,
-      isContextLost: false,
-      errorMessage: undefined,
-    });
+    this.handleRetry();
+  };
+
+  public handleRetry = (): void => {
+    this.setState(
+      (prev) =>
+        Spatial3DErrorBoundary.getDerivedStateFromRetry(
+          prev.retryKey
+        ) as Spatial3DErrorBoundaryState
+    );
   };
 
   render(): ReactNode {
-    const { hasError, isContextLost, errorMessage } = this.state;
+    const { hasError, isContextLost, errorMessage, retryKey } = this.state;
     const {
       children,
       onFallbackTo2D,
@@ -187,7 +253,11 @@ export class Spatial3DErrorBoundary extends Component<
     }
 
     return (
-      <div ref={this.containerRef} className="h-full w-full">
+      <div
+        ref={this.containerRef}
+        key={`spatial-3d-viewport-${retryKey}`}
+        className="h-full w-full"
+      >
         {children}
       </div>
     );

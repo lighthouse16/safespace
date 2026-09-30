@@ -12,7 +12,7 @@ import {
   Undo2,
   Redo2,
   Upload,
-  Sparkles,
+  Loader2,
   CheckCircle2,
   Trash2,
   RotateCw,
@@ -101,7 +101,7 @@ export function Stage1Layout() {
                     </span>
                   </div>
                   <p className="text-[11px] text-slate-600 mt-0.5">
-                    Queen Care Clinic · Waiting Area & Corridor (18 objects)
+                    Queen Care Clinic (Demo Fixture) · Waiting Area & Corridor (18 objects)
                   </p>
                 </div>
                 <ChevronRight className="w-4 h-4 text-[#1e7168] shrink-0" />
@@ -156,10 +156,10 @@ export function Stage1Layout() {
       {isSimulatingUpload && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-xs p-4">
           <div className="bg-white rounded-xl p-5 max-w-sm w-full shadow-2xl border border-slate-200 text-center space-y-3">
-            <div className="w-10 h-10 rounded-full bg-[#e8f3f1] text-[#1e7168] flex items-center justify-center mx-auto animate-pulse">
-              <Sparkles className="w-5 h-5" />
+            <div className="w-10 h-10 rounded-full bg-[#e8f3f1] text-[#1e7168] flex items-center justify-center mx-auto">
+              <Loader2 className="w-5 h-5 animate-spin" />
             </div>
-            <h3 className="font-semibold text-xs text-slate-900">Prototype Plan Extraction</h3>
+            <h3 className="font-semibold text-xs text-slate-900">Processing Floor Plan Drawing</h3>
             <div className="p-2 bg-slate-50 rounded text-xs font-mono text-[#1e7168]">
               {uploadStep}
             </div>

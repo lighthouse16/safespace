@@ -504,15 +504,19 @@ export function Floorplan3D({
   customFurniture,
   isBeforeCondition = false,
   className = "",
+  onFallbackTo2D,
 }: {
   customFurniture?: SpatialFurniture[];
   isBeforeCondition?: boolean;
   className?: string;
+  onFallbackTo2D?: () => void;
 }) {
   const { setCameraPreset, layerToggles, toggleLayer, setViewMode } = useSafeSpaceStore();
 
+  const handleFallback = onFallbackTo2D ?? (() => setViewMode("2d"));
+
   return (
-    <Spatial3DErrorBoundary onFallbackTo2D={() => setViewMode("2d")}>
+    <Spatial3DErrorBoundary onFallbackTo2D={handleFallback}>
       <div className={`relative flex flex-col h-full w-full select-none overflow-hidden bg-[#f1f3f0] border border-[#e2e8e4] rounded-lg ${className}`}>
       {/* 3D Control overlay (top-left) */}
       <div className="absolute top-3 left-3 z-10 flex items-center gap-1.5 bg-white/95 backdrop-blur-sm border border-[#e2e8e4] px-2.5 py-1.5 rounded-md shadow-xs text-xs text-[#2c3d3a]">
