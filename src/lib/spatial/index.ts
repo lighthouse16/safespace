@@ -38,6 +38,7 @@ export {
   validateCanonicalOpening,
   validateCanonicalRoom,
   validatePolygon2D,
+  validateSourcedQuantity,
 } from "./schema";
 
 // Geometry Primitives & Intersections

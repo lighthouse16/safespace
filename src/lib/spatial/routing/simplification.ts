@@ -38,34 +38,108 @@ export function simplifyCollinear(
 }
 
 /**
- * Checks whether a direct line between two points is completely clear of blocked cells on grid.
+ * Checks whether a direct line segment between two points is completely clear of blocked cells on grid.
+ * Uses exact deterministic grid traversal (Amanatides-Woo / supercover) to inspect every cell
+ * crossed or touched by the line segment.
  */
 export function isLineOfSightClear(
   p1: Point2D,
   p2: Point2D,
   grid: SpatialGrid
 ): boolean {
-  const dist = Math.hypot(p2.x - p1.x, p2.y - p1.y);
-  if (dist === 0) return true;
+  // Convert world coordinates to continuous normalized cell coordinate space
+  // where cell (gx, gy) covers [gx, gx + 1) x [gy, gy + 1).
+  const u1 = (p1.x - grid.originX) / grid.resolutionCm + 0.5;
+  const v1 = (p1.y - grid.originY) / grid.resolutionCm + 0.5;
+  const u2 = (p2.x - grid.originX) / grid.resolutionCm + 0.5;
+  const v2 = (p2.y - grid.originY) / grid.resolutionCm + 0.5;
 
-  // Sample along segment at half resolution intervals
-  const stepSize = Math.max(1, grid.resolutionCm / 2);
-  const steps = Math.ceil(dist / stepSize);
+  let gx = Math.floor(u1);
+  let gy = Math.floor(v1);
+  const endGx = Math.floor(u2);
+  const endGy = Math.floor(v2);
 
-  for (let s = 0; s <= steps; s++) {
-    const t = s / steps;
-    const samplePt: Point2D = {
-      x: p1.x + t * (p2.x - p1.x),
-      y: p1.y + t * (p2.y - p1.y),
-    };
+  // Check starting cell
+  if (!grid.isWalkable(gx, gy)) {
+    return false;
+  }
 
-    const g = grid.worldToGrid(samplePt);
-    if (!grid.isWalkable(g.gx, g.gy)) {
-      return false;
+  if (gx === endGx && gy === endGy) {
+    return true;
+  }
+
+  const du = u2 - u1;
+  const dv = v2 - v1;
+
+  const stepX = du > 0 ? 1 : du < 0 ? -1 : 0;
+  const stepY = dv > 0 ? 1 : dv < 0 ? -1 : 0;
+
+  let tMaxX = Infinity;
+  let tDeltaX = Infinity;
+  if (stepX > 0) {
+    tMaxX = (gx + 1 - u1) / du;
+    tDeltaX = 1 / du;
+  } else if (stepX < 0) {
+    tMaxX = (gx - u1) / du;
+    tDeltaX = -1 / du;
+  }
+
+  let tMaxY = Infinity;
+  let tDeltaY = Infinity;
+  if (stepY > 0) {
+    tMaxY = (gy + 1 - v1) / dv;
+    tDeltaY = 1 / dv;
+  } else if (stepY < 0) {
+    tMaxY = (gy - v1) / dv;
+    tDeltaY = -1 / dv;
+  }
+
+  const EPSILON = 1e-9;
+  let maxSteps = Math.abs(endGx - gx) + Math.abs(endGy - gy) + 8;
+
+  while (maxSteps-- > 0) {
+    if (gx === endGx && gy === endGy) {
+      break;
+    }
+
+    const diff = tMaxX - tMaxY;
+
+    if (diff < -EPSILON) {
+      gx += stepX;
+      tMaxX += tDeltaX;
+      if (!grid.isWalkable(gx, gy)) {
+        return false;
+      }
+    } else if (diff > EPSILON) {
+      gy += stepY;
+      tMaxY += tDeltaY;
+      if (!grid.isWalkable(gx, gy)) {
+        return false;
+      }
+    } else {
+      // Ray passes through a corner point: supercover checks both orthogonal adjacent cells
+      if (stepX !== 0 && !grid.isWalkable(gx + stepX, gy)) {
+        return false;
+      }
+      if (stepY !== 0 && !grid.isWalkable(gx, gy + stepY)) {
+        return false;
+      }
+      gx += stepX;
+      gy += stepY;
+      tMaxX += tDeltaX;
+      tMaxY += tDeltaY;
+      if (!grid.isWalkable(gx, gy)) {
+        return false;
+      }
+    }
+
+    if (tMaxX >= 1 - EPSILON && tMaxY >= 1 - EPSILON) {
+      break;
     }
   }
 
-  return true;
+  // Final check on target cell
+  return grid.isWalkable(endGx, endGy);
 }
 
 /**

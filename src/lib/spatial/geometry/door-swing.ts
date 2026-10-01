@@ -49,16 +49,22 @@ export function computeOpeningSwingPolygon(
   const { hinge, arcDeg, direction } = opening.swing;
   const radiusCm = opening.clearWidthCm;
 
-  // Determine baseline angle from hinge along the door leaf segment
-  // If opening.start is the hinge, vector is start -> end
-  const dx =
-    Math.hypot(opening.start.x - hinge.x, opening.start.y - hinge.y) < 1e-4
-      ? opening.end.x - hinge.x
-      : opening.start.x - hinge.x;
-  const dy =
-    Math.hypot(opening.start.x - hinge.y, opening.start.y - hinge.y) < 1e-4
-      ? opening.end.y - hinge.y
-      : opening.start.y - hinge.y;
+  // Determine whether hinge matches opening.start or opening.end
+  const isHingeAtStart =
+    Math.hypot(opening.start.x - hinge.x, opening.start.y - hinge.y) <= 1e-4;
+  const isHingeAtEnd =
+    Math.hypot(opening.end.x - hinge.x, opening.end.y - hinge.y) <= 1e-4;
+
+  if (!isHingeAtStart && !isHingeAtEnd) {
+    // Hinge matches neither endpoint; do not infer an arbitrary baseline
+    return [];
+  }
+
+  // If hinge == start: baseline vector = end - hinge
+  // If hinge == end:   baseline vector = start - hinge
+  const leafEndpoint = isHingeAtStart ? opening.end : opening.start;
+  const dx = leafEndpoint.x - hinge.x;
+  const dy = leafEndpoint.y - hinge.y;
 
   const baselineAngleDeg = (Math.atan2(dy, dx) * 180) / Math.PI;
 

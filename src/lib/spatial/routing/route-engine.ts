@@ -2,6 +2,7 @@ import type { Point2D } from "../schema";
 import {
   isValidPoint2D,
   validateCanonicalMobilityProfile,
+  validateCanonicalObject,
   validateCanonicalRoom,
 } from "../schema";
 import { isPointInPolygon } from "../geometry/polygons";
@@ -29,7 +30,21 @@ export function computeRoute(request: RouteRequest): RouteResult {
     };
   }
 
-  // 2. Validate geometry coordinates
+  // 2. Validate grid resolution if supplied
+  if (request.gridResolutionCm !== undefined) {
+    if (
+      typeof request.gridResolutionCm !== "number" ||
+      !Number.isFinite(request.gridResolutionCm) ||
+      request.gridResolutionCm <= 0
+    ) {
+      return {
+        status: "invalid-geometry",
+        reason: "gridResolutionCm must be a positive finite number",
+      };
+    }
+  }
+
+  // 3. Validate geometry coordinates
   if (!isValidPoint2D(request.start)) {
     return {
       status: "invalid-geometry",
@@ -60,7 +75,24 @@ export function computeRoute(request: RouteRequest): RouteResult {
     };
   }
 
-  // 3. Verify start and end relative to room boundary
+  // 4. Validate all obstacles before deriving footprints
+  const obstacles = request.obstacles ?? [];
+  for (let i = 0; i < obstacles.length; i++) {
+    const obs = obstacles[i];
+    const obsVal = validateCanonicalObject(obs);
+    if (!obsVal.valid) {
+      const obsId =
+        typeof obs === "object" && obs !== null && "id" in obs
+          ? String((obs as { id: unknown }).id)
+          : "unknown";
+      return {
+        status: "invalid-geometry",
+        reason: `Invalid obstacle at index ${i} (id: ${obsId}): ${obsVal.errors.join("; ")}`,
+      };
+    }
+  }
+
+  // 5. Verify start and end relative to room boundary
   if (!isPointInPolygon(request.start, request.room.boundary, true)) {
     return {
       status: "start-out-of-bounds",
@@ -75,8 +107,7 @@ export function computeRoute(request: RouteRequest): RouteResult {
     };
   }
 
-  // 4. Verify start and end relative to actual obstacle footprints
-  const obstacles = request.obstacles ?? [];
+  // 6. Verify start and end relative to actual obstacle footprints
   for (const obs of obstacles) {
     const footprint = deriveWorldFootprint(obs);
     if (isPointInPolygon(request.start, footprint, true)) {
@@ -121,6 +152,8 @@ export function computeRoute(request: RouteRequest): RouteResult {
   }
 
   // 6. Build occupancy grid with preferred clearance dilation radius
+  // Note: mobilityProfile.turningDiameterCm is validated and preserved in canonical contract,
+  // but non-holonomic turning radius constraints are not modeled by this 2D grid pathfinder.
   const clearanceRadiusCm = request.mobilityProfile.preferredClearanceCm.value / 2;
   const resolutionCm = request.gridResolutionCm ?? DEFAULT_GRID_RESOLUTION_CM;
 

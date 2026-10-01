@@ -20,6 +20,15 @@ export class SpatialGrid {
     heightCm: number,
     resolutionCm: number = DEFAULT_GRID_RESOLUTION_CM
   ) {
+    if (
+      typeof resolutionCm !== "number" ||
+      !Number.isFinite(resolutionCm) ||
+      resolutionCm <= 0
+    ) {
+      throw new Error(
+        `SpatialGrid resolutionCm must be a positive finite number, received: ${resolutionCm}`
+      );
+    }
     this.originX = originX;
     this.originY = originY;
     this.resolutionCm = resolutionCm;

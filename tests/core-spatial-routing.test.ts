@@ -17,9 +17,11 @@ import {
   validateCanonicalObject,
   validateCanonicalOpening,
   validateCanonicalMobilityProfile,
+  validateSourcedQuantity,
   distancePointToPoint,
   distancePointToSegment,
   distanceSegmentToSegment,
+  distanceSegmentToPolygon,
   polylineLength,
   boundingBox,
   isPointInPolygon,
@@ -35,6 +37,8 @@ import {
   computeRouteClearance,
   testCorridorCollisions,
   computeRoute,
+  SpatialGrid,
+  isLineOfSightClear,
 } from "../src/lib/spatial";
 
 // Helper mobility profile for tests
@@ -700,4 +704,322 @@ test("performance: realistic room (600x500 cm @ 5cm resolution) routes within sa
   // Log measured runtime for completion report
   console.log(`[PERF BENCHMARK] 600x500cm room @ 5cm resolution computed in ${elapsedMs.toFixed(2)} ms`);
   assert.ok(elapsedMs < 1000, `Pathfinding took ${elapsedMs} ms, expected < 1000 ms`);
+});
+
+// -------------------------------------------------------------
+// 8. Blockers Regression Tests
+// -------------------------------------------------------------
+
+test("regression 1: horizontal door baseline orientation with hinge=start (hinge.x != hinge.y)", () => {
+  const door: CanonicalOpening = {
+    id: "door-horiz-start",
+    roomId: "room-1",
+    type: "door",
+    start: { x: 100, y: 250 }, // hinge.x = 100, hinge.y = 250 (100 != 250)
+    end: { x: 190, y: 250 },
+    clearWidthCm: 90,
+    swing: {
+      hinge: { x: 100, y: 250 },
+      arcDeg: 90,
+      direction: "inward-right", // clockwise: 0 deg (+x) -> 90 deg (+y)
+    },
+  };
+
+  const poly = computeOpeningSwingPolygon(door, 4);
+  assert.equal(poly.length, 6); // hinge + 5 arc points
+  assert.deepEqual(poly[0], { x: 100, y: 250 });
+  assert.equal(Math.round(poly[1].x), 190);
+  assert.equal(Math.round(poly[1].y), 250);
+  assert.equal(Math.round(poly[poly.length - 1].x), 100);
+  assert.equal(Math.round(poly[poly.length - 1].y), 340);
+});
+
+test("regression 2: vertical door baseline orientation with hinge=start (hinge.x != hinge.y)", () => {
+  const door: CanonicalOpening = {
+    id: "door-vert-start",
+    roomId: "room-1",
+    type: "door",
+    start: { x: 150, y: 300 }, // hinge.x = 150, hinge.y = 300 (150 != 300)
+    end: { x: 150, y: 390 },   // leaf points +y (down, 90 deg)
+    clearWidthCm: 90,
+    swing: {
+      hinge: { x: 150, y: 300 },
+      arcDeg: 90,
+      direction: "inward-right", // clockwise: 90 deg (+y) -> 180 deg (-x)
+    },
+  };
+
+  const poly = computeOpeningSwingPolygon(door, 4);
+  assert.equal(poly.length, 6);
+  assert.deepEqual(poly[0], { x: 150, y: 300 });
+  assert.equal(Math.round(poly[1].x), 150);
+  assert.equal(Math.round(poly[1].y), 390);
+  assert.equal(Math.round(poly[poly.length - 1].x), 60);
+  assert.equal(Math.round(poly[poly.length - 1].y), 300);
+});
+
+test("regression 3: vertical door baseline orientation with hinge=end (hinge.x != hinge.y)", () => {
+  const door: CanonicalOpening = {
+    id: "door-vert-end",
+    roomId: "room-1",
+    type: "door",
+    start: { x: 150, y: 300 },
+    end: { x: 150, y: 390 }, // hinge is end (150 != 390)
+    clearWidthCm: 90,
+    swing: {
+      hinge: { x: 150, y: 390 },
+      arcDeg: 90,
+      direction: "inward-left", // counter-clockwise: -90 deg (-y) -> -180 deg (-x)
+    },
+  };
+
+  const poly = computeOpeningSwingPolygon(door, 4);
+  assert.equal(poly.length, 6);
+  assert.deepEqual(poly[0], { x: 150, y: 390 });
+  assert.equal(Math.round(poly[1].x), 150);
+  assert.equal(Math.round(poly[1].y), 300);
+  assert.equal(Math.round(poly[poly.length - 1].x), 60);
+  assert.equal(Math.round(poly[poly.length - 1].y), 390);
+});
+
+test("regression 4: opening swing hinge matching neither endpoint is rejected", () => {
+  const invalidDoor: CanonicalOpening = {
+    id: "door-invalid-hinge",
+    roomId: "room-1",
+    type: "door",
+    start: { x: 100, y: 200 },
+    end: { x: 190, y: 200 },
+    clearWidthCm: 90,
+    swing: {
+      hinge: { x: 145, y: 200 }, // Midpoint, neither start nor end
+      arcDeg: 90,
+      direction: "inward-right",
+    },
+  };
+
+  const val = validateCanonicalOpening(invalidDoor);
+  assert.equal(val.valid, false);
+  if (!val.valid) {
+    assert.ok(val.errors.some((e) => e.includes("coincide with either opening start or end endpoint")));
+  }
+
+  const poly = computeOpeningSwingPolygon(invalidDoor);
+  assert.deepEqual(poly, []);
+});
+
+test("regression 5: non-positive and non-finite grid resolution returns invalid-geometry", () => {
+  const room: CanonicalRoom = {
+    id: "room-1",
+    floorId: "floor-1",
+    name: "Room",
+    boundary: [
+      { x: 0, y: 0 },
+      { x: 300, y: 0 },
+      { x: 300, y: 300 },
+      { x: 0, y: 300 },
+    ],
+  };
+
+  const baseReq: RouteRequest = {
+    room,
+    obstacles: [],
+    start: { x: 50, y: 50 },
+    end: { x: 250, y: 250 },
+    mobilityProfile: makeProfile(60),
+  };
+
+  for (const badRes of [0, -5, NaN, Infinity, -Infinity]) {
+    const res = computeRoute({ ...baseReq, gridResolutionCm: badRes });
+    assert.equal(res.status, "invalid-geometry", `Failed for gridResolutionCm: ${badRes}`);
+  }
+});
+
+test("regression 6: malformed obstacle returns invalid-geometry with index and id context", () => {
+  const room: CanonicalRoom = {
+    id: "room-1",
+    floorId: "floor-1",
+    name: "Room",
+    boundary: [
+      { x: 0, y: 0 },
+      { x: 300, y: 0 },
+      { x: 300, y: 300 },
+      { x: 0, y: 300 },
+    ],
+  };
+
+  const badObstacle = {
+    id: "bad-chair-99",
+    roomId: "room-1",
+    name: "Broken Chair",
+    category: "chair",
+    position: { x: 150, y: 150 },
+    dimensionsCm: { width: -40, depth: 40 },
+    rotationDeg: 0,
+    isFixed: true,
+  } as unknown as CanonicalObject;
+
+  const res = computeRoute({
+    room,
+    obstacles: [badObstacle],
+    start: { x: 50, y: 50 },
+    end: { x: 250, y: 250 },
+    mobilityProfile: makeProfile(60),
+  });
+
+  assert.equal(res.status, "invalid-geometry");
+  if (res.status === "invalid-geometry") {
+    assert.ok(res.reason.includes("bad-chair-99"));
+    assert.ok(res.reason.includes("index 0"));
+  }
+});
+
+test("regression 7: non-finite or Infinity mobility quantity rejected", () => {
+  const badProfile = {
+    id: "prof-inf",
+    name: "Infinite Walker",
+    aidType: "rollator-walker",
+    preferredClearanceCm: {
+      value: Infinity,
+      unit: "cm",
+      source: {
+        type: "user-measurement",
+        referenceId: "REF-1",
+        verificationStatus: "verified",
+      },
+    },
+    turningDiameterCm: {
+      value: 150,
+      unit: "cm",
+      source: {
+        type: "clinical-input",
+        referenceId: "REF-2",
+        verificationStatus: "verified",
+      },
+    },
+  };
+
+  const val = validateCanonicalMobilityProfile(badProfile);
+  assert.equal(val.valid, false);
+});
+
+test("regression 8: malformed sourced quantity and missing provenance rejected", () => {
+  const directErrors = validateSourcedQuantity(
+    { value: -10, unit: "m", source: { type: "unknown", referenceId: "", verificationStatus: "invalid" } },
+    "cm",
+    "testQuantity",
+    true
+  );
+  assert.ok(directErrors.length >= 3);
+
+  const badSourceProfile = {
+    id: "prof-bad-src",
+    name: "Bad Source Walker",
+    aidType: "rollator-walker",
+    preferredClearanceCm: {
+      value: 60,
+      unit: "inches", // Invalid unit
+      source: {
+        type: "unsupported-source-type", // Invalid type
+        referenceId: "", // Empty reference ID
+        verificationStatus: "invalid-status", // Invalid status
+      },
+    },
+    turningDiameterCm: {
+      value: 150,
+      unit: "cm",
+      source: {
+        type: "clinical-input",
+        referenceId: "REF-1",
+        verificationStatus: "verified",
+      },
+    },
+  };
+
+  const val = validateCanonicalMobilityProfile(badSourceProfile);
+  assert.equal(val.valid, false);
+  if (!val.valid) {
+    assert.ok(val.errors.some((e) => e.includes('unit must be "cm"')));
+    assert.ok(val.errors.some((e) => e.includes("source.type")));
+    assert.ok(val.errors.some((e) => e.includes("source.referenceId")));
+    assert.ok(val.errors.some((e) => e.includes("source.verificationStatus")));
+  }
+});
+
+test("regression 9: segment fully inside polygon returns distance 0", () => {
+  const poly: Polygon2D = [
+    { x: 100, y: 100 },
+    { x: 200, y: 100 },
+    { x: 200, y: 200 },
+    { x: 100, y: 200 },
+  ];
+
+  const insideSegment = {
+    start: { x: 120, y: 120 },
+    end: { x: 180, y: 180 },
+  };
+
+  const res = distanceSegmentToPolygon(insideSegment, poly);
+  assert.equal(res.minDistanceCm, 0);
+  assert.deepEqual(res.routePoint, { x: 120, y: 120 });
+  assert.deepEqual(res.polygonPoint, { x: 120, y: 120 });
+});
+
+test("regression 10: segment crossing polygon boundary returns distance 0", () => {
+  const poly: Polygon2D = [
+    { x: 100, y: 100 },
+    { x: 200, y: 100 },
+    { x: 200, y: 200 },
+    { x: 100, y: 200 },
+  ];
+
+  const crossingSegment = {
+    start: { x: 50, y: 150 },
+    end: { x: 250, y: 150 },
+  };
+
+  const res = distanceSegmentToPolygon(crossingSegment, poly);
+  assert.equal(res.minDistanceCm, 0);
+  assert.ok(res.routePoint.x === 100 || res.routePoint.x === 200);
+  assert.equal(res.routePoint.y, 150);
+
+  const oneInsideSegment = {
+    start: { x: 150, y: 150 },
+    end: { x: 250, y: 150 },
+  };
+  const resOne = distanceSegmentToPolygon(oneInsideSegment, poly);
+  assert.equal(resOne.minDistanceCm, 0);
+});
+
+test("regression 11: external segment retains true Euclidean distance to polygon boundary", () => {
+  const poly: Polygon2D = [
+    { x: 100, y: 100 },
+    { x: 200, y: 100 },
+    { x: 200, y: 200 },
+    { x: 100, y: 200 },
+  ];
+
+  const externalSegment = {
+    start: { x: 50, y: 40 },
+    end: { x: 250, y: 40 },
+  };
+
+  const res = distanceSegmentToPolygon(externalSegment, poly);
+  assert.equal(Math.round(res.minDistanceCm), 60);
+  assert.equal(res.polygonPoint.y, 100);
+});
+
+test("regression 12: line-of-sight supercover traversal detects corner clipping", () => {
+  const grid = new SpatialGrid(0, 0, 50, 50, 10);
+  grid.setBlocked(1, 1, true); // cell (1, 1) covers [5, 15] x [5, 15]
+
+  // Continuous segment from (0, 4) to (20, 6) crosses cell (1, 1) at x=10, y=5.0
+  const clippingP1: Point2D = { x: 0, y: 4 };
+  const clippingP2: Point2D = { x: 20, y: 6 };
+
+  const isClear = isLineOfSightClear(clippingP1, clippingP2, grid);
+  assert.equal(isClear, false, "Supercover line-of-sight must detect blocked cell intersection");
+
+  const clearP1: Point2D = { x: 0, y: 45 };
+  const clearP2: Point2D = { x: 45, y: 45 };
+  assert.equal(isLineOfSightClear(clearP1, clearP2, grid), true);
 });

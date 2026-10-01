@@ -5,7 +5,7 @@ import type {
   Segment2D,
 } from "../schema";
 import { deriveWorldFootprint } from "./footprints";
-import { polygonEdges } from "./polygons";
+import { isPointInPolygon, polygonEdges } from "./polygons";
 import { distancePointToSegment } from "./primitives";
 
 export interface BottleneckEvidence {
@@ -81,7 +81,9 @@ function closestPointsBetweenSegments(
 }
 
 /**
- * Computes shortest distance from a route segment to an obstacle footprint polygon.
+ * Computes shortest distance from a route segment to a filled obstacle footprint polygon.
+ * If the segment intersects, touches, or lies inside the filled polygon, distance is 0.
+ * If outside, returns the true shortest Euclidean distance to the polygon boundary.
  */
 export function distanceSegmentToPolygon(
   segment: Segment2D,
@@ -98,9 +100,39 @@ export function distanceSegmentToPolygon(
       bestDist = res.dist;
       bestRoutePoint = res.p1;
       bestPolyPoint = res.p2;
+      if (bestDist === 0) {
+        break; // Boundary intersection
+      }
     }
   }
 
+  // 1. Boundary intersection (segment crosses polygon boundary)
+  if (bestDist === 0) {
+    return {
+      minDistanceCm: 0,
+      routePoint: bestRoutePoint,
+      polygonPoint: bestPolyPoint,
+    };
+  }
+
+  // 2. Segment completely inside polygon
+  if (isPointInPolygon(segment.start, polygon, true)) {
+    return {
+      minDistanceCm: 0,
+      routePoint: segment.start,
+      polygonPoint: segment.start,
+    };
+  }
+
+  if (isPointInPolygon(segment.end, polygon, true)) {
+    return {
+      minDistanceCm: 0,
+      routePoint: segment.end,
+      polygonPoint: segment.end,
+    };
+  }
+
+  // 3. Segment completely outside filled polygon
   return {
     minDistanceCm: bestDist,
     routePoint: bestRoutePoint,

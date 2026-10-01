@@ -169,6 +169,48 @@ export function validatePolygon2D(polygon: unknown): ValidationResult {
 }
 
 /**
+ * Validates a SourcedQuantity object.
+ */
+export function validateSourcedQuantity(
+  sq: unknown,
+  expectedUnit: string,
+  fieldName: string,
+  requirePositive = true
+): string[] {
+  const errors: string[] = [];
+  if (typeof sq !== "object" || sq === null) {
+    errors.push(`${fieldName} must be a SourcedQuantity object`);
+    return errors;
+  }
+  const s = sq as Partial<SourcedQuantity>;
+  if (typeof s.value !== "number" || !Number.isFinite(s.value)) {
+    errors.push(`${fieldName} value must be a finite number`);
+  } else if (requirePositive && s.value <= 0) {
+    errors.push(`${fieldName} value must be a positive finite number`);
+  }
+  if (s.unit !== expectedUnit) {
+    errors.push(`${fieldName} unit must be "${expectedUnit}", received "${s.unit}"`);
+  }
+  if (typeof s.source !== "object" || s.source === null) {
+    errors.push(`${fieldName} source must be an object`);
+  } else {
+    const src = s.source as Partial<ThresholdSource>;
+    const validTypes = ["user-measurement", "verified-rule", "clinical-input"];
+    if (!src.type || !validTypes.includes(src.type)) {
+      errors.push(`${fieldName} source.type must be one of: ${validTypes.join(", ")}`);
+    }
+    if (typeof src.referenceId !== "string" || src.referenceId.trim() === "") {
+      errors.push(`${fieldName} source.referenceId must be a non-empty string`);
+    }
+    const validStatuses = ["unverified", "verified", "professionally-confirmed"];
+    if (!src.verificationStatus || !validStatuses.includes(src.verificationStatus)) {
+      errors.push(`${fieldName} source.verificationStatus must be one of: ${validStatuses.join(", ")}`);
+    }
+  }
+  return errors;
+}
+
+/**
  * Validates a CanonicalRoom.
  */
 export function validateCanonicalRoom(room: unknown): ValidationResult {
@@ -180,6 +222,9 @@ export function validateCanonicalRoom(room: unknown): ValidationResult {
 
   if (!r.id || typeof r.id !== "string" || r.id.trim() === "") {
     errors.push("Room must have a non-empty id");
+  }
+  if (!r.floorId || typeof r.floorId !== "string" || r.floorId.trim() === "") {
+    errors.push("Room must have a non-empty floorId");
   }
   if (!r.name || typeof r.name !== "string" || r.name.trim() === "") {
     errors.push("Room must have a non-empty name");
@@ -207,6 +252,13 @@ export function validateCanonicalOpening(opening: unknown): ValidationResult {
   if (!o.id || typeof o.id !== "string" || o.id.trim() === "") {
     errors.push("Opening must have a non-empty id");
   }
+  if (!o.roomId || typeof o.roomId !== "string" || o.roomId.trim() === "") {
+    errors.push("Opening must have a non-empty roomId");
+  }
+  const validTypes = ["door", "window", "archway"];
+  if (!o.type || !validTypes.includes(o.type)) {
+    errors.push(`Opening type must be one of: ${validTypes.join(", ")}`);
+  }
   if (!isValidPoint2D(o.start)) {
     errors.push("Opening start must be a valid finite Point2D");
   }
@@ -222,6 +274,17 @@ export function validateCanonicalOpening(opening: unknown): ValidationResult {
     }
     if (typeof o.swing.arcDeg !== "number" || !Number.isFinite(o.swing.arcDeg) || o.swing.arcDeg <= 0) {
       errors.push("Opening swing arcDeg must be a positive finite number");
+    }
+    const validDirs = ["inward-left", "inward-right", "outward-left", "outward-right"];
+    if (!o.swing.direction || !validDirs.includes(o.swing.direction)) {
+      errors.push(`Opening swing direction must be one of: ${validDirs.join(", ")}`);
+    }
+    if (isValidPoint2D(o.swing.hinge) && isValidPoint2D(o.start) && isValidPoint2D(o.end)) {
+      const dStart = Math.hypot(o.start.x - o.swing.hinge.x, o.start.y - o.swing.hinge.y);
+      const dEnd = Math.hypot(o.end.x - o.swing.hinge.x, o.end.y - o.swing.hinge.y);
+      if (dStart > 1e-4 && dEnd > 1e-4) {
+        errors.push("Opening swing hinge must coincide with either opening start or end endpoint");
+      }
     }
   }
 
@@ -241,6 +304,18 @@ export function validateCanonicalObject(obj: unknown): ValidationResult {
 
   if (!o.id || typeof o.id !== "string" || o.id.trim() === "") {
     errors.push("Object must have a non-empty id");
+  }
+  if (!o.roomId || typeof o.roomId !== "string" || o.roomId.trim() === "") {
+    errors.push("Object must have a non-empty roomId");
+  }
+  if (!o.name || typeof o.name !== "string" || o.name.trim() === "") {
+    errors.push("Object must have a non-empty name");
+  }
+  if (!o.category || typeof o.category !== "string" || o.category.trim() === "") {
+    errors.push("Object must have a non-empty category");
+  }
+  if (typeof o.isFixed !== "boolean") {
+    errors.push("Object isFixed must be a boolean");
   }
   if (!isValidPoint2D(o.position)) {
     errors.push("Object position must be a valid finite Point2D");
@@ -262,9 +337,26 @@ export function validateCanonicalObject(obj: unknown): ValidationResult {
     ) {
       errors.push("Object depth must be a positive finite number");
     }
+    if (
+      o.dimensionsCm.height !== undefined &&
+      (typeof o.dimensionsCm.height !== "number" ||
+        !Number.isFinite(o.dimensionsCm.height) ||
+        o.dimensionsCm.height <= 0)
+    ) {
+      errors.push("Object height must be a positive finite number if provided");
+    }
   }
   if (typeof o.rotationDeg !== "number" || !Number.isFinite(o.rotationDeg)) {
     errors.push("Object rotationDeg must be a finite number");
+  }
+  if (
+    o.confidence !== undefined &&
+    (typeof o.confidence !== "number" ||
+      !Number.isFinite(o.confidence) ||
+      o.confidence < 0 ||
+      o.confidence > 1)
+  ) {
+    errors.push("Object confidence must be a finite number between 0 and 1 if provided");
   }
   if (o.footprint !== undefined) {
     const footVal = validatePolygon2D(o.footprint);
@@ -290,11 +382,18 @@ export function validateCanonicalMobilityProfile(profile: unknown): ValidationRe
   if (!p.id || typeof p.id !== "string" || p.id.trim() === "") {
     errors.push("Mobility profile must have a non-empty id");
   }
-  if (!p.preferredClearanceCm || typeof p.preferredClearanceCm.value !== "number" || p.preferredClearanceCm.value <= 0) {
-    errors.push("Mobility profile preferredClearanceCm must have a positive finite value");
+  if (!p.name || typeof p.name !== "string" || p.name.trim() === "") {
+    errors.push("Mobility profile must have a non-empty name");
   }
-  if (!p.turningDiameterCm || typeof p.turningDiameterCm.value !== "number" || p.turningDiameterCm.value <= 0) {
-    errors.push("Mobility profile turningDiameterCm must have a positive finite value");
+  if (!p.aidType || typeof p.aidType !== "string" || p.aidType.trim() === "") {
+    errors.push("Mobility profile must have a non-empty aidType");
+  }
+
+  errors.push(...validateSourcedQuantity(p.preferredClearanceCm, "cm", "preferredClearanceCm", true));
+  errors.push(...validateSourcedQuantity(p.turningDiameterCm, "cm", "turningDiameterCm", true));
+
+  if (p.envelopeWidthCm !== undefined) {
+    errors.push(...validateSourcedQuantity(p.envelopeWidthCm, "cm", "envelopeWidthCm", true));
   }
 
   if (errors.length > 0) return { valid: false, errors };
