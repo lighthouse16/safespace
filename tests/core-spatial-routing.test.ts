@@ -468,6 +468,7 @@ test("Fixture F: door swing sector calculates exact geometry and detects encroac
     swing: {
       hinge: { x: 100, y: 100 },
       arcDeg: 90,
+      sweepDirection: "clockwise",
       direction: "inward-right", // sweeps clockwise
     },
   };
@@ -721,6 +722,7 @@ test("regression 1: horizontal door baseline orientation with hinge=start (hinge
     swing: {
       hinge: { x: 100, y: 250 },
       arcDeg: 90,
+      sweepDirection: "clockwise",
       direction: "inward-right", // clockwise: 0 deg (+x) -> 90 deg (+y)
     },
   };
@@ -745,6 +747,7 @@ test("regression 2: vertical door baseline orientation with hinge=start (hinge.x
     swing: {
       hinge: { x: 150, y: 300 },
       arcDeg: 90,
+      sweepDirection: "clockwise",
       direction: "inward-right", // clockwise: 90 deg (+y) -> 180 deg (-x)
     },
   };
@@ -769,6 +772,7 @@ test("regression 3: vertical door baseline orientation with hinge=end (hinge.x !
     swing: {
       hinge: { x: 150, y: 390 },
       arcDeg: 90,
+      sweepDirection: "counterclockwise",
       direction: "inward-left", // counter-clockwise: -90 deg (-y) -> -180 deg (-x)
     },
   };
@@ -793,6 +797,7 @@ test("regression 4: opening swing hinge matching neither endpoint is rejected", 
     swing: {
       hinge: { x: 145, y: 200 }, // Midpoint, neither start nor end
       arcDeg: 90,
+      sweepDirection: "clockwise",
       direction: "inward-right",
     },
   };
@@ -1022,4 +1027,453 @@ test("regression 12: line-of-sight supercover traversal detects corner clipping"
   const clearP1: Point2D = { x: 0, y: 45 };
   const clearP2: Point2D = { x: 45, y: 45 };
   assert.equal(isLineOfSightClear(clearP1, clearP2, grid), true);
+});
+
+// -------------------------------------------------------------
+// 9. Final Canonical Routing Invariants Regressions (Pass 2)
+// -------------------------------------------------------------
+
+test("regression 13: bow-tie room boundary is rejected as self-intersecting", () => {
+  const bowTiePoly: Polygon2D = [
+    { x: 0, y: 0 },
+    { x: 100, y: 100 },
+    { x: 0, y: 100 },
+    { x: 100, y: 0 },
+  ];
+  const valPoly = validatePolygon2D(bowTiePoly);
+  assert.equal(valPoly.valid, false);
+  if (!valPoly.valid) {
+    assert.ok(valPoly.errors.some((e) => e.includes("self-intersecting")));
+  }
+
+  const room: CanonicalRoom = {
+    id: "room-bowtie",
+    floorId: "floor-1",
+    name: "Bowtie Room",
+    boundary: bowTiePoly,
+  };
+  const valRoom = validateCanonicalRoom(room);
+  assert.equal(valRoom.valid, false);
+  if (!valRoom.valid) {
+    assert.ok(valRoom.errors.some((e) => e.includes("self-intersecting")));
+  }
+});
+
+test("regression 14: bow-tie object footprint is rejected as self-intersecting", () => {
+  const bowTieFootprint: Polygon2D = [
+    { x: -50, y: -50 },
+    { x: 50, y: 50 },
+    { x: -50, y: 50 },
+    { x: 50, y: -50 },
+  ];
+  const obj: CanonicalObject = {
+    id: "obj-bowtie",
+    roomId: "room-1",
+    name: "Bowtie Table",
+    category: "table",
+    position: { x: 100, y: 100 },
+    dimensionsCm: { width: 100, depth: 100 },
+    rotationDeg: 0,
+    footprint: bowTieFootprint,
+    isFixed: true,
+  };
+  const valObj = validateCanonicalObject(obj);
+  assert.equal(valObj.valid, false);
+  if (!valObj.valid) {
+    assert.ok(valObj.errors.some((e) => e.includes("self-intersecting")));
+  }
+});
+
+test("regression 15: ordinary concave L-shaped polygon remains valid", () => {
+  const lShape: Polygon2D = [
+    { x: 0, y: 0 },
+    { x: 300, y: 0 },
+    { x: 300, y: 150 },
+    { x: 150, y: 150 },
+    { x: 150, y: 300 },
+    { x: 0, y: 300 },
+  ];
+  const val = validatePolygon2D(lShape);
+  assert.equal(val.valid, true);
+});
+
+test("regression 16: malformed obstacles collection returns invalid-geometry without throwing", () => {
+  const room: CanonicalRoom = {
+    id: "room-1",
+    floorId: "floor-1",
+    name: "Room",
+    boundary: [
+      { x: 0, y: 0 },
+      { x: 400, y: 0 },
+      { x: 400, y: 400 },
+      { x: 0, y: 400 },
+    ],
+  };
+  const baseReq: RouteRequest = {
+    room,
+    obstacles: [],
+    start: { x: 50, y: 200 },
+    end: { x: 350, y: 200 },
+    mobilityProfile: makeProfile(60),
+  };
+
+  for (const badObs of [{}, "chairs", 42, true]) {
+    const res = computeRoute({ ...baseReq, obstacles: badObs as unknown as readonly CanonicalObject[] });
+    assert.equal(res.status, "invalid-geometry");
+    if (res.status === "invalid-geometry") {
+      assert.ok(res.reason.includes("request.obstacles must be an array"));
+    }
+  }
+});
+
+test("regression 17: malformed userWaypoints collection returns invalid-geometry without throwing", () => {
+  const room: CanonicalRoom = {
+    id: "room-1",
+    floorId: "floor-1",
+    name: "Room",
+    boundary: [
+      { x: 0, y: 0 },
+      { x: 400, y: 0 },
+      { x: 400, y: 400 },
+      { x: 0, y: 400 },
+    ],
+  };
+  const baseReq: RouteRequest = {
+    room,
+    obstacles: [],
+    start: { x: 50, y: 200 },
+    end: { x: 350, y: 200 },
+    mobilityProfile: makeProfile(60),
+  };
+
+  for (const badWp of [{}, 12, "wp1", false]) {
+    const res = computeRoute({ ...baseReq, userWaypoints: badWp as unknown as readonly Point2D[] });
+    assert.equal(res.status, "invalid-geometry");
+    if (res.status === "invalid-geometry") {
+      assert.ok(res.reason.includes("request.userWaypoints must be an array"));
+    }
+  }
+});
+
+test("regression 18: start point inside obstacle dilation envelope returns clearance-insufficient", () => {
+  const room: CanonicalRoom = {
+    id: "room-clearance",
+    floorId: "floor-1",
+    name: "Room",
+    boundary: [
+      { x: 0, y: 0 },
+      { x: 500, y: 0 },
+      { x: 500, y: 500 },
+      { x: 0, y: 500 },
+    ],
+  };
+  // Obstacle at x: [100, 200], y: [150, 250]
+  const obs: CanonicalObject = {
+    id: "obs-cab",
+    roomId: "room-clearance",
+    name: "Filing Cabinet",
+    category: "cabinet",
+    position: { x: 150, y: 200 },
+    dimensionsCm: { width: 100, depth: 100 },
+    rotationDeg: 0,
+    isFixed: true,
+  };
+  // Profile requires 60 cm clear width => corridor radius = 30 cm
+  // Start is at (85, 200) => 15 cm from obstacle left edge (x=100)
+  // Physically outside obstacle, but closer than 30 cm!
+  const req: RouteRequest = {
+    room,
+    obstacles: [obs],
+    start: { x: 85, y: 200 },
+    end: { x: 400, y: 200 },
+    mobilityProfile: makeProfile(60),
+  };
+  const res = computeRoute(req);
+  assert.notEqual(res.status, "success");
+  assert.equal(res.status, "clearance-insufficient");
+});
+
+test("regression 19: end point inside obstacle dilation envelope returns clearance-insufficient", () => {
+  const room: CanonicalRoom = {
+    id: "room-clearance",
+    floorId: "floor-1",
+    name: "Room",
+    boundary: [
+      { x: 0, y: 0 },
+      { x: 500, y: 0 },
+      { x: 500, y: 500 },
+      { x: 0, y: 500 },
+    ],
+  };
+  const obs: CanonicalObject = {
+    id: "obs-cab",
+    roomId: "room-clearance",
+    name: "Filing Cabinet",
+    category: "cabinet",
+    position: { x: 350, y: 200 },
+    dimensionsCm: { width: 100, depth: 100 },
+    rotationDeg: 0,
+    isFixed: true,
+  };
+  // End is at (285, 200) => 15 cm from obstacle left edge (x=300)
+  const req: RouteRequest = {
+    room,
+    obstacles: [obs],
+    start: { x: 100, y: 200 },
+    end: { x: 285, y: 200 },
+    mobilityProfile: makeProfile(60), // corridor radius = 30 cm
+  };
+  const res = computeRoute(req);
+  assert.notEqual(res.status, "success");
+  assert.equal(res.status, "clearance-insufficient");
+});
+
+test("regression 20: start or route too close to room wall returns clearance-insufficient", () => {
+  const room: CanonicalRoom = {
+    id: "room-wall",
+    floorId: "floor-1",
+    name: "Empty Room",
+    boundary: [
+      { x: 0, y: 0 },
+      { x: 400, y: 0 },
+      { x: 400, y: 400 },
+      { x: 0, y: 400 },
+    ],
+  };
+  // Profile requires 60 cm clear width => corridor radius = 30 cm
+  // Start at (10, 200) is only 10 cm from left wall (x=0)
+  const req: RouteRequest = {
+    room,
+    obstacles: [],
+    start: { x: 10, y: 200 },
+    end: { x: 350, y: 200 },
+    mobilityProfile: makeProfile(60),
+  };
+  const res = computeRoute(req);
+  assert.notEqual(res.status, "success");
+  assert.equal(res.status, "clearance-insufficient");
+});
+
+test("regression 21: valid route with sufficient wall and object clearance succeeds", () => {
+  const room: CanonicalRoom = {
+    id: "room-valid",
+    floorId: "floor-1",
+    name: "Spacious Room",
+    boundary: [
+      { x: 0, y: 0 },
+      { x: 500, y: 0 },
+      { x: 500, y: 500 },
+      { x: 0, y: 500 },
+    ],
+  };
+  const table: CanonicalObject = {
+    id: "table-mid",
+    roomId: "room-valid",
+    name: "Center Table",
+    category: "table",
+    position: { x: 250, y: 250 },
+    dimensionsCm: { width: 100, depth: 100 },
+    rotationDeg: 0,
+    isFixed: true,
+  };
+  const req: RouteRequest = {
+    room,
+    obstacles: [table],
+    start: { x: 60, y: 250 },
+    end: { x: 440, y: 250 },
+    mobilityProfile: makeProfile(60), // corridor radius = 30 cm
+  };
+  const res = computeRoute(req);
+  assert.equal(res.status, "success");
+  if (res.status === "success") {
+    assert.ok(
+      res.minimumClearanceCm + 1e-4 >= 30,
+      `Expected minimumClearanceCm (${res.minimumClearanceCm}) >= 30`
+    );
+  }
+});
+
+test("regression 22: successful route clearance invariant strictly holds across fixtures", () => {
+  const room: CanonicalRoom = {
+    id: "fixture-a-room",
+    floorId: "floor-1",
+    name: "Empty Room",
+    boundary: [
+      { x: 0, y: 0 },
+      { x: 400, y: 0 },
+      { x: 400, y: 400 },
+      { x: 0, y: 400 },
+    ],
+  };
+  const profile = makeProfile(60); // corridor radius = 30 cm
+  const resA = computeRoute({
+    room,
+    obstacles: [],
+    start: { x: 50, y: 200 },
+    end: { x: 350, y: 200 },
+    mobilityProfile: profile,
+  });
+  assert.equal(resA.status, "success");
+  if (resA.status === "success") {
+    assert.ok(
+      resA.minimumClearanceCm + 1e-4 >= profile.preferredClearanceCm.value / 2,
+      `Fixture A clearance invariant violated: ${resA.minimumClearanceCm} < 30`
+    );
+  }
+});
+
+test("regression 23: door swing clockwise vs counterclockwise geometric sweep", () => {
+  const doorCW: CanonicalOpening = {
+    id: "door-cw",
+    roomId: "room-1",
+    type: "door",
+    start: { x: 100, y: 100 },
+    end: { x: 190, y: 100 },
+    clearWidthCm: 90,
+    swing: {
+      hinge: { x: 100, y: 100 },
+      arcDeg: 90,
+      sweepDirection: "clockwise",
+    },
+  };
+  const doorCCW: CanonicalOpening = {
+    id: "door-ccw",
+    roomId: "room-1",
+    type: "door",
+    start: { x: 100, y: 100 },
+    end: { x: 190, y: 100 },
+    clearWidthCm: 90,
+    swing: {
+      hinge: { x: 100, y: 100 },
+      arcDeg: 90,
+      sweepDirection: "counterclockwise",
+    },
+  };
+
+  const polyCW = computeOpeningSwingPolygon(doorCW, 4);
+  const polyCCW = computeOpeningSwingPolygon(doorCCW, 4);
+
+  // Baseline: (100, 100) -> (190, 100) = 0 deg (+x)
+  // Clockwise (+90 deg): points sweep towards +y (down): y >= 100
+  for (const p of polyCW) {
+    assert.ok(p.y >= 100 - 1e-4, `Expected CW y >= 100, got ${p.y}`);
+  }
+  assert.equal(Math.round(polyCW[polyCW.length - 1].x), 100);
+  assert.equal(Math.round(polyCW[polyCW.length - 1].y), 190);
+
+  // Counterclockwise (-90 deg): points sweep towards -y (up): y <= 100
+  for (const p of polyCCW) {
+    assert.ok(p.y <= 100 + 1e-4, `Expected CCW y <= 100, got ${p.y}`);
+  }
+  assert.equal(Math.round(polyCCW[polyCCW.length - 1].x), 100);
+  assert.equal(Math.round(polyCCW[polyCCW.length - 1].y), 10);
+});
+
+test("regression 24: door swing hinge at start vs hinge at end", () => {
+  const doorHingeStart: CanonicalOpening = {
+    id: "door-h-start",
+    roomId: "room-1",
+    type: "door",
+    start: { x: 100, y: 100 },
+    end: { x: 190, y: 100 },
+    clearWidthCm: 90,
+    swing: {
+      hinge: { x: 100, y: 100 },
+      arcDeg: 90,
+      sweepDirection: "clockwise",
+    },
+  };
+  const doorHingeEnd: CanonicalOpening = {
+    id: "door-h-end",
+    roomId: "room-1",
+    type: "door",
+    start: { x: 100, y: 100 },
+    end: { x: 190, y: 100 },
+    clearWidthCm: 90,
+    swing: {
+      hinge: { x: 190, y: 100 },
+      arcDeg: 90,
+      sweepDirection: "clockwise",
+    },
+  };
+
+  const polyStart = computeOpeningSwingPolygon(doorHingeStart, 4);
+  const polyEnd = computeOpeningSwingPolygon(doorHingeEnd, 4);
+
+  assert.deepEqual(polyStart[0], { x: 100, y: 100 });
+  assert.deepEqual(polyEnd[0], { x: 190, y: 100 });
+});
+
+test("regression 25: semantic direction metadata does not silently alter geometry", () => {
+  const doorSemantic1: CanonicalOpening = {
+    id: "door-sem-1",
+    roomId: "room-1",
+    type: "door",
+    start: { x: 100, y: 100 },
+    end: { x: 190, y: 100 },
+    clearWidthCm: 90,
+    swing: {
+      hinge: { x: 100, y: 100 },
+      arcDeg: 90,
+      sweepDirection: "clockwise",
+      direction: "inward-left", // Semantic metadata only
+    },
+  };
+  const doorSemantic2: CanonicalOpening = {
+    id: "door-sem-2",
+    roomId: "room-1",
+    type: "door",
+    start: { x: 100, y: 100 },
+    end: { x: 190, y: 100 },
+    clearWidthCm: 90,
+    swing: {
+      hinge: { x: 100, y: 100 },
+      arcDeg: 90,
+      sweepDirection: "clockwise",
+      direction: "outward-right", // Different semantic metadata
+    },
+  };
+
+  const poly1 = computeOpeningSwingPolygon(doorSemantic1, 8);
+  const poly2 = computeOpeningSwingPolygon(doorSemantic2, 8);
+
+  // Both must yield identical geometry because sweepDirection is the authoritative geometric contract
+  assert.deepEqual(poly1, poly2);
+});
+
+test("regression 26: invalid door swing hinge or sweepDirection fails validation", () => {
+  const badHinge: CanonicalOpening = {
+    id: "door-bad-hinge",
+    roomId: "room-1",
+    type: "door",
+    start: { x: 100, y: 100 },
+    end: { x: 190, y: 100 },
+    clearWidthCm: 90,
+    swing: {
+      hinge: { x: 145, y: 100 }, // Middle
+      arcDeg: 90,
+      sweepDirection: "clockwise",
+    },
+  };
+  const valHinge = validateCanonicalOpening(badHinge);
+  assert.equal(valHinge.valid, false);
+
+  const badSweep: CanonicalOpening = {
+    id: "door-bad-sweep",
+    roomId: "room-1",
+    type: "door",
+    start: { x: 100, y: 100 },
+    end: { x: 190, y: 100 },
+    clearWidthCm: 90,
+    swing: {
+      hinge: { x: 100, y: 100 },
+      arcDeg: 90,
+      sweepDirection: "diagonal" as unknown as "clockwise",
+    },
+  };
+  const valSweep = validateCanonicalOpening(badSweep);
+  assert.equal(valSweep.valid, false);
+  if (!valSweep.valid) {
+    assert.ok(valSweep.errors.some((e) => e.includes("sweepDirection")));
+  }
 });

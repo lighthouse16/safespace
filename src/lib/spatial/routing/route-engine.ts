@@ -5,7 +5,11 @@ import {
   validateCanonicalObject,
   validateCanonicalRoom,
 } from "../schema";
-import { isPointInPolygon } from "../geometry/polygons";
+import {
+  distancePointToPolygon,
+  distancePointToPolygonBoundary,
+  isPointInPolygon,
+} from "../geometry/polygons";
 import { deriveWorldFootprint } from "../geometry/footprints";
 import { polylineLength } from "../geometry/primitives";
 import { computeRouteClearance } from "../geometry/clearance";
@@ -30,7 +34,22 @@ export function computeRoute(request: RouteRequest): RouteResult {
     };
   }
 
-  // 2. Validate grid resolution if supplied
+  // 2. Validate collection shapes fail-closed before iterating or spreading
+  if (request.obstacles !== undefined && !Array.isArray(request.obstacles)) {
+    return {
+      status: "invalid-geometry",
+      reason: "request.obstacles must be an array if supplied",
+    };
+  }
+
+  if (request.userWaypoints !== undefined && !Array.isArray(request.userWaypoints)) {
+    return {
+      status: "invalid-geometry",
+      reason: "request.userWaypoints must be an array if supplied",
+    };
+  }
+
+  // 3. Validate grid resolution if supplied
   if (request.gridResolutionCm !== undefined) {
     if (
       typeof request.gridResolutionCm !== "number" ||
@@ -151,24 +170,83 @@ export function computeRoute(request: RouteRequest): RouteResult {
     }
   }
 
-  // 6. Build occupancy grid with preferred clearance dilation radius
+  // 7. Verify start, end, and waypoints clearance envelope (corridorRadiusCm)
+  const clearanceRadiusCm = request.mobilityProfile.preferredClearanceCm.value / 2;
+
+  // Start clearance checks
+  const distStartWall = distancePointToPolygonBoundary(request.start, request.room.boundary);
+  if (distStartWall < clearanceRadiusCm - 1e-4) {
+    return {
+      status: "clearance-insufficient",
+      reason: `Start point clearance to room boundary (${distStartWall.toFixed(1)} cm) is less than required corridor radius (${clearanceRadiusCm.toFixed(1)} cm)`,
+    };
+  }
+  for (const obs of obstacles) {
+    const footprint = deriveWorldFootprint(obs);
+    const distStartObs = distancePointToPolygon(request.start, footprint);
+    if (distStartObs < clearanceRadiusCm - 1e-4) {
+      return {
+        status: "clearance-insufficient",
+        reason: `Start point clearance to obstacle (${obs.id}: ${obs.name}, ${distStartObs.toFixed(1)} cm) is less than required corridor radius (${clearanceRadiusCm.toFixed(1)} cm)`,
+      };
+    }
+  }
+
+  // End clearance checks
+  const distEndWall = distancePointToPolygonBoundary(request.end, request.room.boundary);
+  if (distEndWall < clearanceRadiusCm - 1e-4) {
+    return {
+      status: "clearance-insufficient",
+      reason: `End point clearance to room boundary (${distEndWall.toFixed(1)} cm) is less than required corridor radius (${clearanceRadiusCm.toFixed(1)} cm)`,
+    };
+  }
+  for (const obs of obstacles) {
+    const footprint = deriveWorldFootprint(obs);
+    const distEndObs = distancePointToPolygon(request.end, footprint);
+    if (distEndObs < clearanceRadiusCm - 1e-4) {
+      return {
+        status: "clearance-insufficient",
+        reason: `End point clearance to obstacle (${obs.id}: ${obs.name}, ${distEndObs.toFixed(1)} cm) is less than required corridor radius (${clearanceRadiusCm.toFixed(1)} cm)`,
+      };
+    }
+  }
+
+  // Waypoints clearance checks
+  for (let i = 0; i < waypoints.length; i++) {
+    const wp = waypoints[i];
+    const distWpWall = distancePointToPolygonBoundary(wp, request.room.boundary);
+    if (distWpWall < clearanceRadiusCm - 1e-4) {
+      return {
+        status: "clearance-insufficient",
+        reason: `Waypoint at index ${i} clearance to room boundary (${distWpWall.toFixed(1)} cm) is less than required corridor radius (${clearanceRadiusCm.toFixed(1)} cm)`,
+      };
+    }
+    for (const obs of obstacles) {
+      const footprint = deriveWorldFootprint(obs);
+      const distWpObs = distancePointToPolygon(wp, footprint);
+      if (distWpObs < clearanceRadiusCm - 1e-4) {
+        return {
+          status: "clearance-insufficient",
+          reason: `Waypoint at index ${i} clearance to obstacle (${obs.id}: ${obs.name}, ${distWpObs.toFixed(1)} cm) is less than required corridor radius (${clearanceRadiusCm.toFixed(1)} cm)`,
+        };
+      }
+    }
+  }
+
+  // 8. Build occupancy grid with preferred clearance dilation radius
   // Note: mobilityProfile.turningDiameterCm is validated and preserved in canonical contract,
   // but non-holonomic turning radius constraints are not modeled by this 2D grid pathfinder.
-  const clearanceRadiusCm = request.mobilityProfile.preferredClearanceCm.value / 2;
   const resolutionCm = request.gridResolutionCm ?? DEFAULT_GRID_RESOLUTION_CM;
-
   const routeCheckpoints: Point2D[] = [request.start, ...waypoints, request.end];
 
   const grid = buildOccupancyGrid(
     request.room,
     obstacles,
     clearanceRadiusCm,
-    resolutionCm,
-    request.start,
-    request.end
+    resolutionCm
   );
 
-  // 7. Route sequentially through checkpoints and simplify each leg
+  // 9. Route sequentially through checkpoints and simplify each leg
   const simplifiedPath: Point2D[] = [];
 
   for (let i = 0; i < routeCheckpoints.length - 1; i++) {
@@ -193,13 +271,21 @@ export function computeRoute(request: RouteRequest): RouteResult {
     }
   }
 
-  // 8. Compute real metrics (length, clearance, bottlenecks)
+  // 10. Compute real metrics (length, clearance, bottlenecks)
   const pathLengthCm = polylineLength(simplifiedPath);
   const { minimumClearanceCm, bottlenecks } = computeRouteClearance(
     simplifiedPath,
     obstacles,
     request.room.boundary
   );
+
+  // Invariant: RouteSuccessResult must strictly satisfy the requested clearance envelope
+  if (minimumClearanceCm < clearanceRadiusCm - 1e-4) {
+    return {
+      status: "clearance-insufficient",
+      reason: `Route minimum clearance (${minimumClearanceCm.toFixed(1)} cm) is less than required corridor radius (${clearanceRadiusCm.toFixed(1)} cm)`,
+    };
+  }
 
   return {
     status: "success",

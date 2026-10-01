@@ -38,10 +38,29 @@ export interface SourcedQuantity<U extends string = string> {
   readonly source: ThresholdSource;
 }
 
+export type DoorSweepDirection = "clockwise" | "counterclockwise";
+
+export type DoorSemanticDirection =
+  | "inward-left"
+  | "inward-right"
+  | "outward-left"
+  | "outward-right";
+
 export interface DoorSwingSpec {
   readonly hinge: Point2D;
+  /** Opening arc angle in degrees (positive magnitude, e.g. 90) */
   readonly arcDeg: number;
-  readonly direction: "inward-left" | "inward-right" | "outward-left" | "outward-right";
+  /**
+   * Explicit geometric sweep direction in canonical coordinates (+x right, +y down):
+   * - "clockwise": angle increases (+sweep)
+   * - "counterclockwise": angle decreases (-sweep)
+   */
+  readonly sweepDirection: DoorSweepDirection;
+  /**
+   * Optional architectural semantic direction metadata.
+   * Retained as descriptive metadata only; does not alter geometric sweep calculation.
+   */
+  readonly direction?: DoorSemanticDirection;
 }
 
 export interface CanonicalOpening {
@@ -133,8 +152,44 @@ export function isValidPoint2D(p: unknown): p is Point2D {
 }
 
 /**
+ * Helper to determine if two line segments (p1-q1) and (p2-q2) intersect.
+ */
+function segmentsIntersect(p1: Point2D, q1: Point2D, p2: Point2D, q2: Point2D): boolean {
+  const ccw = (a: Point2D, b: Point2D, c: Point2D) =>
+    (c.y - a.y) * (b.x - a.x) - (b.y - a.y) * (c.x - a.x);
+
+  const o1 = ccw(p1, q1, p2);
+  const o2 = ccw(p1, q1, q2);
+  const o3 = ccw(p2, q2, p1);
+  const o4 = ccw(p2, q2, q1);
+
+  // General intersection test: orientations differ across both segment lines
+  const eps = 1e-9;
+  const cross1 = (o1 > eps && o2 < -eps) || (o1 < -eps && o2 > eps);
+  const cross2 = (o3 > eps && o4 < -eps) || (o3 < -eps && o4 > eps);
+
+  if (cross1 && cross2) {
+    return true;
+  }
+
+  const onSeg = (p: Point2D, q: Point2D, r: Point2D) =>
+    q.x <= Math.max(p.x, r.x) + eps &&
+    q.x >= Math.min(p.x, r.x) - eps &&
+    q.y <= Math.max(p.y, r.y) + eps &&
+    q.y >= Math.min(p.y, r.y) - eps;
+
+  if (Math.abs(o1) <= eps && onSeg(p1, p2, q1)) return true;
+  if (Math.abs(o2) <= eps && onSeg(p1, q2, q1)) return true;
+  if (Math.abs(o3) <= eps && onSeg(p2, p1, q2)) return true;
+  if (Math.abs(o4) <= eps && onSeg(p2, q1, q2)) return true;
+
+  return false;
+}
+
+/**
  * Validates a Polygon2D.
- * Must contain at least 3 valid finite vertices and non-zero signed area.
+ * Must contain at least 3 valid finite vertices, non-zero signed area,
+ * and be a simple polygon (no self-intersections among non-adjacent edges).
  */
 export function validatePolygon2D(polygon: unknown): ValidationResult {
   if (!Array.isArray(polygon)) {
@@ -153,6 +208,42 @@ export function validatePolygon2D(polygon: unknown): ValidationResult {
 
   if (errors.length > 0) {
     return { valid: false, errors };
+  }
+
+  // Check degenerate consecutive duplicate vertices
+  for (let i = 0; i < polygon.length; i++) {
+    const next = (i + 1) % polygon.length;
+    if (
+      Math.hypot(polygon[i].x - polygon[next].x, polygon[i].y - polygon[next].y) < 1e-6
+    ) {
+      return {
+        valid: false,
+        errors: [`Polygon has duplicate consecutive vertices at indices ${i} and ${next}`],
+      };
+    }
+  }
+
+  // Check simple polygon invariant: no non-adjacent edge intersections
+  const n = polygon.length;
+  for (let i = 0; i < n - 1; i++) {
+    const p1 = polygon[i];
+    const q1 = polygon[(i + 1) % n];
+    for (let j = i + 1; j < n; j++) {
+      // Skip adjacent edges: (i, i+1) and wrap-around (0, n-1)
+      if (j === i + 1 || (i === 0 && j === n - 1)) {
+        continue;
+      }
+      const p2 = polygon[j];
+      const q2 = polygon[(j + 1) % n];
+      if (segmentsIntersect(p1, q1, p2, q2)) {
+        return {
+          valid: false,
+          errors: [
+            `Polygon is self-intersecting (non-simple): edges ${i} and ${j} intersect`,
+          ],
+        };
+      }
+    }
   }
 
   // Check degenerate area (Shoelace formula)
@@ -275,9 +366,15 @@ export function validateCanonicalOpening(opening: unknown): ValidationResult {
     if (typeof o.swing.arcDeg !== "number" || !Number.isFinite(o.swing.arcDeg) || o.swing.arcDeg <= 0) {
       errors.push("Opening swing arcDeg must be a positive finite number");
     }
-    const validDirs = ["inward-left", "inward-right", "outward-left", "outward-right"];
-    if (!o.swing.direction || !validDirs.includes(o.swing.direction)) {
-      errors.push(`Opening swing direction must be one of: ${validDirs.join(", ")}`);
+    const validSweeps = ["clockwise", "counterclockwise"];
+    if (!o.swing.sweepDirection || !validSweeps.includes(o.swing.sweepDirection)) {
+      errors.push(`Opening swing sweepDirection must be one of: ${validSweeps.join(", ")}`);
+    }
+    if (o.swing.direction !== undefined) {
+      const validDirs = ["inward-left", "inward-right", "outward-left", "outward-right"];
+      if (!validDirs.includes(o.swing.direction)) {
+        errors.push(`Opening swing direction must be one of: ${validDirs.join(", ")}`);
+      }
     }
     if (isValidPoint2D(o.swing.hinge) && isValidPoint2D(o.start) && isValidPoint2D(o.end)) {
       const dStart = Math.hypot(o.start.x - o.swing.hinge.x, o.start.y - o.swing.hinge.y);

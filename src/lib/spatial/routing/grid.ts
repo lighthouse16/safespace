@@ -1,6 +1,10 @@
 import type { CanonicalObject, CanonicalRoom, Point2D } from "../schema";
 import { boundingBox, expandBoundingBox } from "../geometry/primitives";
-import { distancePointToPolygon, isPointInPolygon } from "../geometry/polygons";
+import {
+  distancePointToPolygon,
+  distancePointToPolygonBoundary,
+  isPointInPolygon,
+} from "../geometry/polygons";
 import { deriveWorldFootprint } from "../geometry/footprints";
 
 export const DEFAULT_GRID_RESOLUTION_CM = 5;
@@ -85,9 +89,7 @@ export function buildOccupancyGrid(
   room: CanonicalRoom,
   obstacles: readonly CanonicalObject[],
   clearanceRadiusCm: number,
-  resolutionCm: number = DEFAULT_GRID_RESOLUTION_CM,
-  start?: Point2D,
-  end?: Point2D
+  resolutionCm: number = DEFAULT_GRID_RESOLUTION_CM
 ): SpatialGrid {
   const roomBounds = boundingBox(room.boundary);
   // Expand grid slightly around room bounds
@@ -103,12 +105,17 @@ export function buildOccupancyGrid(
     resolutionCm
   );
 
-  // 1. Mark cells outside room boundary as blocked
+  // 1. Mark cells outside room boundary or within wall clearance envelope as blocked
   for (let gy = 0; gy < grid.rows; gy++) {
     for (let gx = 0; gx < grid.cols; gx++) {
       const worldPt = grid.gridToWorld(gx, gy);
       if (!isPointInPolygon(worldPt, room.boundary, true)) {
         grid.setBlocked(gx, gy, true);
+      } else if (clearanceRadiusCm > 0) {
+        const distWall = distancePointToPolygonBoundary(worldPt, room.boundary);
+        if (distWall < clearanceRadiusCm - 1e-4) {
+          grid.setBlocked(gx, gy, true);
+        }
       }
     }
   }
@@ -131,39 +138,10 @@ export function buildOccupancyGrid(
       for (let gx = startGx; gx <= endGx; gx++) {
         const pt = grid.gridToWorld(gx, gy);
         const dist = distancePointToPolygon(pt, footprint);
-        if (dist <= clearanceRadiusCm) {
+        if (dist < clearanceRadiusCm - 1e-4) {
           grid.setBlocked(gx, gy, true);
         }
       }
-    }
-  }
-
-  // 3. Ensure start and end cells are walkable if they do not lie inside an actual obstacle footprint
-  if (start) {
-    const sg = grid.worldToGrid(start);
-    let startInsideObs = false;
-    for (const obs of obstacles) {
-      if (isPointInPolygon(start, deriveWorldFootprint(obs), true)) {
-        startInsideObs = true;
-        break;
-      }
-    }
-    if (!startInsideObs && isPointInPolygon(start, room.boundary, true)) {
-      grid.setBlocked(sg.gx, sg.gy, false);
-    }
-  }
-
-  if (end) {
-    const eg = grid.worldToGrid(end);
-    let endInsideObs = false;
-    for (const obs of obstacles) {
-      if (isPointInPolygon(end, deriveWorldFootprint(obs), true)) {
-        endInsideObs = true;
-        break;
-      }
-    }
-    if (!endInsideObs && isPointInPolygon(end, room.boundary, true)) {
-      grid.setBlocked(eg.gx, eg.gy, false);
     }
   }
 

@@ -46,7 +46,7 @@ export function computeOpeningSwingPolygon(
     return [];
   }
 
-  const { hinge, arcDeg, direction } = opening.swing;
+  const { hinge, arcDeg, sweepDirection, direction } = opening.swing;
   const radiusCm = opening.clearWidthCm;
 
   // Determine whether hinge matches opening.start or opening.end
@@ -68,9 +68,14 @@ export function computeOpeningSwingPolygon(
 
   const baselineAngleDeg = (Math.atan2(dy, dx) * 180) / Math.PI;
 
-  // Sign of sweep based on direction
+  // Geometric sign convention in canonical coordinates (+x right, +y down):
+  // - "clockwise": angle increases (+sweepAngleDeg)
+  // - "counterclockwise": angle decreases (-sweepAngleDeg)
+  // Optional architectural `direction` is semantic metadata only and does not alter geometry.
   const isClockwise =
-    direction === "inward-right" || direction === "outward-right";
+    sweepDirection !== undefined
+      ? sweepDirection === "clockwise"
+      : direction === "inward-right" || direction === "outward-right";
   const sweepAngleDeg = isClockwise ? Math.abs(arcDeg) : -Math.abs(arcDeg);
 
   return computeDoorSwingSector({

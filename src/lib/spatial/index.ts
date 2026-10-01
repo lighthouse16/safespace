@@ -20,6 +20,8 @@ export type {
   CanonicalRoom,
   CanonicalRoute,
   DoorSwingSpec,
+  DoorSweepDirection,
+  DoorSemanticDirection,
   ObjectDimensionsCm,
   Point2D,
   Polygon2D,

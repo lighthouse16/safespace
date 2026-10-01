@@ -40,7 +40,8 @@ export type RouteFailureStatus =
   | "start-blocked"
   | "end-blocked"
   | "invalid-geometry"
-  | "insufficient-input";
+  | "insufficient-input"
+  | "clearance-insufficient";
 
 export interface RouteFailureResult {
   readonly status: RouteFailureStatus;
