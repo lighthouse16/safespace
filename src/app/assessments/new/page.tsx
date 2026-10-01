@@ -1,5 +1,502 @@
-"use client"; import {useState} from "react"; import {useRouter} from "next/navigation"; import {AppShell} from "@/components/shell";
-const steps=["Assessment details","Import space","AI extraction","Scale calibration"];
-export default function NewAssessment(){const [step,setStep]=useState(0),router=useRouter();return <AppShell activePath="/assessments"><div className="mx-auto max-w-4xl"><p className="text-sm font-semibold text-teal-700">New assessment · Step {step+1} of 4</p><h1 className="mt-2 text-3xl font-semibold">{steps[step]}</h1><div className="mt-5 grid grid-cols-4 gap-2" aria-label="Progress">{steps.map((s,i)=><div key={s}><div className={`h-1 rounded ${i<=step?"bg-teal-700":"bg-slate-200"}`}/><span className="mt-2 hidden text-xs text-slate-500 sm:block">{s}</span></div>)}</div><section className="mt-8 rounded-xl border border-slate-200 bg-white p-6">{step===0&&<div className="grid gap-5 sm:grid-cols-2"><Field label="Assessment name" value="Queen Care Clinic – Waiting Area & Consultation Corridor"/><Field label="Facility type" value="Clinic"/><Field label="Area" value="Waiting Area and Consultation Corridor"/><Field label="Purpose" value="Fall-risk assessment"/></div>}{step===1&&<div><div className="grid min-h-56 place-items-center rounded-xl border-2 border-dashed border-teal-300 bg-teal-50 text-center"><div><b>Drop floor plan or site photos</b><p className="mt-2 text-sm text-slate-600">PDF, PNG, JPG up to 25 MB</p><button className="mt-4 rounded-lg border border-teal-700 bg-white px-4 py-2 text-sm font-semibold text-teal-800">Choose files</button></div></div><button className="mt-4 text-sm font-semibold text-teal-700">Draw space manually instead</button></div>}{step===2&&<div><div className="flex items-center gap-4"><div className="grid size-12 place-items-center rounded-full bg-teal-100 font-semibold text-teal-800">✓</div><div><b>Plan processed successfully</b><p className="text-sm text-slate-500">Review every detected element before analysis.</p></div></div><dl className="mt-6 grid grid-cols-2 gap-px overflow-hidden rounded-lg bg-slate-200 sm:grid-cols-4">{[["Rooms","4"],["Doors","6"],["Furniture","18"],["Low confidence","2"]].map(([a,b])=><div key={a} className="bg-slate-50 p-4"><dt className="text-xs text-slate-500">{a}</dt><dd className="mt-1 text-xl font-semibold">{b}</dd></div>)}</dl></div>}{step===3&&<div><p className="text-sm text-slate-600">Set one known measurement to establish accurate scale.</p><div className="mt-5 rounded-lg bg-slate-100 p-8 text-center"><div className="mx-auto w-56 border-x-2 border-teal-700 py-3 text-sm font-semibold">Main doorway</div></div><div className="mt-5 max-w-xs"><Field label="Known width" value="90 cm"/></div></div>}</section><div className="mt-6 flex justify-between"><button onClick={()=>setStep(Math.max(0,step-1))} disabled={step===0} className="rounded-lg border border-slate-300 bg-white px-4 py-2 text-sm font-semibold disabled:opacity-40">Back</button><button onClick={()=>step<3?setStep(step+1):router.push('/assessments/queen-care-clinic/model')} className="rounded-lg bg-teal-700 px-5 py-2 text-sm font-semibold text-white">{step===3?"Open space model":"Continue"}</button></div></div></AppShell>}
-function Field({label,value}:{label:string;value:string}){return <label className="grid gap-2 text-sm font-semibold">{label}<input defaultValue={value} className="h-11 rounded-lg border border-slate-300 px-3 font-normal"/></label>}
+"use client";
 
+import React, { useEffect, useRef, useState } from "react";
+import Link from "next/link";
+import { AppShell } from "@/components/shell";
+import {
+  AssessmentDetailsStep,
+  BoundaryDraftCanvas,
+  FloorplanSourceStep,
+  IntakeReviewStep,
+  resetBoundaryForSourceChange,
+  registerCandidateUrl,
+  cancelCandidateUrl,
+  confirmCandidateUrl,
+  disposeCandidateUrl,
+  confirmRemoveUrl,
+  cleanupAllUrls,
+  AsyncSelectionController,
+  type AssessmentDetails,
+  type BoundaryState,
+  type CalibrationState,
+  type IntakeStep,
+  type PendingSourceChange,
+  type SourceType,
+  type UploadedFileInfo,
+} from "@/components/intake";
+import { Button } from "@/components/ui/button";
+
+const STEPS: { id: IntakeStep; label: string }[] = [
+  { id: "details", label: "1. Assessment details" },
+  { id: "source", label: "2. Floorplan source" },
+  { id: "draft", label: "3. Calibration & drafting" },
+  { id: "review", label: "4. Session review" },
+];
+
+const INITIAL_CALIBRATION_STATE: CalibrationState = {
+  p1: null,
+  p2: null,
+  realLength: null,
+  unit: "cm",
+  pixelsPerCm: null,
+  isCalibrated: false,
+};
+
+export type NewAssessmentPageProps = {
+  selectionController?: AsyncSelectionController;
+};
+
+export default function NewAssessmentPage({
+  selectionController: externalController,
+}: NewAssessmentPageProps = {}) {
+  const [internalController] = useState(() => new AsyncSelectionController());
+  const selectionController = externalController ?? internalController;
+
+  const [currentStep, setCurrentStep] = useState<IntakeStep>("details");
+
+  // Form & session states
+  const [details, setDetails] = useState<AssessmentDetails>({
+    assessmentName: "",
+    facilityName: "",
+    spaceName: "",
+    environmentType: "residence",
+    notes: "",
+  });
+
+  const [source, setSource] = useState<SourceType>("upload");
+  const [uploadedFile, setUploadedFile] = useState<UploadedFileInfo | null>(null);
+
+  const [calibration, setCalibration] = useState<CalibrationState>(INITIAL_CALIBRATION_STATE);
+
+  const [boundary, setBoundary] = useState<BoundaryState>({
+    vertices: [],
+    isClosed: false,
+    selectedVertexIndex: null,
+    gridSnap: true,
+  });
+
+  // Track active and candidate blob URLs for single-point ownership and lifecycle safety
+  const activeUrlRef = useRef<string | null>(null);
+  const candidateUrlRef = useRef<string | null>(null);
+
+  const invalidatePendingFileSelection = () => {
+    selectionController.invalidate();
+  };
+
+  useEffect(() => {
+    return () => {
+      selectionController.dispose();
+      const cleaned = cleanupAllUrls({
+        activeUrl: activeUrlRef.current,
+        candidateUrl: candidateUrlRef.current,
+      });
+      activeUrlRef.current = cleaned.activeUrl;
+      candidateUrlRef.current = cleaned.candidateUrl;
+    };
+  }, [selectionController]);
+
+  // Determine whether meaningful intake progress exists
+  const hasMeaningfulWork =
+    details.assessmentName.trim().length > 0 ||
+    details.facilityName.trim().length > 0 ||
+    details.spaceName.trim().length > 0 ||
+    Boolean(details.notes && details.notes.trim().length > 0) ||
+    uploadedFile !== null ||
+    source === "manual" ||
+    boundary.vertices.length > 0 ||
+    calibration.isCalibrated ||
+    calibration.p1 !== null;
+
+  const [showExitConfirm, setShowExitConfirm] = useState(false);
+  const [pendingChange, setPendingChange] = useState<PendingSourceChange | null>(null);
+
+  // Browser beforeunload guard when unsaved session work exists
+  useEffect(() => {
+    if (!hasMeaningfulWork) return;
+
+    const handleBeforeUnload = (e: BeforeUnloadEvent) => {
+      e.preventDefault();
+      e.returnValue = "";
+    };
+
+    window.addEventListener("beforeunload", handleBeforeUnload);
+    return () => {
+      window.removeEventListener("beforeunload", handleBeforeUnload);
+    };
+  }, [hasMeaningfulWork]);
+
+  // Prompt before exiting to assessments if unsaved work exists
+  const handleExitNavigation = (e: React.MouseEvent) => {
+    invalidatePendingFileSelection();
+    if (hasMeaningfulWork) {
+      e.preventDefault();
+      setShowExitConfirm(true);
+    }
+  };
+
+  // Navigation handlers
+  const handleDetailsContinue = (newDetails: AssessmentDetails) => {
+    setDetails(newDetails);
+    setCurrentStep("source");
+  };
+
+  const handleSourceSelect = (newSource: SourceType) => {
+    if (newSource === source) return;
+    invalidatePendingFileSelection();
+    const hasWork = boundary.vertices.length > 0 || calibration.p1 !== null;
+    if (hasWork) {
+      const nextCandidate = disposeCandidateUrl(
+        { activeUrl: activeUrlRef.current, candidateUrl: candidateUrlRef.current }
+      );
+      candidateUrlRef.current = nextCandidate.candidateUrl;
+      setPendingChange({ type: "switch_source", targetSource: newSource });
+    } else {
+      setSource(newSource);
+      setCalibration(INITIAL_CALIBRATION_STATE);
+      setBoundary(resetBoundaryForSourceChange(boundary));
+    }
+  };
+
+  const handleFileSelect = (file: UploadedFileInfo) => {
+    if (pendingChange !== null && pendingChange.type !== "replace_file") {
+      URL.revokeObjectURL(file.objectUrl);
+      return;
+    }
+    const hasWork = boundary.vertices.length > 0 || calibration.p1 !== null;
+    if (uploadedFile && hasWork) {
+      const nextCandidate = registerCandidateUrl(
+        { activeUrl: activeUrlRef.current, candidateUrl: candidateUrlRef.current },
+        file.objectUrl
+      );
+      candidateUrlRef.current = nextCandidate.candidateUrl;
+      setPendingChange({ type: "replace_file", candidateFile: file });
+    } else {
+      if (activeUrlRef.current && activeUrlRef.current !== file.objectUrl) {
+        URL.revokeObjectURL(activeUrlRef.current);
+      }
+      activeUrlRef.current = file.objectUrl;
+      setUploadedFile(file);
+      setCalibration(INITIAL_CALIBRATION_STATE);
+      setBoundary(resetBoundaryForSourceChange(boundary));
+    }
+  };
+
+  const handleFileRemove = () => {
+    invalidatePendingFileSelection();
+    const hasWork = boundary.vertices.length > 0 || calibration.p1 !== null;
+    if (hasWork) {
+      const nextCandidate = disposeCandidateUrl(
+        { activeUrl: activeUrlRef.current, candidateUrl: candidateUrlRef.current }
+      );
+      candidateUrlRef.current = nextCandidate.candidateUrl;
+      setPendingChange({ type: "remove_file" });
+    } else {
+      if (activeUrlRef.current) {
+        URL.revokeObjectURL(activeUrlRef.current);
+        activeUrlRef.current = null;
+      }
+      setUploadedFile(null);
+      setCalibration(INITIAL_CALIBRATION_STATE);
+      setBoundary(resetBoundaryForSourceChange(boundary));
+    }
+  };
+
+  const handleConfirmSourceChange = () => {
+    if (!pendingChange) return;
+    invalidatePendingFileSelection();
+
+    if (pendingChange.type === "replace_file") {
+      const nextState = confirmCandidateUrl({
+        activeUrl: activeUrlRef.current,
+        candidateUrl: candidateUrlRef.current,
+      });
+      activeUrlRef.current = nextState.activeUrl;
+      candidateUrlRef.current = nextState.candidateUrl;
+      setUploadedFile(pendingChange.candidateFile);
+    } else if (pendingChange.type === "switch_source") {
+      setSource(pendingChange.targetSource);
+      const nextState = disposeCandidateUrl({
+        activeUrl: activeUrlRef.current,
+        candidateUrl: candidateUrlRef.current,
+      });
+      candidateUrlRef.current = nextState.candidateUrl;
+    } else if (pendingChange.type === "remove_file") {
+      const nextState = confirmRemoveUrl({
+        activeUrl: activeUrlRef.current,
+        candidateUrl: candidateUrlRef.current,
+      });
+      activeUrlRef.current = nextState.activeUrl;
+      candidateUrlRef.current = nextState.candidateUrl;
+      setUploadedFile(null);
+    }
+
+    setCalibration(INITIAL_CALIBRATION_STATE);
+    setBoundary(resetBoundaryForSourceChange(boundary));
+    setPendingChange(null);
+  };
+
+  const handleCancelSourceChange = () => {
+    invalidatePendingFileSelection();
+    const nextState = cancelCandidateUrl({
+      activeUrl: activeUrlRef.current,
+      candidateUrl: candidateUrlRef.current,
+    });
+    candidateUrlRef.current = nextState.candidateUrl;
+    setPendingChange(null);
+  };
+
+  const handleResetAll = () => {
+    if (hasMeaningfulWork) {
+      const confirmed = window.confirm(
+        "Discard all current intake parameters and start over?"
+      );
+      if (!confirmed) return;
+    }
+    invalidatePendingFileSelection();
+    if (activeUrlRef.current) {
+      URL.revokeObjectURL(activeUrlRef.current);
+      activeUrlRef.current = null;
+    }
+    if (candidateUrlRef.current) {
+      URL.revokeObjectURL(candidateUrlRef.current);
+      candidateUrlRef.current = null;
+    }
+    setPendingChange(null);
+    setDetails({
+      assessmentName: "",
+      facilityName: "",
+      spaceName: "",
+      environmentType: "residence",
+
+      notes: "",
+    });
+    setSource("upload");
+    setUploadedFile(null);
+    setCalibration(INITIAL_CALIBRATION_STATE);
+    setBoundary({
+      vertices: [],
+      isClosed: false,
+      selectedVertexIndex: null,
+      gridSnap: true,
+    });
+    setCurrentStep("details");
+  };
+
+  const stepIndex = STEPS.findIndex((s) => s.id === currentStep);
+
+  return (
+    <AppShell
+      activePath="/assessments"
+      facilityName={
+        currentStep !== "details" && details.facilityName.trim().length > 0
+          ? details.facilityName.trim()
+          : null
+      }
+      workspaceLabel="New assessment"
+      storageLabel="Session only"
+    >
+      <div className="mx-auto max-w-5xl space-y-6">
+        {/* Header with truthful Session-only badge */}
+        <header className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+          <div>
+            <div className="flex items-center gap-2">
+              <span className="text-xs font-semibold uppercase tracking-wider text-slate-500">
+                New Assessment Intake
+              </span>
+              <span
+                role="status"
+                className="rounded-full bg-slate-100 px-2 py-0.5 text-[11px] font-medium text-slate-600 border border-slate-200"
+              >
+                Session only
+              </span>
+            </div>
+            <h1 className="mt-1 text-2xl font-semibold tracking-tight text-[#192329] sm:text-3xl">
+              {STEPS[stepIndex].label.replace(/^\d+\.\s*/, "")}
+            </h1>
+          </div>
+
+          <Link
+            href="/assessments"
+            onClick={handleExitNavigation}
+            className="text-xs font-semibold text-slate-600 hover:text-slate-900"
+          >
+            &larr; Exit to Assessments
+          </Link>
+        </header>
+
+        {/* Restrained Session Exit Warning Banner */}
+        {showExitConfirm && (
+          <div
+            role="alert"
+            className="rounded-xl border border-amber-300 bg-amber-50 p-4 text-xs text-amber-900 shadow-md flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3"
+          >
+            <div>
+              <div className="font-semibold text-sm">
+                Discard current intake draft?
+              </div>
+              <p className="mt-0.5 text-amber-800">
+                Leaving will discard the in-progress draft geometry and calibration. This session draft is held in browser memory only.
+              </p>
+            </div>
+            <div className="flex items-center gap-2 shrink-0">
+              <Link
+                href="/assessments"
+                onClick={invalidatePendingFileSelection}
+                className="rounded-lg bg-[#dc2626] px-3 py-1.5 font-semibold text-white hover:bg-red-700 transition"
+              >
+                Discard & Exit
+              </Link>
+              <Button
+                type="button"
+                variant="secondary"
+                size="sm"
+                onClick={() => setShowExitConfirm(false)}
+              >
+                Continue Editing
+              </Button>
+            </div>
+          </div>
+        )}
+
+        {/* Restrained Source Change Reset Confirmation Banner */}
+        {pendingChange !== null && (
+          <div
+            role="alert"
+            className="rounded-xl border border-amber-300 bg-amber-50 p-4 text-xs text-amber-900 shadow-md flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3"
+          >
+            <div>
+              <div className="font-semibold text-sm">
+                Reset existing boundary and calibration?
+              </div>
+              <p className="mt-0.5 text-amber-800">
+                Changing or replacing the floorplan source will discard your currently traced boundary vertices and scale calibration.
+              </p>
+            </div>
+            <div className="flex items-center gap-2 shrink-0">
+              <Button
+                type="button"
+                variant="danger"
+                size="sm"
+                onClick={handleConfirmSourceChange}
+              >
+                Discard & Update Source
+              </Button>
+              <Button
+                type="button"
+                variant="secondary"
+                size="sm"
+                onClick={handleCancelSourceChange}
+              >
+                Keep Current Draft
+              </Button>
+            </div>
+          </div>
+        )}
+
+        {/* Workflow Progress Bar */}
+        <nav aria-label="Intake progress" className="grid grid-cols-4 gap-2">
+          {STEPS.map((s, idx) => (
+            <div key={s.id} className="space-y-1.5">
+              <div
+                className={`h-1.5 rounded-full transition ${
+                  idx <= stepIndex ? "bg-[#1e7168]" : "bg-slate-200"
+                }`}
+              />
+              <span
+                className={`hidden text-xs font-medium sm:block truncate ${
+                  idx === stepIndex
+                    ? "text-[#1e7168] font-semibold"
+                    : idx < stepIndex
+                    ? "text-slate-700"
+                    : "text-slate-400"
+                }`}
+              >
+                {s.label}
+              </span>
+            </div>
+          ))}
+        </nav>
+
+        {/* Step Content */}
+        <div>
+          {currentStep === "details" && (
+            <AssessmentDetailsStep
+              initialDetails={details}
+              onContinue={handleDetailsContinue}
+            />
+          )}
+
+          {currentStep === "source" && (
+            <FloorplanSourceStep
+              currentSource={source}
+              uploadedFile={uploadedFile}
+              onSelectSource={handleSourceSelect}
+              onFileSelect={handleFileSelect}
+              onFileRemove={handleFileRemove}
+              onContinue={() => {
+                invalidatePendingFileSelection();
+                setCurrentStep("draft");
+              }}
+              onBack={() => {
+                invalidatePendingFileSelection();
+                setCurrentStep("details");
+              }}
+              selectionController={selectionController}
+            />
+          )}
+
+          {currentStep === "draft" && (
+            <div className="space-y-6">
+              <BoundaryDraftCanvas
+                source={source}
+                uploadedFile={uploadedFile}
+                calibration={calibration}
+                boundary={boundary}
+                onUpdateCalibration={setCalibration}
+                onUpdateBoundary={setBoundary}
+              />
+
+              <div className="flex items-center justify-between border-t border-slate-200 pt-4">
+                <Button
+                  type="button"
+                  variant="secondary"
+                  onClick={() => setCurrentStep("source")}
+                >
+                  Back to Source
+                </Button>
+
+                <div className="flex items-center gap-3">
+                  {!boundary.isClosed && (
+                    <span className="text-xs text-[#94a3b8]">
+                      Close boundary polygon to proceed
+                    </span>
+                  )}
+                  <Button
+                    type="button"
+                    onClick={() => setCurrentStep("review")}
+                    disabled={!boundary.isClosed || !calibration.isCalibrated}
+                  >
+                    Continue to Review
+                  </Button>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {currentStep === "review" && (
+            <IntakeReviewStep
+              details={details}
+              source={source}
+              uploadedFile={uploadedFile}
+              calibration={calibration}
+              boundary={boundary}
+              onBackToDraft={() => setCurrentStep("draft")}
+              onResetAll={handleResetAll}
+              onExitToAssessments={handleExitNavigation}
+            />
+          )}
+        </div>
+      </div>
+    </AppShell>
+  );
+}
