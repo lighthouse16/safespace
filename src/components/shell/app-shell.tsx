@@ -17,7 +17,7 @@ export type AppShellProps = {
 export function AppShell({
   children,
   activePath = "/",
-  facilityName = "Harmony Elder Care Centre",
+  facilityName = null,
   workspaceLabel = "Demo workspace",
   storageLabel = "Storage not connected",
 }: AppShellProps) {
@@ -30,20 +30,14 @@ export function AppShell({
           </span>
           SafeSpace
         </Link>
-        <div className="flex items-center gap-3 text-sm">
-          {facilityName ? (
+        {facilityName ? (
+          <div className="flex items-center gap-3 text-sm">
             <div className="hidden rounded-lg border border-slate-300 px-3 py-2 text-left sm:block">
               <span className="block text-xs text-slate-500">Facility</span>
               <span className="font-medium text-slate-900">{facilityName}</span>
             </div>
-          ) : null}
-          <div
-            className="grid size-9 select-none place-items-center rounded-full bg-slate-200 font-semibold text-slate-700"
-            aria-hidden="true"
-          >
-            MC
           </div>
-        </div>
+        ) : null}
       </header>
       <div className="mx-auto grid max-w-[1600px] md:grid-cols-[14rem_minmax(0,1fr)]">
         <aside className="hidden min-h-[calc(100dvh-4rem)] border-r border-slate-200 bg-white p-4 md:block">

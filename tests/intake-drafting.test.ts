@@ -29,6 +29,7 @@ import {
   disposeCandidateUrl,
   confirmRemoveUrl,
   cleanupAllUrls,
+  AsyncSelectionController,
 } from "../src/components/intake/candidate-url-manager";
 import { FloorplanSourceStep } from "../src/components/intake/FloorplanSourceStep";
 import { AppShell } from "../src/components/shell/app-shell";
@@ -568,24 +569,142 @@ test("candidate URL lifecycle: cleanupAllUrls is idempotent and does not double-
   assert.deepEqual(revoked, ["blob:shared-url"]);
 });
 
-// 12. Non-interactive shell header verification
-test("AppShell header renders facility identity and avatar as non-interactive elements without button semantics", () => {
-  const html = renderToStaticMarkup(
+// 12. Shared AppShell identity truthfulness verification
+test("shared AppShell contains no fabricated Harmony Elder Care Centre, Maya Chen, or static MC user identity", () => {
+  // 1. Default render with no props
+  const defaultHtml = renderToStaticMarkup(
+    React.createElement(AppShell, null, React.createElement("div", null, "Default child"))
+  );
+  assert.doesNotMatch(defaultHtml, /Harmony Elder Care Centre/);
+  assert.doesNotMatch(defaultHtml, /Maya Chen/);
+  assert.doesNotMatch(defaultHtml, /MC/);
+  assert.doesNotMatch(defaultHtml, /<button/);
+
+  // 2. Explicit facility name provided by caller
+  const withFacilityHtml = renderToStaticMarkup(
     React.createElement(
       AppShell,
       { facilityName: "SafeSpace workspace" },
       React.createElement("div", null, "Child content")
     )
   );
+  assert.match(withFacilityHtml, /SafeSpace workspace/);
+  assert.match(withFacilityHtml, /<div[^>]*>[\s\S]*SafeSpace workspace[\s\S]*<\/div>/);
+  assert.doesNotMatch(withFacilityHtml, /<button[^>]*>[\s\S]*SafeSpace workspace[\s\S]*<\/button>/);
+  assert.doesNotMatch(withFacilityHtml, /MC/);
+  assert.doesNotMatch(withFacilityHtml, /Harmony Elder Care Centre/);
+  assert.doesNotMatch(withFacilityHtml, /Maya Chen/);
+});
 
-  // Facility identity must NOT be a button
-  assert.doesNotMatch(html, /<button[^>]*>[\s\S]*SafeSpace workspace[\s\S]*<\/button>/);
-  assert.match(html, /<div[^>]*>[\s\S]*SafeSpace workspace[\s\S]*<\/div>/);
+// 13. Two overlapping image validations resolving out of order — latest selection wins
+test("two overlapping image validations resolving out of order: latest selection wins", () => {
+  const revoked: string[] = [];
+  const mockRevoke = (url: string) => revoked.push(url);
+  const controller = new AsyncSelectionController(mockRevoke);
 
-  // Avatar must NOT be a button
-  assert.doesNotMatch(html, /<button[^>]*>[\s\S]*MC[\s\S]*<\/button>/);
-  assert.match(html, /<div[^>]*>[\s\S]*MC[\s\S]*<\/div>/);
+  // User selects File A
+  const idA = controller.startAttempt("blob:image-a");
+  assert.equal(idA, 1);
+  assert.equal(controller.isCurrent(idA), true);
 
-  // Misleading profile action label must be completely absent
-  assert.doesNotMatch(html, /Open profile for Maya Chen/);
+  // User selects File B while A is still decoding
+  const idB = controller.startAttempt("blob:image-b");
+  assert.equal(idB, 2);
+  assert.equal(controller.isCurrent(idB), true);
+  assert.equal(controller.isCurrent(idA), false);
+
+  // Attempt B finishes first and transfers
+  const transferredB = controller.transferUrl(idB, "blob:image-b");
+  assert.equal(transferredB, true);
+
+  // Attempt A finishes later — must be rejected as stale
+  const transferredA = controller.transferUrl(idA, "blob:image-a");
+  assert.equal(transferredA, false);
+
+  // Final winner is B
+  assert.equal(controller.isCurrent(idB), true);
+});
+
+// 14. Stale failed validation cannot replace or append an error after a newer valid selection
+test("stale failed validation cannot replace or append an error after a newer valid selection", () => {
+  const revoked: string[] = [];
+  const mockRevoke = (url: string) => revoked.push(url);
+  const controller = new AsyncSelectionController(mockRevoke);
+
+  // File A begins decoding
+  const idA = controller.startAttempt("blob:image-a");
+
+  // File B is selected and accepted
+  const idB = controller.startAttempt("blob:image-b");
+  const transferredB = controller.transferUrl(idB, "blob:image-b");
+  assert.equal(transferredB, true);
+
+  // File A later fails decoding
+  const isCurrentA = controller.rejectAttempt(idA, "blob:image-a");
+  assert.equal(isCurrentA, false, "Stale failure must not be treated as current");
+});
+
+// 15. Stale/pending object URL is revoked when superseded
+test("stale/pending object URL is revoked when superseded", () => {
+  const revoked: string[] = [];
+  const mockRevoke = (url: string) => revoked.push(url);
+  const controller = new AsyncSelectionController(mockRevoke);
+
+  // Selection 1 starts
+  const id1 = controller.startAttempt("blob:attempt-1");
+  assert.deepEqual(revoked, []);
+
+  // Selection 2 starts before 1 finishes -> selection 1's pending URL is revoked immediately
+  const id2 = controller.startAttempt("blob:attempt-2");
+  assert.deepEqual(revoked, ["blob:attempt-1"]);
+
+  // Stale attempt 1 finishes later and does not double-revoke
+  controller.rejectAttempt(id1, "blob:attempt-1");
+  assert.deepEqual(revoked, ["blob:attempt-1"]);
+
+  // Attempt 2 completes normally
+  const transferred2 = controller.transferUrl(id2, "blob:attempt-2");
+  assert.equal(transferred2, true);
+  assert.deepEqual(revoked, ["blob:attempt-1"]);
+});
+
+// 16. Pending URL is cleaned up when its owner is disposed/unmounted
+test("pending URL is cleaned up when owner is disposed/unmounted", () => {
+  const revoked: string[] = [];
+  const mockRevoke = (url: string) => revoked.push(url);
+  const controller = new AsyncSelectionController(mockRevoke);
+
+  controller.startAttempt("blob:in-flight-url");
+  assert.deepEqual(controller.getPendingUrls(), ["blob:in-flight-url"]);
+
+  // Simulate component unmount / disposal
+  controller.dispose();
+  assert.deepEqual(revoked, ["blob:in-flight-url"]);
+  assert.deepEqual(controller.getPendingUrls(), []);
+});
+
+// 17. Transferred active/candidate URL is not double-revoked
+test("transferred active/candidate URL is not double-revoked", () => {
+  const revoked: string[] = [];
+  const mockRevoke = (url: string) => revoked.push(url);
+  const controller = new AsyncSelectionController(mockRevoke);
+
+  const attemptId = controller.startAttempt("blob:transferred-file");
+  const transferred = controller.transferUrl(attemptId, "blob:transferred-file");
+  assert.equal(transferred, true);
+  assert.deepEqual(revoked, []);
+
+  // Dropzone unmounts / disposes — must NOT revoke transferred URL
+  controller.dispose();
+  assert.deepEqual(revoked, [], "Dropzone disposal must not revoke transferred URL");
+
+  // Parent candidate URL manager now owns the URL and handles its lifecycle
+  const candidateState = { activeUrl: "blob:prior-active", candidateUrl: "blob:transferred-file" };
+  const confirmedState = confirmCandidateUrl(candidateState, mockRevoke);
+  assert.deepEqual(revoked, ["blob:prior-active"]);
+  assert.equal(confirmedState.activeUrl, "blob:transferred-file");
+
+  // Final page unmount cleans up active URL
+  cleanupAllUrls(confirmedState, mockRevoke);
+  assert.deepEqual(revoked, ["blob:prior-active", "blob:transferred-file"]);
 });

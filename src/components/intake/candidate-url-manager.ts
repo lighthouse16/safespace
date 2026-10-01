@@ -95,6 +95,74 @@ export function confirmRemoveUrl(
 }
 
 /**
+ * Controller for tracking asynchronous file selection attempts in FloorplanDropzone.
+ * Guarantees that only the latest valid attempt can transfer object URLs or mutate visible state.
+ */
+export class AsyncSelectionController {
+  private currentAttemptId = 0;
+  private pendingUrls = new Set<string>();
+  private revokeFn: (url: string) => void;
+
+  constructor(revokeFn: (url: string) => void = (url) => URL.revokeObjectURL(url)) {
+    this.revokeFn = revokeFn;
+  }
+
+  startAttempt(objectUrl?: string): number {
+    this.currentAttemptId += 1;
+    this.revokePending();
+    if (objectUrl) {
+      this.pendingUrls.add(objectUrl);
+    }
+    return this.currentAttemptId;
+  }
+
+  isCurrent(attemptId: number): boolean {
+    return attemptId === this.currentAttemptId;
+  }
+
+  transferUrl(attemptId: number, objectUrl: string): boolean {
+    if (attemptId !== this.currentAttemptId) {
+      if (this.pendingUrls.has(objectUrl)) {
+        this.revokeFn(objectUrl);
+        this.pendingUrls.delete(objectUrl);
+      }
+      return false;
+    }
+    // Transferred to parent state; no longer owned by dropzone
+    this.pendingUrls.delete(objectUrl);
+    return true;
+  }
+
+  rejectAttempt(attemptId: number, objectUrl?: string): boolean {
+    if (objectUrl && this.pendingUrls.has(objectUrl)) {
+      this.revokeFn(objectUrl);
+      this.pendingUrls.delete(objectUrl);
+    }
+    return attemptId === this.currentAttemptId;
+  }
+
+  invalidate(): void {
+    this.currentAttemptId += 1;
+    this.revokePending();
+  }
+
+  private revokePending(): void {
+    for (const url of this.pendingUrls) {
+      this.revokeFn(url);
+    }
+    this.pendingUrls.clear();
+  }
+
+  dispose(): void {
+    this.invalidate();
+  }
+
+  getPendingUrls(): string[] {
+    return Array.from(this.pendingUrls);
+  }
+}
+
+/**
  * Cleans up all managed URLs on unmount idempotently.
  */
 export function cleanupAllUrls(

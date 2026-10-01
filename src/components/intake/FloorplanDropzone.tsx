@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useRef, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import {
   type UploadedFileInfo,
@@ -9,47 +9,73 @@ import {
   formatFileSize,
   validateFloorplanFile,
   verifyImageDecodable,
+  type MockImageInstance,
 } from "./intake-validation";
+import { AsyncSelectionController } from "./candidate-url-manager";
 
 export type FloorplanDropzoneProps = {
   currentFile: UploadedFileInfo | null;
   onFileSelect: (fileInfo: UploadedFileInfo) => void;
   onFileRemove: () => void;
+  imageFactory?: () => MockImageInstance;
+  revokeFn?: (url: string) => void;
 };
 
 export function FloorplanDropzone({
   currentFile,
   onFileSelect,
   onFileRemove,
+  imageFactory,
+  revokeFn,
 }: FloorplanDropzoneProps) {
   const [dragOver, setDragOver] = useState(false);
   const [validationError, setValidationError] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
+  const [controller] = useState(() => new AsyncSelectionController(revokeFn));
+
+  useEffect(() => {
+    return () => {
+      controller.dispose();
+    };
+  }, [controller]);
+
   const processFile = async (file: File) => {
     setValidationError(null);
     const validation = validateFloorplanFile(file);
     if (!validation.isValid) {
+      controller.invalidate();
+      if (fileInputRef.current) {
+        fileInputRef.current.value = "";
+      }
       setValidationError(validation.error ?? "Invalid file selected.");
       return;
     }
 
     const objectUrl = URL.createObjectURL(file);
+    const attemptId = controller.startAttempt(objectUrl);
     const isPdf =
       file.type === "application/pdf" || file.name.toLowerCase().endsWith(".pdf");
 
     if (!isPdf) {
-      const isDecodable = await verifyImageDecodable(objectUrl);
+      const isDecodable = await verifyImageDecodable(objectUrl, imageFactory);
       if (!isDecodable) {
-        URL.revokeObjectURL(objectUrl);
-        if (fileInputRef.current) {
-          fileInputRef.current.value = "";
+        const isCurrent = controller.rejectAttempt(attemptId, objectUrl);
+        if (isCurrent) {
+          if (fileInputRef.current) {
+            fileInputRef.current.value = "";
+          }
+          setValidationError(
+            "This image could not be read. Choose a valid PNG, JPEG, or SVG file."
+          );
         }
-        setValidationError(
-          "This image could not be read. Choose a valid PNG, JPEG, or SVG file."
-        );
         return;
       }
+    }
+
+    const transferred = controller.transferUrl(attemptId, objectUrl);
+    if (!transferred) {
+      return;
     }
 
     const fileInfo: UploadedFileInfo = {
@@ -94,6 +120,7 @@ export function FloorplanDropzone({
   };
 
   const handleRemove = () => {
+    controller.invalidate();
     setValidationError(null);
     if (fileInputRef.current) {
       fileInputRef.current.value = "";
