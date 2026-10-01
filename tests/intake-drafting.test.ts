@@ -13,6 +13,7 @@ import {
   validateAssessmentDetails,
   verifyImageDecodable,
   MAX_FILE_SIZE_BYTES,
+  type MockImageInstance,
 } from "../src/components/intake/intake-validation";
 import {
   canCloseBoundary,
@@ -711,51 +712,135 @@ test("transferred active/candidate URL is not double-revoked", () => {
   assert.deepEqual(revoked, ["blob:prior-active", "blob:transferred-file"]);
 });
 
-// 18. External invalidation cancels in-flight file validation and revokes pending URL immediately
-test("external invalidation makes in-flight validation stale and revokes pending URL immediately", () => {
+// 18. Delayed decode: synchronous invalidation makes attempt stale before decode resolves without relying on React effects
+test("delayed decode: synchronous invalidation makes attempt stale before decode resolves without relying on React effects", async () => {
   const revoked: string[] = [];
   const mockRevoke = (url: string) => revoked.push(url);
   const controller = new AsyncSelectionController(mockRevoke);
 
-  // File B selection begins decoding
-  const attemptB = controller.startAttempt("blob:file-b");
-  assert.equal(controller.isCurrent(attemptB), true);
-  assert.deepEqual(controller.getPendingUrls(), ["blob:file-b"]);
-  assert.deepEqual(revoked, []);
+  let resolveDecode!: () => void;
+  const decodePromise = new Promise<void>((resolve) => {
+    resolveDecode = resolve;
+  });
 
-  // Conflicting external action occurs (e.g. user selects manual drawing or remove)
+  const mockImageFactory = (): MockImageInstance => {
+    const img: MockImageInstance = {
+      onload: null,
+      onerror: null,
+      src: "",
+      decode: () => decodePromise,
+    };
+    queueMicrotask(() => img.onload?.());
+    return img;
+  };
+
+  // 1. Start pending validation B
+  const objectUrlB = "blob:file-b";
+  const attemptB = controller.startAttempt(objectUrlB);
+  let callbackInvoked = false;
+  let validationErrorExposed = false;
+
+  const decodeOperation = verifyImageDecodable(objectUrlB, mockImageFactory).then((isDecodable) => {
+    if (!isDecodable) {
+      if (controller.rejectAttempt(attemptB, objectUrlB)) {
+        validationErrorExposed = true;
+      }
+      return;
+    }
+    const transferred = controller.transferUrl(attemptB, objectUrlB);
+    if (transferred) {
+      callbackInvoked = true;
+    }
+  });
+
+  // 2. Trigger the exact synchronous invalidation mechanism used by parent conflicting action:
   controller.invalidate();
 
-  // Invariant 1: Pending URL is revoked by Dropzone immediately
-  assert.deepEqual(revoked, ["blob:file-b"]);
-  assert.deepEqual(controller.getPendingUrls(), []);
-
-  // Invariant 2: In-flight validation is stale
-  assert.equal(controller.isCurrent(attemptB), false);
-
-  // Invariant 3: Late decode completion cannot transfer URL or invoke callbacks
-  let callbackInvoked = false;
-  const transferred = controller.transferUrl(attemptB, "blob:file-b");
-  if (transferred) {
-    callbackInvoked = true;
-  }
-  assert.equal(transferred, false);
-  assert.equal(callbackInvoked, false);
-  // Does not double-revoke
+  // 3. Before any React effect would be required or decode resolves, B must ALREADY be stale
+  assert.equal(controller.isCurrent(attemptB), false, "Attempt B must be stale synchronously before decode resolves");
+  // 6. Pending URL is revoked exactly once immediately by Dropzone/controller
   assert.deepEqual(revoked, ["blob:file-b"]);
 
-  // Stale decode failure cannot set error either
-  const rejected = controller.rejectAttempt(attemptB, "blob:file-b");
-  assert.equal(rejected, false);
+  // 4. Late success: resolve decode promise
+  resolveDecode();
+  await decodeOperation;
+
+  // Invariant assertions:
+  assert.equal(callbackInvoked, false, "Late decode success must never invoke accepted-file callback");
+  assert.equal(validationErrorExposed, false, "Late decode must never expose an error");
+  assert.deepEqual(revoked, ["blob:file-b"], "Pending URL must be revoked exactly once, not double-revoked");
 });
 
-// 19. Newer parent source-change intent (switch_source) is preserved when late decode completes
-test("parent source-change intent (switch_source) is preserved when late decode completes", () => {
+// 19. Delayed decode failure: synchronous invalidation prevents late failure from exposing an error
+test("delayed decode failure: synchronous invalidation prevents late failure from exposing an error", async () => {
   const revoked: string[] = [];
   const mockRevoke = (url: string) => revoked.push(url);
-  const dropzoneController = new AsyncSelectionController(mockRevoke);
+  const controller = new AsyncSelectionController(mockRevoke);
 
-  // Initial state: active uploaded file A with draft work
+  let rejectDecode!: (err: Error) => void;
+  const decodePromise = new Promise<void>((_, reject) => {
+    rejectDecode = reject;
+  });
+
+  const mockImageFactory = (): MockImageInstance => {
+    const img: MockImageInstance = {
+      onload: null,
+      onerror: null,
+      src: "",
+      decode: () => decodePromise,
+    };
+    queueMicrotask(() => img.onload?.());
+    return img;
+  };
+
+  const objectUrlB = "blob:file-b-failing";
+  const attemptB = controller.startAttempt(objectUrlB);
+  let validationErrorExposed = false;
+
+  const decodeOperation = verifyImageDecodable(objectUrlB, mockImageFactory).then((isDecodable) => {
+    if (!isDecodable) {
+      if (controller.rejectAttempt(attemptB, objectUrlB)) {
+        validationErrorExposed = true;
+      }
+    }
+  });
+
+  // Synchronous invalidation
+  controller.invalidate();
+  assert.equal(controller.isCurrent(attemptB), false);
+  assert.deepEqual(revoked, ["blob:file-b-failing"]);
+
+  // Late rejection
+  rejectDecode(new Error("Corrupt image data"));
+  await decodeOperation;
+
+  assert.equal(validationErrorExposed, false, "Stale failure must not expose validation error");
+  assert.deepEqual(revoked, ["blob:file-b-failing"], "URL must not be double-revoked on stale reject");
+});
+
+// 20. Synchronous source switch during delayed decode: parent switch_source intent remains intact and cancel preserves draft
+test("synchronous source switch during delayed decode: switch_source intent preserved and cancel preserves draft", async () => {
+  const revoked: string[] = [];
+  const mockRevoke = (url: string) => revoked.push(url);
+  const sharedController = new AsyncSelectionController(mockRevoke);
+
+  let resolveDecode!: () => void;
+  const decodePromise = new Promise<void>((resolve) => {
+    resolveDecode = resolve;
+  });
+
+  const mockImageFactory = (): MockImageInstance => {
+    const img: MockImageInstance = {
+      onload: null,
+      onerror: null,
+      src: "",
+      decode: () => decodePromise,
+    };
+    queueMicrotask(() => img.onload?.());
+    return img;
+  };
+
+  // Initial parent state: active uploaded file A with draft work
   let candidateState: CandidateUrlState = { activeUrl: "blob:file-a", candidateUrl: null };
   let pendingChange: PendingSourceChange | null = null;
   const initialBoundary: BoundaryState = {
@@ -767,86 +852,96 @@ test("parent source-change intent (switch_source) is preserved when late decode 
   const currentBoundary = initialBoundary;
 
   // 1. User selects replacement file B -> Dropzone starts async decode
-  const attemptB = dropzoneController.startAttempt("blob:file-b");
+  const attemptB = sharedController.startAttempt("blob:file-b");
+  let onFileSelectCalled = false;
 
-  // 2. Before B completes, user selects "Draw the space manually"
-  // Dropzone is invalidated externally:
-  dropzoneController.invalidate();
-  assert.deepEqual(revoked, ["blob:file-b"]); // Pending URL revoked immediately
+  const decodeOperation = verifyImageDecodable("blob:file-b", mockImageFactory).then((isDecodable) => {
+    if (isDecodable) {
+      const transferred = sharedController.transferUrl(attemptB, "blob:file-b");
+      if (transferred) {
+        onFileSelectCalled = true;
+      }
+    }
+  });
 
-  // Parent sets pending change to switch_source:
+  // 2. Before B completes, user clicks "Draw the space manually"
+  // Consolidated parent helper runs synchronously:
+  sharedController.invalidate();
   candidateState = disposeCandidateUrl(candidateState, mockRevoke);
   pendingChange = { type: "switch_source", targetSource: "manual" };
 
-  // 3. Late decode finishes in background for attempt B
-  let onFileSelectCalled = false;
-  const transferred = dropzoneController.transferUrl(attemptB, "blob:file-b");
-  if (transferred) {
-    onFileSelectCalled = true;
-  }
-  assert.equal(transferred, false);
+  // 3. Before any React effect runs or decode finishes, B is already stale:
+  assert.equal(sharedController.isCurrent(attemptB), false);
+  assert.deepEqual(revoked, ["blob:file-b"]); // Pending URL revoked immediately
+
+  // 4. In-flight decode finishes late
+  resolveDecode();
+  await decodeOperation;
+
+  // Assert: callback was NOT called and pendingChange remained switch_source
   assert.equal(onFileSelectCalled, false);
-
-  // Even if onFileSelect was hypothetically called, defense-in-depth guard ignores it:
-  if (pendingChange !== null && (pendingChange as PendingSourceChange).type !== "replace_file") {
-    mockRevoke("blob:file-b-late");
-  }
-
-  // Parent pending change is preserved as switch_source, not overwritten by B
   assert.deepEqual(pendingChange, { type: "switch_source", targetSource: "manual" });
   assert.equal(candidateState.activeUrl, "blob:file-a");
   assert.equal(candidateState.candidateUrl, null);
   assert.deepEqual(currentBoundary, initialBoundary);
-});
 
-// 20. Canceling source change preserves original file, active URL, and draft geometry
-test("canceling source change preserves original file, active URL, and draft geometry", () => {
-  const revoked: string[] = [];
-  const mockRevoke = (url: string) => revoked.push(url);
-
-  let candidateState: CandidateUrlState = { activeUrl: "blob:file-a", candidateUrl: null };
-  let pendingChange: PendingSourceChange | null = { type: "switch_source", targetSource: "manual" };
-  const initialBoundary: BoundaryState = {
-    vertices: [{ x: 20, y: 20 }, { x: 200, y: 20 }, { x: 200, y: 200 }],
-    isClosed: true,
-    selectedVertexIndex: null,
-    gridSnap: true,
-  };
-
-  // User clicks "Keep Current Draft" (cancel)
+  // 5. User clicks "Keep Current Draft" (cancel):
+  sharedController.invalidate();
   candidateState = cancelCandidateUrl(candidateState, mockRevoke);
   pendingChange = null;
 
-  // Active URL is still intact, no URLs revoked during cancel
+  // Active URL intact, draft geometry intact, only blob:file-b was ever revoked
   assert.equal(candidateState.activeUrl, "blob:file-a");
   assert.equal(candidateState.candidateUrl, null);
   assert.equal(pendingChange, null);
-  assert.deepEqual(revoked, []);
-  assert.deepEqual(initialBoundary.vertices.length, 3);
+  assert.deepEqual(revoked, ["blob:file-b"]);
+  assert.deepEqual(currentBoundary.vertices.length, 3);
 });
 
-// 21. Conflicting file removal intent is preserved when late decode completes
-test("parent remove_file intent is preserved and unconflicted by stale decode", () => {
+// 21. Synchronous file removal during delayed decode: parent remove_file intent is preserved and confirmed cleanly
+test("synchronous file removal during delayed decode: parent remove_file intent preserved and confirmed cleanly", async () => {
   const revoked: string[] = [];
   const mockRevoke = (url: string) => revoked.push(url);
-  const dropzoneController = new AsyncSelectionController(mockRevoke);
+  const sharedController = new AsyncSelectionController(mockRevoke);
+
+  let resolveDecode!: () => void;
+  const decodePromise = new Promise<void>((resolve) => {
+    resolveDecode = resolve;
+  });
+
+  const mockImageFactory = (): MockImageInstance => {
+    const img: MockImageInstance = {
+      onload: null,
+      onerror: null,
+      src: "",
+      decode: () => decodePromise,
+    };
+    queueMicrotask(() => img.onload?.());
+    return img;
+  };
 
   let candidateState: CandidateUrlState = { activeUrl: "blob:file-a", candidateUrl: null };
   let pendingChange: PendingSourceChange | null = null;
 
   // Replacement B starts decode
-  const attemptB = dropzoneController.startAttempt("blob:file-b");
+  const attemptB = sharedController.startAttempt("blob:file-b");
+  const decodeOperation = verifyImageDecodable("blob:file-b", mockImageFactory).then((isDecodable) => {
+    if (isDecodable) {
+      sharedController.transferUrl(attemptB, "blob:file-b");
+    }
+  });
 
-  // User clicks Remove file -> Dropzone invalidated & parent sets remove_file
-  dropzoneController.invalidate();
+  // User clicks Remove file -> synchronous invalidation and parent sets remove_file
+  sharedController.invalidate();
   assert.deepEqual(revoked, ["blob:file-b"]);
 
   candidateState = disposeCandidateUrl(candidateState, mockRevoke);
   pendingChange = { type: "remove_file" };
 
   // Attempt B finishes late
-  const transferred = dropzoneController.transferUrl(attemptB, "blob:file-b");
-  assert.equal(transferred, false);
+  resolveDecode();
+  await decodeOperation;
+
   assert.deepEqual(pendingChange, { type: "remove_file" });
 
   // User confirms remove
@@ -854,4 +949,53 @@ test("parent remove_file intent is preserved and unconflicted by stale decode", 
   assert.equal(candidateState.activeUrl, null);
   assert.equal(candidateState.candidateUrl, null);
   assert.deepEqual(revoked, ["blob:file-b", "blob:file-a"]);
+});
+
+// 22. Confirmed replacement: successful validation transfers URL ownership without Dropzone revoking it
+test("confirmed replacement: successful validation transfers URL ownership without Dropzone revoking it", () => {
+  const revoked: string[] = [];
+  const mockRevoke = (url: string) => revoked.push(url);
+  const sharedController = new AsyncSelectionController(mockRevoke);
+
+  let candidateState: CandidateUrlState = { activeUrl: "blob:file-a", candidateUrl: null };
+
+  // File C selected and completes validation successfully
+  const attemptC = sharedController.startAttempt("blob:file-c");
+  const transferred = sharedController.transferUrl(attemptC, "blob:file-c");
+  assert.equal(transferred, true);
+  assert.deepEqual(revoked, []);
+
+  // Parent adopts candidate URL
+  candidateState = registerCandidateUrl(candidateState, "blob:file-c", mockRevoke);
+  assert.equal(candidateState.candidateUrl, "blob:file-c");
+
+  // Subsequent Dropzone invalidation / unmount must NOT revoke transferred blob:file-c
+  sharedController.invalidate();
+  assert.deepEqual(revoked, [], "Transferred URL must not be revoked by Dropzone on invalidation");
+
+  // User confirms replacement
+  candidateState = confirmCandidateUrl(candidateState, mockRevoke);
+  assert.equal(candidateState.activeUrl, "blob:file-c");
+  assert.equal(candidateState.candidateUrl, null);
+  assert.deepEqual(revoked, ["blob:file-a"], "Old active URL revoked upon confirmation");
+});
+
+// 23. Dropzone invalidation subscription: callbacks execute synchronously and unregister cleanly
+test("Dropzone invalidation subscription: callbacks execute synchronously and unregister cleanly", () => {
+  const controller = new AsyncSelectionController();
+  let callbackCount = 0;
+
+  const unsubscribe = controller.onInvalidate(() => {
+    callbackCount += 1;
+  });
+
+  controller.invalidate();
+  assert.equal(callbackCount, 1, "Callback must fire synchronously on invalidate");
+
+  controller.invalidate();
+  assert.equal(callbackCount, 2, "Callback must fire on subsequent invalidate");
+
+  unsubscribe();
+  controller.invalidate();
+  assert.equal(callbackCount, 2, "Callback must not fire after unsubscription");
 });

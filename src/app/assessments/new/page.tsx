@@ -15,6 +15,7 @@ import {
   disposeCandidateUrl,
   confirmRemoveUrl,
   cleanupAllUrls,
+  AsyncSelectionController,
   type AssessmentDetails,
   type BoundaryState,
   type CalibrationState,
@@ -41,7 +42,16 @@ const INITIAL_CALIBRATION_STATE: CalibrationState = {
   isCalibrated: false,
 };
 
-export default function NewAssessmentPage() {
+export type NewAssessmentPageProps = {
+  selectionController?: AsyncSelectionController;
+};
+
+export default function NewAssessmentPage({
+  selectionController: externalController,
+}: NewAssessmentPageProps = {}) {
+  const [internalController] = useState(() => new AsyncSelectionController());
+  const selectionController = externalController ?? internalController;
+
   const [currentStep, setCurrentStep] = useState<IntakeStep>("details");
 
   // Form & session states
@@ -69,8 +79,13 @@ export default function NewAssessmentPage() {
   const activeUrlRef = useRef<string | null>(null);
   const candidateUrlRef = useRef<string | null>(null);
 
+  const invalidatePendingFileSelection = () => {
+    selectionController.invalidate();
+  };
+
   useEffect(() => {
     return () => {
+      selectionController.dispose();
       const cleaned = cleanupAllUrls({
         activeUrl: activeUrlRef.current,
         candidateUrl: candidateUrlRef.current,
@@ -78,7 +93,7 @@ export default function NewAssessmentPage() {
       activeUrlRef.current = cleaned.activeUrl;
       candidateUrlRef.current = cleaned.candidateUrl;
     };
-  }, []);
+  }, [selectionController]);
 
   // Determine whether meaningful intake progress exists
   const hasMeaningfulWork =
@@ -94,7 +109,6 @@ export default function NewAssessmentPage() {
 
   const [showExitConfirm, setShowExitConfirm] = useState(false);
   const [pendingChange, setPendingChange] = useState<PendingSourceChange | null>(null);
-  const [dropzoneInvalidationToken, setDropzoneInvalidationToken] = useState(0);
 
   // Browser beforeunload guard when unsaved session work exists
   useEffect(() => {
@@ -113,6 +127,7 @@ export default function NewAssessmentPage() {
 
   // Prompt before exiting to assessments if unsaved work exists
   const handleExitNavigation = (e: React.MouseEvent) => {
+    invalidatePendingFileSelection();
     if (hasMeaningfulWork) {
       e.preventDefault();
       setShowExitConfirm(true);
@@ -127,7 +142,7 @@ export default function NewAssessmentPage() {
 
   const handleSourceSelect = (newSource: SourceType) => {
     if (newSource === source) return;
-    setDropzoneInvalidationToken((t) => t + 1);
+    invalidatePendingFileSelection();
     const hasWork = boundary.vertices.length > 0 || calibration.p1 !== null;
     if (hasWork) {
       const nextCandidate = disposeCandidateUrl(
@@ -167,7 +182,7 @@ export default function NewAssessmentPage() {
   };
 
   const handleFileRemove = () => {
-    setDropzoneInvalidationToken((t) => t + 1);
+    invalidatePendingFileSelection();
     const hasWork = boundary.vertices.length > 0 || calibration.p1 !== null;
     if (hasWork) {
       const nextCandidate = disposeCandidateUrl(
@@ -188,7 +203,7 @@ export default function NewAssessmentPage() {
 
   const handleConfirmSourceChange = () => {
     if (!pendingChange) return;
-    setDropzoneInvalidationToken((t) => t + 1);
+    invalidatePendingFileSelection();
 
     if (pendingChange.type === "replace_file") {
       const nextState = confirmCandidateUrl({
@@ -221,7 +236,7 @@ export default function NewAssessmentPage() {
   };
 
   const handleCancelSourceChange = () => {
-    setDropzoneInvalidationToken((t) => t + 1);
+    invalidatePendingFileSelection();
     const nextState = cancelCandidateUrl({
       activeUrl: activeUrlRef.current,
       candidateUrl: candidateUrlRef.current,
@@ -237,7 +252,7 @@ export default function NewAssessmentPage() {
       );
       if (!confirmed) return;
     }
-    setDropzoneInvalidationToken((t) => t + 1);
+    invalidatePendingFileSelection();
     if (activeUrlRef.current) {
       URL.revokeObjectURL(activeUrlRef.current);
       activeUrlRef.current = null;
@@ -326,6 +341,7 @@ export default function NewAssessmentPage() {
             <div className="flex items-center gap-2 shrink-0">
               <Link
                 href="/assessments"
+                onClick={invalidatePendingFileSelection}
                 className="rounded-lg bg-[#dc2626] px-3 py-1.5 font-semibold text-white hover:bg-red-700 transition"
               >
                 Discard & Exit
@@ -418,14 +434,14 @@ export default function NewAssessmentPage() {
               onFileSelect={handleFileSelect}
               onFileRemove={handleFileRemove}
               onContinue={() => {
-                setDropzoneInvalidationToken((t) => t + 1);
+                invalidatePendingFileSelection();
                 setCurrentStep("draft");
               }}
               onBack={() => {
-                setDropzoneInvalidationToken((t) => t + 1);
+                invalidatePendingFileSelection();
                 setCurrentStep("details");
               }}
-              invalidationToken={dropzoneInvalidationToken}
+              selectionController={selectionController}
             />
           )}
 

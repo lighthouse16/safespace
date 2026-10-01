@@ -102,9 +102,17 @@ export class AsyncSelectionController {
   private currentAttemptId = 0;
   private pendingUrls = new Set<string>();
   private revokeFn: (url: string) => void;
+  private onInvalidateCallbacks = new Set<() => void>();
 
   constructor(revokeFn: (url: string) => void = (url) => URL.revokeObjectURL(url)) {
     this.revokeFn = revokeFn;
+  }
+
+  onInvalidate(cb: () => void): () => void {
+    this.onInvalidateCallbacks.add(cb);
+    return () => {
+      this.onInvalidateCallbacks.delete(cb);
+    };
   }
 
   startAttempt(objectUrl?: string): number {
@@ -144,6 +152,13 @@ export class AsyncSelectionController {
   invalidate(): void {
     this.currentAttemptId += 1;
     this.revokePending();
+    for (const cb of Array.from(this.onInvalidateCallbacks)) {
+      try {
+        cb();
+      } catch {
+        // Suppress subscriber errors during invalidation
+      }
+    }
   }
 
   private revokePending(): void {
@@ -155,6 +170,7 @@ export class AsyncSelectionController {
 
   dispose(): void {
     this.invalidate();
+    this.onInvalidateCallbacks.clear();
   }
 
   getPendingUrls(): string[] {

@@ -7,6 +7,7 @@ import {
   type UploadedFileInfo,
 } from "./intake-view-types";
 import { FloorplanDropzone } from "./FloorplanDropzone";
+import type { AsyncSelectionController } from "./candidate-url-manager";
 
 export type FloorplanSourceStepProps = {
   currentSource: SourceType;
@@ -16,7 +17,7 @@ export type FloorplanSourceStepProps = {
   onSelectSource: (source: SourceType) => void;
   onContinue: () => void;
   onBack: () => void;
-  invalidationToken?: number | string;
+  selectionController?: AsyncSelectionController;
 };
 
 export function FloorplanSourceStep({
@@ -27,7 +28,7 @@ export function FloorplanSourceStep({
   onSelectSource,
   onContinue,
   onBack,
-  invalidationToken,
+  selectionController,
 }: FloorplanSourceStepProps) {
   const isPdfSelected = currentSource === "upload" && uploadedFile?.isPdf === true;
   const canContinue =
@@ -119,7 +120,7 @@ export function FloorplanSourceStep({
                 currentFile={uploadedFile}
                 onFileSelect={onFileSelect}
                 onFileRemove={onFileRemove}
-                invalidationToken={invalidationToken}
+                selectionController={selectionController}
               />
             </div>
           ) : (
