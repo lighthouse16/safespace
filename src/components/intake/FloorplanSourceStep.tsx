@@ -16,6 +16,7 @@ export type FloorplanSourceStepProps = {
   onSelectSource: (source: SourceType) => void;
   onContinue: () => void;
   onBack: () => void;
+  invalidationToken?: number | string;
 };
 
 export function FloorplanSourceStep({
@@ -26,6 +27,7 @@ export function FloorplanSourceStep({
   onSelectSource,
   onContinue,
   onBack,
+  invalidationToken,
 }: FloorplanSourceStepProps) {
   const isPdfSelected = currentSource === "upload" && uploadedFile?.isPdf === true;
   const canContinue =
@@ -117,6 +119,7 @@ export function FloorplanSourceStep({
                 currentFile={uploadedFile}
                 onFileSelect={onFileSelect}
                 onFileRemove={onFileRemove}
+                invalidationToken={invalidationToken}
               />
             </div>
           ) : (

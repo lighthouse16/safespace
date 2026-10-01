@@ -19,6 +19,7 @@ export type FloorplanDropzoneProps = {
   onFileRemove: () => void;
   imageFactory?: () => MockImageInstance;
   revokeFn?: (url: string) => void;
+  invalidationToken?: number | string;
 };
 
 export function FloorplanDropzone({
@@ -27,12 +28,25 @@ export function FloorplanDropzone({
   onFileRemove,
   imageFactory,
   revokeFn,
+  invalidationToken,
 }: FloorplanDropzoneProps) {
   const [dragOver, setDragOver] = useState(false);
   const [validationError, setValidationError] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const [controller] = useState(() => new AsyncSelectionController(revokeFn));
+
+  const prevTokenRef = useRef(invalidationToken);
+  useEffect(() => {
+    if (prevTokenRef.current !== invalidationToken) {
+      prevTokenRef.current = invalidationToken;
+      controller.invalidate();
+      setValidationError(null);
+      if (fileInputRef.current) {
+        fileInputRef.current.value = "";
+      }
+    }
+  }, [invalidationToken, controller]);
 
   useEffect(() => {
     return () => {

@@ -94,6 +94,7 @@ export default function NewAssessmentPage() {
 
   const [showExitConfirm, setShowExitConfirm] = useState(false);
   const [pendingChange, setPendingChange] = useState<PendingSourceChange | null>(null);
+  const [dropzoneInvalidationToken, setDropzoneInvalidationToken] = useState(0);
 
   // Browser beforeunload guard when unsaved session work exists
   useEffect(() => {
@@ -126,6 +127,7 @@ export default function NewAssessmentPage() {
 
   const handleSourceSelect = (newSource: SourceType) => {
     if (newSource === source) return;
+    setDropzoneInvalidationToken((t) => t + 1);
     const hasWork = boundary.vertices.length > 0 || calibration.p1 !== null;
     if (hasWork) {
       const nextCandidate = disposeCandidateUrl(
@@ -141,6 +143,10 @@ export default function NewAssessmentPage() {
   };
 
   const handleFileSelect = (file: UploadedFileInfo) => {
+    if (pendingChange !== null && pendingChange.type !== "replace_file") {
+      URL.revokeObjectURL(file.objectUrl);
+      return;
+    }
     const hasWork = boundary.vertices.length > 0 || calibration.p1 !== null;
     if (uploadedFile && hasWork) {
       const nextCandidate = registerCandidateUrl(
@@ -161,6 +167,7 @@ export default function NewAssessmentPage() {
   };
 
   const handleFileRemove = () => {
+    setDropzoneInvalidationToken((t) => t + 1);
     const hasWork = boundary.vertices.length > 0 || calibration.p1 !== null;
     if (hasWork) {
       const nextCandidate = disposeCandidateUrl(
@@ -181,6 +188,7 @@ export default function NewAssessmentPage() {
 
   const handleConfirmSourceChange = () => {
     if (!pendingChange) return;
+    setDropzoneInvalidationToken((t) => t + 1);
 
     if (pendingChange.type === "replace_file") {
       const nextState = confirmCandidateUrl({
@@ -213,6 +221,7 @@ export default function NewAssessmentPage() {
   };
 
   const handleCancelSourceChange = () => {
+    setDropzoneInvalidationToken((t) => t + 1);
     const nextState = cancelCandidateUrl({
       activeUrl: activeUrlRef.current,
       candidateUrl: candidateUrlRef.current,
@@ -228,6 +237,7 @@ export default function NewAssessmentPage() {
       );
       if (!confirmed) return;
     }
+    setDropzoneInvalidationToken((t) => t + 1);
     if (activeUrlRef.current) {
       URL.revokeObjectURL(activeUrlRef.current);
       activeUrlRef.current = null;
@@ -407,8 +417,15 @@ export default function NewAssessmentPage() {
               onSelectSource={handleSourceSelect}
               onFileSelect={handleFileSelect}
               onFileRemove={handleFileRemove}
-              onContinue={() => setCurrentStep("draft")}
-              onBack={() => setCurrentStep("details")}
+              onContinue={() => {
+                setDropzoneInvalidationToken((t) => t + 1);
+                setCurrentStep("draft");
+              }}
+              onBack={() => {
+                setDropzoneInvalidationToken((t) => t + 1);
+                setCurrentStep("details");
+              }}
+              invalidationToken={dropzoneInvalidationToken}
             />
           )}
 

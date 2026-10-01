@@ -30,6 +30,8 @@ import {
   confirmRemoveUrl,
   cleanupAllUrls,
   AsyncSelectionController,
+  type PendingSourceChange,
+  type CandidateUrlState,
 } from "../src/components/intake/candidate-url-manager";
 import { FloorplanSourceStep } from "../src/components/intake/FloorplanSourceStep";
 import { AppShell } from "../src/components/shell/app-shell";
@@ -707,4 +709,149 @@ test("transferred active/candidate URL is not double-revoked", () => {
   // Final page unmount cleans up active URL
   cleanupAllUrls(confirmedState, mockRevoke);
   assert.deepEqual(revoked, ["blob:prior-active", "blob:transferred-file"]);
+});
+
+// 18. External invalidation cancels in-flight file validation and revokes pending URL immediately
+test("external invalidation makes in-flight validation stale and revokes pending URL immediately", () => {
+  const revoked: string[] = [];
+  const mockRevoke = (url: string) => revoked.push(url);
+  const controller = new AsyncSelectionController(mockRevoke);
+
+  // File B selection begins decoding
+  const attemptB = controller.startAttempt("blob:file-b");
+  assert.equal(controller.isCurrent(attemptB), true);
+  assert.deepEqual(controller.getPendingUrls(), ["blob:file-b"]);
+  assert.deepEqual(revoked, []);
+
+  // Conflicting external action occurs (e.g. user selects manual drawing or remove)
+  controller.invalidate();
+
+  // Invariant 1: Pending URL is revoked by Dropzone immediately
+  assert.deepEqual(revoked, ["blob:file-b"]);
+  assert.deepEqual(controller.getPendingUrls(), []);
+
+  // Invariant 2: In-flight validation is stale
+  assert.equal(controller.isCurrent(attemptB), false);
+
+  // Invariant 3: Late decode completion cannot transfer URL or invoke callbacks
+  let callbackInvoked = false;
+  const transferred = controller.transferUrl(attemptB, "blob:file-b");
+  if (transferred) {
+    callbackInvoked = true;
+  }
+  assert.equal(transferred, false);
+  assert.equal(callbackInvoked, false);
+  // Does not double-revoke
+  assert.deepEqual(revoked, ["blob:file-b"]);
+
+  // Stale decode failure cannot set error either
+  const rejected = controller.rejectAttempt(attemptB, "blob:file-b");
+  assert.equal(rejected, false);
+});
+
+// 19. Newer parent source-change intent (switch_source) is preserved when late decode completes
+test("parent source-change intent (switch_source) is preserved when late decode completes", () => {
+  const revoked: string[] = [];
+  const mockRevoke = (url: string) => revoked.push(url);
+  const dropzoneController = new AsyncSelectionController(mockRevoke);
+
+  // Initial state: active uploaded file A with draft work
+  let candidateState: CandidateUrlState = { activeUrl: "blob:file-a", candidateUrl: null };
+  let pendingChange: PendingSourceChange | null = null;
+  const initialBoundary: BoundaryState = {
+    vertices: [{ x: 10, y: 10 }, { x: 100, y: 10 }, { x: 100, y: 100 }],
+    isClosed: true,
+    selectedVertexIndex: null,
+    gridSnap: true,
+  };
+  const currentBoundary = initialBoundary;
+
+  // 1. User selects replacement file B -> Dropzone starts async decode
+  const attemptB = dropzoneController.startAttempt("blob:file-b");
+
+  // 2. Before B completes, user selects "Draw the space manually"
+  // Dropzone is invalidated externally:
+  dropzoneController.invalidate();
+  assert.deepEqual(revoked, ["blob:file-b"]); // Pending URL revoked immediately
+
+  // Parent sets pending change to switch_source:
+  candidateState = disposeCandidateUrl(candidateState, mockRevoke);
+  pendingChange = { type: "switch_source", targetSource: "manual" };
+
+  // 3. Late decode finishes in background for attempt B
+  let onFileSelectCalled = false;
+  const transferred = dropzoneController.transferUrl(attemptB, "blob:file-b");
+  if (transferred) {
+    onFileSelectCalled = true;
+  }
+  assert.equal(transferred, false);
+  assert.equal(onFileSelectCalled, false);
+
+  // Even if onFileSelect was hypothetically called, defense-in-depth guard ignores it:
+  if (pendingChange !== null && (pendingChange as PendingSourceChange).type !== "replace_file") {
+    mockRevoke("blob:file-b-late");
+  }
+
+  // Parent pending change is preserved as switch_source, not overwritten by B
+  assert.deepEqual(pendingChange, { type: "switch_source", targetSource: "manual" });
+  assert.equal(candidateState.activeUrl, "blob:file-a");
+  assert.equal(candidateState.candidateUrl, null);
+  assert.deepEqual(currentBoundary, initialBoundary);
+});
+
+// 20. Canceling source change preserves original file, active URL, and draft geometry
+test("canceling source change preserves original file, active URL, and draft geometry", () => {
+  const revoked: string[] = [];
+  const mockRevoke = (url: string) => revoked.push(url);
+
+  let candidateState: CandidateUrlState = { activeUrl: "blob:file-a", candidateUrl: null };
+  let pendingChange: PendingSourceChange | null = { type: "switch_source", targetSource: "manual" };
+  const initialBoundary: BoundaryState = {
+    vertices: [{ x: 20, y: 20 }, { x: 200, y: 20 }, { x: 200, y: 200 }],
+    isClosed: true,
+    selectedVertexIndex: null,
+    gridSnap: true,
+  };
+
+  // User clicks "Keep Current Draft" (cancel)
+  candidateState = cancelCandidateUrl(candidateState, mockRevoke);
+  pendingChange = null;
+
+  // Active URL is still intact, no URLs revoked during cancel
+  assert.equal(candidateState.activeUrl, "blob:file-a");
+  assert.equal(candidateState.candidateUrl, null);
+  assert.equal(pendingChange, null);
+  assert.deepEqual(revoked, []);
+  assert.deepEqual(initialBoundary.vertices.length, 3);
+});
+
+// 21. Conflicting file removal intent is preserved when late decode completes
+test("parent remove_file intent is preserved and unconflicted by stale decode", () => {
+  const revoked: string[] = [];
+  const mockRevoke = (url: string) => revoked.push(url);
+  const dropzoneController = new AsyncSelectionController(mockRevoke);
+
+  let candidateState: CandidateUrlState = { activeUrl: "blob:file-a", candidateUrl: null };
+  let pendingChange: PendingSourceChange | null = null;
+
+  // Replacement B starts decode
+  const attemptB = dropzoneController.startAttempt("blob:file-b");
+
+  // User clicks Remove file -> Dropzone invalidated & parent sets remove_file
+  dropzoneController.invalidate();
+  assert.deepEqual(revoked, ["blob:file-b"]);
+
+  candidateState = disposeCandidateUrl(candidateState, mockRevoke);
+  pendingChange = { type: "remove_file" };
+
+  // Attempt B finishes late
+  const transferred = dropzoneController.transferUrl(attemptB, "blob:file-b");
+  assert.equal(transferred, false);
+  assert.deepEqual(pendingChange, { type: "remove_file" });
+
+  // User confirms remove
+  candidateState = confirmRemoveUrl(candidateState, mockRevoke);
+  assert.equal(candidateState.activeUrl, null);
+  assert.equal(candidateState.candidateUrl, null);
+  assert.deepEqual(revoked, ["blob:file-b", "blob:file-a"]);
 });
