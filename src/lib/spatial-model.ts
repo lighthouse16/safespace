@@ -680,12 +680,12 @@ export const INITIAL_HAZARDS: SpatialHazard[] = [
 export const INITIAL_ROUTE: RouteWaypoint[] = [
   { id: "pt-1", name: "Entrance Doorway", x: 60, y: 240, isMandatory: true },
   { id: "pt-2", name: "Foyer Intake Point", x: 160, y: 240, isMandatory: false },
-  { id: "pt-3", name: "Reception Counter Approach", x: 480, y: 170, isMandatory: true },
-  { id: "pt-4", name: "Pinch Point (Chair C-04)", x: 235, y: 220, isMandatory: false },
+  { id: "pt-3", name: "Reception Counter Approach", x: 470, y: 180, isMandatory: true },
+  { id: "pt-4", name: "Pinch Point (Chair C-04)", x: 235, y: 270, isMandatory: false },
   { id: "pt-5", name: "Waiting Seat Transition", x: 310, y: 290, isMandatory: true },
   { id: "pt-6", name: "Corridor Portal Threshold", x: 260, y: 440, isMandatory: false },
   { id: "pt-7", name: "Mid-Corridor Transit", x: 420, y: 460, isMandatory: false },
-  { id: "pt-8", name: "Consultation Room 1", x: 560, y: 430, isMandatory: true },
+  { id: "pt-8", name: "Consultation Room 1", x: 550, y: 450, isMandatory: true },
 ];
 
 /* ─────────────────────────────────────────────────────────────

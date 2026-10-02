@@ -61,12 +61,19 @@ export function Floorplan2D({
     selectedWaypointId,
     selectWaypoint,
     moveRouteWaypoint,
+    routeResult,
+    activeProfile,
   } = useSafeSpaceStore();
 
   const isBefore = isBeforeCondition || overrideStage === "before";
   const stage = isBefore ? "before" : (overrideStage || activeStage);
   const furniture = customFurniture || storeFurniture;
   const handleMove = onCustomMove || moveFurniture;
+
+  const activePath: readonly Point2D[] =
+    routeResult?.status === "success" && routeResult.path.length >= 2
+      ? routeResult.path
+      : routeWaypoints;
 
   const svgRef = useRef<SVGSVGElement | null>(null);
 
@@ -86,7 +93,15 @@ export function Floorplan2D({
   const [walkerT, setWalkerT] = useState(0);
 
   useEffect(() => {
-    if (!isWalkerAnimating || routeWaypoints.length < 2) return;
+    if (!isWalkerAnimating || activePath.length < 2) return;
+
+    // Respect user's accessibility motion preference
+    const prefersReducedMotion =
+      typeof window !== "undefined" &&
+      typeof window.matchMedia === "function" &&
+      window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    if (prefersReducedMotion) return;
+
     let animId: number;
     const start = performance.now();
     const duration = 6500; // 6.5s loop
@@ -99,17 +114,17 @@ export function Floorplan2D({
 
     animId = requestAnimationFrame(step);
     return () => cancelAnimationFrame(animId);
-  }, [isWalkerAnimating, routeWaypoints]);
+  }, [isWalkerAnimating, activePath]);
 
-  // Compute walker coordinates along waypoints
+  // Compute walker coordinates along activePath
   const getWalkerPosition = useCallback(() => {
-    if (routeWaypoints.length < 2) return { x: 60, y: 240, angle: 0 };
+    if (activePath.length < 2) return { x: 60, y: 240, angle: 0 };
 
     const segLengths: number[] = [];
     let totalLen = 0;
-    for (let i = 0; i < routeWaypoints.length - 1; i++) {
-      const dx = routeWaypoints[i + 1].x - routeWaypoints[i].x;
-      const dy = routeWaypoints[i + 1].y - routeWaypoints[i].y;
+    for (let i = 0; i < activePath.length - 1; i++) {
+      const dx = activePath[i + 1].x - activePath[i].x;
+      const dy = activePath[i + 1].y - activePath[i].y;
       const len = Math.hypot(dx, dy);
       segLengths.push(len);
       totalLen += len;
@@ -121,8 +136,8 @@ export function Floorplan2D({
     for (let i = 0; i < segLengths.length; i++) {
       if (accumulated + segLengths[i] >= targetDist) {
         const segT = (targetDist - accumulated) / segLengths[i];
-        const p1 = routeWaypoints[i];
-        const p2 = routeWaypoints[i + 1];
+        const p1 = activePath[i];
+        const p2 = activePath[i + 1];
         const x = p1.x + (p2.x - p1.x) * segT;
         const y = p1.y + (p2.y - p1.y) * segT;
         const angle = Math.atan2(p2.y - p1.y, p2.x - p1.x) * (180 / Math.PI);
@@ -131,9 +146,9 @@ export function Floorplan2D({
       accumulated += segLengths[i];
     }
 
-    const last = routeWaypoints[routeWaypoints.length - 1];
+    const last = activePath[activePath.length - 1];
     return { x: last.x, y: last.y, angle: 0 };
-  }, [routeWaypoints, walkerT]);
+  }, [activePath, walkerT]);
 
   const walkerPos = getWalkerPosition();
 
@@ -428,49 +443,93 @@ export function Floorplan2D({
         )}
 
         {/* 4. Route Clearance Envelope Buffer */}
-        {(stage === "analysis" || stage === "improve" || stage === "before") && layerToggles.clearance && (
-          <g id="clearance-envelope-layer" className="pointer-events-none">
-            <path
-              d={routeWaypoints.reduce((acc, pt, i) => `${acc} ${i === 0 ? "M" : "L"} ${pt.x} ${pt.y}`, "")}
-              fill="none"
-              stroke="#60a5fa"
-              strokeWidth="45"
-              strokeOpacity="0.18"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-            />
-            {/* Pinch warning circle only in Before or un-improved stages */}
-            {isBefore && (
-              <circle
-                cx={235}
-                cy={220}
-                r="35"
+        {(stage === "routes" || stage === "analysis" || stage === "improve" || stage === "before") &&
+          layerToggles.clearance && (
+            <g id="clearance-envelope-layer" className="pointer-events-none">
+              <path
+                d={activePath.reduce(
+                  (acc, pt, i) => `${acc} ${i === 0 ? "M" : "L"} ${pt.x} ${pt.y}`,
+                  ""
+                )}
                 fill="none"
-                stroke="#dc2626"
-                strokeWidth="2"
-                strokeDasharray="4,4"
+                stroke={
+                  routeResult?.status === "clearance-insufficient"
+                    ? "#dc2626"
+                    : "#60a5fa"
+                }
+                strokeWidth={activeProfile.minClearanceCm}
+                strokeOpacity="0.18"
+                strokeLinecap="round"
+                strokeLinejoin="round"
               />
-            )}
-          </g>
-        )}
+              {/* Highlight narrowest bottleneck if present */}
+              {routeResult?.status === "success" &&
+                routeResult.bottlenecks.length > 0 &&
+                routeResult.minimumClearanceCm < activeProfile.minClearanceCm && (
+                  <g
+                    transform={`translate(${routeResult.bottlenecks[0].position.x}, ${routeResult.bottlenecks[0].position.y})`}
+                  >
+                    <circle
+                      r="22"
+                      fill="none"
+                      stroke="#dc2626"
+                      strokeWidth="2"
+                      strokeDasharray="4,4"
+                      className="animate-pulse"
+                    />
+                    <rect
+                      x="-24"
+                      y="-28"
+                      width="48"
+                      height="16"
+                      rx="3"
+                      fill="#dc2626"
+                      opacity="0.9"
+                    />
+                    <text
+                      textAnchor="middle"
+                      y="-17"
+                      fill="#ffffff"
+                      fontSize="9"
+                      fontWeight="bold"
+                      fontFamily="monospace"
+                    >
+                      {Math.round(routeResult.bottlenecks[0].clearanceCm)} cm
+                    </text>
+                  </g>
+                )}
+              {/* Pinch warning circle only in Before or un-improved stages */}
+              {isBefore && (
+                <circle
+                  cx={235}
+                  cy={220}
+                  r="35"
+                  fill="none"
+                  stroke="#dc2626"
+                  strokeWidth="2"
+                  strokeDasharray="4,4"
+                />
+              )}
+            </g>
+          )}
 
         {/* 5. Walking Route Line */}
         {(stage === "routes" || stage === "analysis" || stage === "improve" || stage === "before") &&
           layerToggles.route && (
             <g id="route-layer">
               {/* Segments */}
-              {routeWaypoints.map((pt, i) => {
-                if (i === routeWaypoints.length - 1) return null;
-                const next = routeWaypoints[i + 1];
+              {activePath.map((pt, i) => {
+                if (i === activePath.length - 1) return null;
+                const next = activePath[i + 1];
                 const isConstrained =
-                  isBefore ||
-                  stage !== "improve" &&
-                  ((pt.id === "pt-3" && next.id === "pt-4") ||
-                    (pt.id === "pt-4" && next.id === "pt-5"));
+                  routeResult?.status === "clearance-insufficient" ||
+                  (isBefore || stage !== "improve") &&
+                  routeResult?.status === "success" &&
+                  routeResult.minimumClearanceCm < activeProfile.minClearanceCm;
 
                 return (
                   <line
-                    key={`seg-${pt.id}-${next.id}`}
+                    key={`seg-${i}-${next.x}-${next.y}`}
                     x1={pt.x}
                     y1={pt.y}
                     x2={next.x}
@@ -555,7 +614,18 @@ export function Floorplan2D({
                   <circle
                     r="20"
                     fill="none"
-                    stroke={(isBefore || stage !== "improve") && Math.hypot(walkerPos.x - 235, walkerPos.y - 220) < 45 ? "#dc2626" : "#0284c7"}
+                    stroke={
+                      (routeResult?.status === "success" &&
+                        routeResult.bottlenecks.length > 0 &&
+                        routeResult.minimumClearanceCm < activeProfile.minClearanceCm &&
+                        Math.hypot(
+                          walkerPos.x - routeResult.bottlenecks[0].position.x,
+                          walkerPos.y - routeResult.bottlenecks[0].position.y
+                        ) < 45) ||
+                      ((isBefore || stage !== "improve") && Math.hypot(walkerPos.x - 235, walkerPos.y - 220) < 45)
+                        ? "#dc2626"
+                        : "#0284c7"
+                    }
                     strokeWidth="1.5"
                     strokeDasharray="2,3"
                     opacity="0.8"

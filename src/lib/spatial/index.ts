@@ -124,3 +124,10 @@ export type {
   RouteResult,
   RouteSuccessResult,
 } from "./routing/types";
+
+// Domain Adapters
+export {
+  toCanonicalObjects,
+  toCanonicalProfile,
+  toCanonicalRoom,
+} from "./adapter";
