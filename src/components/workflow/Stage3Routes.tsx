@@ -31,19 +31,18 @@ export function Stage3Routes() {
     setIsWalkerAnimating,
     runAnalysisTransition,
     setStage,
-    getLiveMetrics,
   } = useSafeSpaceStore();
 
-  const metrics = getLiveMetrics();
-
   const isSuccess = routeResult?.status === "success";
+  const requiredRadiusCm = activeProfile.minClearanceCm / 2;
+
   const displayLengthM = isSuccess
     ? (routeResult.pathLengthCm / 100).toFixed(2)
-    : metrics.routeLengthM.toFixed(1);
-  const displayClearanceCm = isSuccess
+    : "—";
+  const displayMarginCm = isSuccess
     ? Math.round(routeResult.minimumClearanceCm)
-    : metrics.minClearanceCm;
-  const isClearanceDeficit = displayClearanceCm < activeProfile.minClearanceCm;
+    : "—";
+  const isMarginDeficit = isSuccess && routeResult.minimumClearanceCm < requiredRadiusCm;
 
   return (
     <div className="flex flex-col h-[calc(100vh-3.5rem)] w-full overflow-hidden bg-[#f7f8f6]">
@@ -66,8 +65,8 @@ export function Stage3Routes() {
                 <span className="text-[10px] font-semibold text-slate-500 uppercase tracking-wide">
                   Active Profile
                 </span>
-                <span className="text-[10px] font-medium text-[#1e7168]">
-                  Req: ≥ {activeProfile.minClearanceCm} cm
+                <span className="text-[9px] font-medium text-amber-800 bg-amber-50 border border-amber-200 px-1.5 py-0.5 rounded">
+                  Demo Fixture · Unverified
                 </span>
               </div>
               <select
@@ -77,10 +76,14 @@ export function Stage3Routes() {
               >
                 {MOBILITY_PROFILES.map((p) => (
                   <option key={p.id} value={p.id}>
-                    {p.name} ({p.minClearanceCm} cm min)
+                    {p.name} ({p.minClearanceCm} cm corridor width)
                   </option>
                 ))}
               </select>
+              <div className="text-[10px] text-slate-500 flex justify-between pt-0.5">
+                <span>Required corridor width: {activeProfile.minClearanceCm} cm</span>
+                <span>Margin: ≥{requiredRadiusCm} cm</span>
+              </div>
             </div>
 
             {/* Key Metrics Strip */}
@@ -90,20 +93,30 @@ export function Stage3Routes() {
                   Route Length
                 </span>
                 <span className="text-sm font-bold text-slate-800">
-                  {displayLengthM} m
+                  {displayLengthM}{isSuccess ? " m" : ""}
+                </span>
+                <span className="text-[10px] text-slate-400 block">
+                  {isSuccess ? `${routeResult.path.length} waypoints` : "No traversable path"}
                 </span>
               </div>
 
               <div>
                 <span className="text-[9px] uppercase font-semibold text-slate-400 block">
-                  Min Clearance
+                  Narrowest Path Margin
                 </span>
                 <span
                   className={`text-sm font-bold ${
-                    isClearanceDeficit ? "text-red-600" : "text-emerald-700"
+                    !isSuccess
+                      ? "text-slate-400"
+                      : isMarginDeficit
+                      ? "text-red-600"
+                      : "text-emerald-700"
                   }`}
                 >
-                  {displayClearanceCm} cm
+                  {displayMarginCm}{isSuccess ? " cm" : ""}
+                </span>
+                <span className="text-[10px] text-slate-500 block">
+                  Required: ≥{requiredRadiusCm} cm
                 </span>
               </div>
             </div>
@@ -119,7 +132,7 @@ export function Stage3Routes() {
                   <span className="font-semibold text-red-800 block">Clearance Insufficient</span>
                   <p className="text-[11px] text-red-700 leading-tight">{routeResult.reason}</p>
                   <p className="text-[10px] text-red-600 font-mono">
-                    Required: ≥ {activeProfile.minClearanceCm} cm corridor width
+                    Required corridor width: {activeProfile.minClearanceCm} cm (margin ≥ {requiredRadiusCm} cm)
                   </p>
                 </div>
               </div>
@@ -134,19 +147,29 @@ export function Stage3Routes() {
                   <p className="text-[11px] text-amber-700 leading-tight">{routeResult.reason}</p>
                 </div>
               </div>
-            ) : isClearanceDeficit ? (
+            ) : routeResult?.status && routeResult.status !== "success" ? (
+              <div
+                className="p-2.5 bg-amber-50 border border-amber-200 rounded-lg text-xs text-amber-900 flex items-start gap-1.5"
+                role="alert"
+              >
+                <AlertTriangle className="w-4 h-4 shrink-0 text-amber-600 mt-0.5" />
+                <div className="leading-snug space-y-1">
+                  <span className="font-semibold text-amber-800 block">Route Calculation Failed</span>
+                  <p className="text-[11px] text-amber-700 leading-tight">{routeResult.reason}</p>
+                </div>
+              </div>
+            ) : isMarginDeficit ? (
               <div className="p-2.5 bg-red-50 border border-red-200 rounded-lg text-xs text-red-900 flex items-start gap-1.5">
                 <AlertTriangle className="w-4 h-4 shrink-0 text-red-600 mt-0.5" />
                 <span className="leading-snug">
-                  Narrows to <strong>{displayClearanceCm} cm</strong> (min{" "}
-                  {activeProfile.minClearanceCm} cm required).
+                  Narrowest path margin ({displayMarginCm} cm) is below required margin (≥ {requiredRadiusCm} cm; corridor width {activeProfile.minClearanceCm} cm).
                 </span>
               </div>
             ) : (
               <div className="p-2 bg-emerald-50 border border-emerald-200 rounded-lg text-xs text-emerald-900 flex items-center gap-1.5">
                 <ShieldCheck className="w-4 h-4 shrink-0 text-emerald-600" />
                 <span className="leading-snug font-medium">
-                  Corridor meets profile requirement (≥ {activeProfile.minClearanceCm} cm).
+                  Narrowest path margin ({displayMarginCm} cm) meets required margin (≥ {requiredRadiusCm} cm, {activeProfile.minClearanceCm} cm width).
                 </span>
               </div>
             )}
@@ -156,15 +179,24 @@ export function Stage3Routes() {
               <span className="text-xs font-medium text-slate-700">Simulate Gait</span>
               <div className="flex items-center gap-1">
                 <button
-                  onClick={() => setIsWalkerAnimating(!isWalkerAnimating)}
-                  className={`p-1 rounded transition cursor-pointer ${
-                    isWalkerAnimating
-                      ? "bg-[#e8f3f1] text-[#1e7168]"
-                      : "text-slate-600 hover:bg-slate-100"
+                  onClick={() => isSuccess && setIsWalkerAnimating(!isWalkerAnimating)}
+                  disabled={!isSuccess}
+                  className={`p-1 rounded transition ${
+                    !isSuccess
+                      ? "text-slate-300 cursor-not-allowed"
+                      : isWalkerAnimating
+                      ? "bg-[#e8f3f1] text-[#1e7168] cursor-pointer"
+                      : "text-slate-600 hover:bg-slate-100 cursor-pointer"
                   }`}
-                  title={isWalkerAnimating ? "Pause" : "Play"}
+                  title={
+                    !isSuccess
+                      ? "Simulation unavailable for non-traversable route"
+                      : isWalkerAnimating
+                      ? "Pause"
+                      : "Play"
+                  }
                 >
-                  {isWalkerAnimating ? <Pause className="w-3.5 h-3.5" /> : <Play className="w-3.5 h-3.5" />}
+                  {isWalkerAnimating && isSuccess ? <Pause className="w-3.5 h-3.5" /> : <Play className="w-3.5 h-3.5" />}
                 </button>
                 <button
                   onClick={recalculateRoute}

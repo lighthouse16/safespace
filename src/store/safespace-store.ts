@@ -23,6 +23,7 @@ import {
   toCanonicalObjects,
   toCanonicalProfile,
   toCanonicalRoom,
+  toCanonicalWallObstacles,
   type RouteResult,
 } from "@/lib/spatial";
 
@@ -178,11 +179,15 @@ function computeStoreRoute(
   furniture: SpatialFurniture[],
   rooms: SpatialRoom[],
   profile: MobilityProfileData,
-  waypoints: RouteWaypoint[]
+  waypoints: RouteWaypoint[],
+  walls: SpatialWall[] = INITIAL_WALLS,
+  doors: SpatialDoor[] = INITIAL_DOORS
 ): RouteResult | null {
   if (!waypoints || waypoints.length < 2) return null;
   const room = toCanonicalRoom(rooms);
-  const obstacles = toCanonicalObjects(furniture);
+  const furnitureObstacles = toCanonicalObjects(furniture);
+  const wallObstacles = toCanonicalWallObstacles(walls, doors);
+  const obstacles = [...furnitureObstacles, ...wallObstacles];
   const canonicalProfile = toCanonicalProfile(profile);
   const start = { x: waypoints[0].x, y: waypoints[0].y };
   const end = { x: waypoints[waypoints.length - 1].x, y: waypoints[waypoints.length - 1].y };
@@ -215,7 +220,14 @@ export const useSafeSpaceStore = create<SafeSpaceState>((set, get) => ({
   furniture: cloneFurniture(INITIAL_FURNITURE),
   hazards: INITIAL_HAZARDS,
   routeWaypoints: INITIAL_ROUTE,
-  routeResult: computeStoreRoute(INITIAL_FURNITURE, INITIAL_ROOMS, MOBILITY_PROFILES[0], INITIAL_ROUTE),
+  routeResult: computeStoreRoute(
+    INITIAL_FURNITURE,
+    INITIAL_ROOMS,
+    MOBILITY_PROFILES[0],
+    INITIAL_ROUTE,
+    INITIAL_WALLS,
+    INITIAL_DOORS
+  ),
 
   selectedFurnitureId: null,
   selectedHazardId: null,
@@ -366,16 +378,16 @@ export const useSafeSpaceStore = create<SafeSpaceState>((set, get) => ({
   activeProfile: MOBILITY_PROFILES[0],
   setProfile: (id) => {
     const found = MOBILITY_PROFILES.find((p) => p.id === id) || MOBILITY_PROFILES[0];
-    const { activeStage, proposedFurniture, furniture, rooms, routeWaypoints } = get();
+    const { activeStage, proposedFurniture, furniture, rooms, routeWaypoints, walls, doors } = get();
     const activeFurn = activeStage === "improve" ? proposedFurniture : furniture;
-    const newRouteResult = computeStoreRoute(activeFurn, rooms, found, routeWaypoints);
-    set({ activeProfileId: id, activeProfile: { ...found }, routeResult: newRouteResult });
+    const newRouteResult = computeStoreRoute(activeFurn, rooms, found, routeWaypoints, walls, doors);
+    set({ activeProfileId: found.id, activeProfile: { ...found }, routeResult: newRouteResult });
   },
   updateProfile: (updates) => {
     const updatedProfile = { ...get().activeProfile, ...updates };
-    const { activeStage, proposedFurniture, furniture, rooms, routeWaypoints } = get();
+    const { activeStage, proposedFurniture, furniture, rooms, routeWaypoints, walls, doors } = get();
     const activeFurn = activeStage === "improve" ? proposedFurniture : furniture;
-    const newRouteResult = computeStoreRoute(activeFurn, rooms, updatedProfile, routeWaypoints);
+    const newRouteResult = computeStoreRoute(activeFurn, rooms, updatedProfile, routeWaypoints, walls, doors);
     set({
       activeProfile: updatedProfile,
       routeResult: newRouteResult,
@@ -518,51 +530,35 @@ export const useSafeSpaceStore = create<SafeSpaceState>((set, get) => ({
   setReportModalOpen: (reportModalOpen) => set({ reportModalOpen }),
 
   getLiveMetrics: () => {
-    const {
-      activeStage,
-      furniture,
-      proposedFurniture,
-      selectedAlternativeId,
-      routeWaypoints,
-      activeProfile,
-      routeResult,
-    } = get();
+    const { activeStage, furniture, proposedFurniture, selectedAlternativeId, routeWaypoints } = get();
     const activeFurn = activeStage === "improve" ? proposedFurniture : furniture;
     const alt = activeStage === "improve" ? selectedAlternativeId : null;
-    const base = calculateLiveMetrics(activeFurn, alt, routeWaypoints);
-
-    if (routeResult?.status === "success") {
-      const minClearanceCm = Math.round(routeResult.minimumClearanceCm);
-      const routeLengthM = Number((routeResult.pathLengthCm / 100).toFixed(1));
-      const hasDeficit = minClearanceCm < activeProfile.minClearanceCm;
-      return {
-        ...base,
-        minClearanceCm,
-        routeLengthM,
-        constraintWarning: hasDeficit
-          ? `Minimum clearance narrows to ${minClearanceCm} cm (min ${activeProfile.minClearanceCm} cm required).`
-          : null,
-      };
-    }
-
-    if (routeResult?.status === "clearance-insufficient" || routeResult?.status === "unreachable") {
-      return {
-        ...base,
-        constraintWarning: routeResult.reason,
-      };
-    }
-
-    return base;
+    return calculateLiveMetrics(activeFurn, alt, routeWaypoints);
   },
 
   resetToDemo: () => {
+    const defaultProfile = { ...MOBILITY_PROFILES[0] };
+    const defaultFurniture = cloneFurniture(INITIAL_FURNITURE);
     const initialProposed = generateProposedFurniture(INITIAL_FURNITURE, "balanced");
-    const initialRouteResult = computeStoreRoute(INITIAL_FURNITURE, INITIAL_ROOMS, MOBILITY_PROFILES[0], INITIAL_ROUTE);
+    const initialRouteResult = computeStoreRoute(
+      defaultFurniture,
+      INITIAL_ROOMS,
+      defaultProfile,
+      INITIAL_ROUTE,
+      INITIAL_WALLS,
+      INITIAL_DOORS
+    );
     set({
       activeStage: "layout",
-      furniture: cloneFurniture(INITIAL_FURNITURE),
+      furniture: defaultFurniture,
+      walls: INITIAL_WALLS,
+      doors: INITIAL_DOORS,
+      rooms: INITIAL_ROOMS,
       hazards: INITIAL_HAZARDS,
+      activeProfileId: defaultProfile.id,
+      activeProfile: defaultProfile,
       routeWaypoints: INITIAL_ROUTE,
+      selectedWaypointId: null,
       selectedFurnitureId: null,
       selectedHazardId: null,
       selectedAlternativeId: "balanced",

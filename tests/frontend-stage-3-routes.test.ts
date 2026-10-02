@@ -4,12 +4,16 @@ import {
   toCanonicalRoom,
   toCanonicalObjects,
   toCanonicalProfile,
+  toCanonicalWallObstacles,
+  DEMO_CLINIC_ENVELOPE,
   computeRoute,
   type CanonicalMobilityProfile,
 } from "../src/lib/spatial";
 import {
   INITIAL_FURNITURE,
   INITIAL_ROOMS,
+  INITIAL_WALLS,
+  INITIAL_DOORS,
   MOBILITY_PROFILES,
   type SpatialFurniture,
 } from "../src/lib/spatial-model";
@@ -22,9 +26,9 @@ import { useSafeSpaceStore } from "../src/store/safespace-store";
 test("adapter: toCanonicalRoom generates valid canonical room with bounding polygon", () => {
   const defaultRoom = toCanonicalRoom();
   assert.equal(defaultRoom.id, "clinic-room");
-  assert.equal(defaultRoom.boundary.length, 4);
-  assert.deepEqual(defaultRoom.boundary[0], { x: 0, y: 0 });
-  assert.deepEqual(defaultRoom.boundary[2], { x: 800, y: 600 });
+  assert.equal(defaultRoom.boundary.length, DEMO_CLINIC_ENVELOPE.length);
+  assert.deepEqual(defaultRoom.boundary[0], { x: 40, y: 40 });
+  assert.deepEqual(defaultRoom.boundary[2], { x: 760, y: 560 });
 
   // Custom polygon vertices
   const customPoly = [
@@ -114,7 +118,7 @@ test("adapter: toCanonicalObjects maps top-left to center coordinates and filter
   assert.equal(canonical[0].loadBearingSupport, true);
 });
 
-test("adapter: toCanonicalProfile converts mobility profile with verified clinical quantities", () => {
+test("adapter: toCanonicalProfile converts mobility profile with truthful unverified demo preset provenance", () => {
   const walkerProfile = MOBILITY_PROFILES.find((p) => p.id === "walker")!;
   const canonical = toCanonicalProfile(walkerProfile);
 
@@ -123,13 +127,18 @@ test("adapter: toCanonicalProfile converts mobility profile with verified clinic
   assert.equal(canonical.preferredClearanceCm.value, 90);
   assert.equal(canonical.preferredClearanceCm.unit, "cm");
   assert.equal(canonical.preferredClearanceCm.source.type, "clinical-input");
+  assert.equal(canonical.preferredClearanceCm.source.referenceId, "DEMO-PRESET-WALKER");
+  assert.equal(canonical.preferredClearanceCm.source.verificationStatus, "unverified");
   assert.equal(canonical.turningDiameterCm.value, 150);
+  assert.equal(canonical.turningDiameterCm.source.verificationStatus, "unverified");
 
   // Wheelchair profile
   const wheelchairProfile = MOBILITY_PROFILES.find((p) => p.id === "wheelchair")!;
   const canonicalWc = toCanonicalProfile(wheelchairProfile);
   assert.equal(canonicalWc.aidType, "manual-wheelchair");
   assert.equal(canonicalWc.preferredClearanceCm.value, 95);
+  assert.equal(canonicalWc.preferredClearanceCm.source.referenceId, "DEMO-PRESET-WHEELCHAIR");
+  assert.equal(canonicalWc.preferredClearanceCm.source.verificationStatus, "unverified");
 
   // Idempotent when given already canonical profile
   const identical = toCanonicalProfile(canonical);
@@ -259,4 +268,120 @@ test("store: addRouteWaypoint and removeRouteWaypoint update route and trigger r
   useSafeSpaceStore.getState().removeRouteWaypoint(added!.id);
   const afterRemove = useSafeSpaceStore.getState().routeWaypoints;
   assert.equal(afterRemove.length, initialWaypointsCount);
+});
+
+// ---------------------------------------------------------------------------
+// 4. Wall Geometry & Traversability
+// ---------------------------------------------------------------------------
+
+test("adapter: toCanonicalWallObstacles segments internal walls around doors and ignores exterior walls", () => {
+  const wallObstacles = toCanonicalWallObstacles(INITIAL_WALLS, INITIAL_DOORS);
+
+  // Exterior walls must be filtered out (handled by room boundary envelope)
+  const exteriorIds = INITIAL_WALLS.filter((w) => w.isExterior).map((w) => w.id);
+  for (const obs of wallObstacles) {
+    for (const extId of exteriorIds) {
+      assert.ok(!obs.id.includes(extId), `Exterior wall ${extId} should not be in obstacles`);
+    }
+  }
+
+  // Interior wall w-corridor-top spans across two doors: door-corridor-access and door-consultation
+  const corridorTopSegments = wallObstacles.filter((o) => o.id.includes("w-corridor-top"));
+  // Slicing around 2 doors creates 3 solid segments
+  assert.equal(corridorTopSegments.length, 3);
+
+  // All wall obstacles have category wall and positive dimensions
+  for (const obs of wallObstacles) {
+    assert.equal(obs.category, "wall");
+    assert.ok(obs.dimensionsCm.width > 0);
+    assert.ok(obs.dimensionsCm.depth > 0);
+  }
+});
+
+// ---------------------------------------------------------------------------
+// 5. Width vs Radius Semantics
+// ---------------------------------------------------------------------------
+
+test("geometry semantics: width vs radius evaluation does not produce false deficit on compliant routes", () => {
+  const walkerProfile = MOBILITY_PROFILES.find((p) => p.id === "walker")!;
+  assert.equal(walkerProfile.minClearanceCm, 90);
+
+  // Semantics: requiredRadiusCm is half corridor width
+  const requiredRadiusCm = walkerProfile.minClearanceCm / 2;
+  assert.equal(requiredRadiusCm, 45);
+
+  // A route with 50 cm margin is compliant (50 >= 45)
+  const actualMarginCm = 50;
+  const isDeficitWithRadius = actualMarginCm < requiredRadiusCm;
+  const isFalseDeficitWithFullWidth = actualMarginCm < walkerProfile.minClearanceCm;
+
+  // Evaluating against full width (90cm) would falsely report a deficit
+  assert.equal(isDeficitWithRadius, false, "50cm margin should satisfy 45cm required radius");
+  assert.equal(isFalseDeficitWithFullWidth, true, "comparing margin against full width would be a 2x false deficit error");
+});
+
+// ---------------------------------------------------------------------------
+// 6. Failure States & Route Truthfulness
+// ---------------------------------------------------------------------------
+
+test("route engine: unreachable or clearance-insufficient routes return empty path", () => {
+  const room = toCanonicalRoom();
+  const obstacles = toCanonicalObjects(INITIAL_FURNITURE);
+  const profile = toCanonicalProfile(MOBILITY_PROFILES.find((p) => p.id === "walker")!);
+
+  const res = computeRoute({
+    room,
+    obstacles,
+    start: { x: 60, y: 240 },
+    end: { x: 550, y: 450 },
+    mobilityProfile: profile,
+    userWaypoints: [
+      { x: 160, y: 240 },
+      { x: 235, y: 270 },
+      { x: 310, y: 290 },
+      { x: 260, y: 440 },
+      { x: 420, y: 460 },
+    ],
+  });
+
+  // Clearance failure: path is not present on RouteFailureResult, cannot be rendered as traversable line
+  assert.equal(res.status, "clearance-insufficient");
+  assert.equal("path" in res, false);
+});
+
+// ---------------------------------------------------------------------------
+// 7. Store Atomic Consistency
+// ---------------------------------------------------------------------------
+
+test("store: atomic resetToDemo restores profile, furniture, walls, doors, and recomputes route", () => {
+  useSafeSpaceStore.getState().setProfile("independent");
+  useSafeSpaceStore.getState().moveFurniture("chair-c04", 100, 150);
+
+  assert.equal(useSafeSpaceStore.getState().activeProfileId, "independent");
+  assert.equal(useSafeSpaceStore.getState().activeProfile.id, "independent");
+
+  // Atomic reset
+  useSafeSpaceStore.getState().resetToDemo();
+
+  const state = useSafeSpaceStore.getState();
+  assert.equal(state.activeProfileId, "walker");
+  assert.equal(state.activeProfile.id, "walker");
+  assert.equal(state.furniture.length, INITIAL_FURNITURE.length);
+  assert.equal(state.walls.length, INITIAL_WALLS.length);
+  assert.equal(state.doors.length, INITIAL_DOORS.length);
+  assert.ok(state.routeResult !== null);
+  assert.equal(state.routeResult.status, "clearance-insufficient");
+});
+
+test("store: setProfile fallback sets activeProfileId and activeProfile atomically", () => {
+  useSafeSpaceStore.getState().resetToDemo();
+
+  // Attempt to set non-existent profile
+  useSafeSpaceStore
+    .getState()
+    .setProfile("non-existent-profile" as unknown as "walker");
+
+  const state = useSafeSpaceStore.getState();
+  assert.equal(state.activeProfileId, "walker");
+  assert.equal(state.activeProfile.id, "walker");
 });

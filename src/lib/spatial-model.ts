@@ -716,7 +716,7 @@ export const MOBILITY_PROFILES: MobilityProfileData[] = [
   {
     id: "wheelchair",
     name: "Uses a wheelchair",
-    description: "Manual or powered wheelchair user needing standard ADA turning circles.",
+    description: "Manual or powered wheelchair user with demo turning radius parameters.",
     minClearanceCm: 95,
     turningSpaceCm: 160,
     fallHistory: false,
