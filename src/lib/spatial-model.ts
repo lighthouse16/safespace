@@ -678,14 +678,16 @@ export const INITIAL_HAZARDS: SpatialHazard[] = [
  * ───────────────────────────────────────────────────────────── */
 
 export const INITIAL_ROUTE: RouteWaypoint[] = [
-  { id: "pt-1", name: "Entrance Doorway", x: 60, y: 240, isMandatory: true },
+  // Entrance Interior Approach: derived from entrance door at x=40, span y=220..310 (centerline y=265).
+  // Interior x=95 provides 55cm clearance inside left exterior wall (satisfies walker 45cm radius requirement).
+  { id: "pt-1", name: "Entrance Interior Approach", x: 95, y: 265, isMandatory: true },
   { id: "pt-2", name: "Foyer Intake Point", x: 160, y: 240, isMandatory: false },
-  { id: "pt-3", name: "Reception Counter Approach", x: 480, y: 170, isMandatory: true },
-  { id: "pt-4", name: "Pinch Point (Chair C-04)", x: 235, y: 220, isMandatory: false },
+  { id: "pt-3", name: "Reception Counter Approach", x: 470, y: 180, isMandatory: true },
+  { id: "pt-4", name: "Pinch Point (Chair C-04)", x: 235, y: 270, isMandatory: false },
   { id: "pt-5", name: "Waiting Seat Transition", x: 310, y: 290, isMandatory: true },
   { id: "pt-6", name: "Corridor Portal Threshold", x: 260, y: 440, isMandatory: false },
   { id: "pt-7", name: "Mid-Corridor Transit", x: 420, y: 460, isMandatory: false },
-  { id: "pt-8", name: "Consultation Room 1", x: 560, y: 430, isMandatory: true },
+  { id: "pt-8", name: "Consultation Room 1", x: 550, y: 450, isMandatory: true },
 ];
 
 /* ─────────────────────────────────────────────────────────────
@@ -716,7 +718,7 @@ export const MOBILITY_PROFILES: MobilityProfileData[] = [
   {
     id: "wheelchair",
     name: "Uses a wheelchair",
-    description: "Manual or powered wheelchair user needing standard ADA turning circles.",
+    description: "Manual or powered wheelchair user with demo turning radius parameters.",
     minClearanceCm: 95,
     turningSpaceCm: 160,
     fallHistory: false,
@@ -917,7 +919,9 @@ export function calculateLiveMetrics(
     totalLengthCm += Math.hypot(route[i + 1].x - route[i].x, route[i + 1].y - route[i].y);
   }
 
-  const isDefaultRoute = route.length === 8 && route[0].x === 60;
+  const isDefaultRoute =
+    route.length === INITIAL_ROUTE.length &&
+    (route[0].x === INITIAL_ROUTE[0].x || route[0].id === INITIAL_ROUTE[0].id);
   const routeLengthM = isDefaultRoute
     ? activeAlternativeId === "balanced"
       ? 10.4

@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useRef, useState, useEffect, useCallback } from "react";
+import React, { useRef, useState, useEffect, useCallback, useMemo } from "react";
 import { useSafeSpaceStore } from "@/store/safespace-store";
 import { type SpatialFurniture, type Point2D, type RouteWaypoint } from "@/lib/spatial-model";
 import {
@@ -61,12 +61,23 @@ export function Floorplan2D({
     selectedWaypointId,
     selectWaypoint,
     moveRouteWaypoint,
+    routeResult,
+    activeProfile,
   } = useSafeSpaceStore();
 
   const isBefore = isBeforeCondition || overrideStage === "before";
   const stage = isBefore ? "before" : (overrideStage || activeStage);
   const furniture = customFurniture || storeFurniture;
   const handleMove = onCustomMove || moveFurniture;
+
+  const isRouteSuccess =
+    routeResult?.status === "success" && routeResult.path.length >= 2;
+  const computedPath: readonly Point2D[] = useMemo(() => {
+    return routeResult?.status === "success" && routeResult.path.length >= 2
+      ? routeResult.path
+      : [];
+  }, [routeResult]);
+  const requiredRadiusCm = activeProfile.minClearanceCm / 2;
 
   const svgRef = useRef<SVGSVGElement | null>(null);
 
@@ -82,11 +93,19 @@ export function Floorplan2D({
   const [panStart, setPanStart] = useState<Point2D>({ x: 0, y: 0 });
   const [hoveredWaypointId, setHoveredWaypointId] = useState<string | null>(null);
 
-  // Walker animation along route (Stage 3 & 4)
+  // Walker animation along computed route only (Stage 3 & 4)
   const [walkerT, setWalkerT] = useState(0);
 
   useEffect(() => {
-    if (!isWalkerAnimating || routeWaypoints.length < 2) return;
+    if (!isWalkerAnimating || !isRouteSuccess || computedPath.length < 2) return;
+
+    // Respect user's accessibility motion preference
+    const prefersReducedMotion =
+      typeof window !== "undefined" &&
+      typeof window.matchMedia === "function" &&
+      window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    if (prefersReducedMotion) return;
+
     let animId: number;
     const start = performance.now();
     const duration = 6500; // 6.5s loop
@@ -99,17 +118,19 @@ export function Floorplan2D({
 
     animId = requestAnimationFrame(step);
     return () => cancelAnimationFrame(animId);
-  }, [isWalkerAnimating, routeWaypoints]);
+  }, [isWalkerAnimating, isRouteSuccess, computedPath]);
 
-  // Compute walker coordinates along waypoints
+  // Compute walker coordinates along computedPath (only when route succeeds)
   const getWalkerPosition = useCallback(() => {
-    if (routeWaypoints.length < 2) return { x: 60, y: 240, angle: 0 };
+    if (!isRouteSuccess || computedPath.length < 2) {
+      return { x: routeWaypoints[0]?.x ?? 95, y: routeWaypoints[0]?.y ?? 265, angle: 0 };
+    }
 
     const segLengths: number[] = [];
     let totalLen = 0;
-    for (let i = 0; i < routeWaypoints.length - 1; i++) {
-      const dx = routeWaypoints[i + 1].x - routeWaypoints[i].x;
-      const dy = routeWaypoints[i + 1].y - routeWaypoints[i].y;
+    for (let i = 0; i < computedPath.length - 1; i++) {
+      const dx = computedPath[i + 1].x - computedPath[i].x;
+      const dy = computedPath[i + 1].y - computedPath[i].y;
       const len = Math.hypot(dx, dy);
       segLengths.push(len);
       totalLen += len;
@@ -121,8 +142,8 @@ export function Floorplan2D({
     for (let i = 0; i < segLengths.length; i++) {
       if (accumulated + segLengths[i] >= targetDist) {
         const segT = (targetDist - accumulated) / segLengths[i];
-        const p1 = routeWaypoints[i];
-        const p2 = routeWaypoints[i + 1];
+        const p1 = computedPath[i];
+        const p2 = computedPath[i + 1];
         const x = p1.x + (p2.x - p1.x) * segT;
         const y = p1.y + (p2.y - p1.y) * segT;
         const angle = Math.atan2(p2.y - p1.y, p2.x - p1.x) * (180 / Math.PI);
@@ -131,9 +152,9 @@ export function Floorplan2D({
       accumulated += segLengths[i];
     }
 
-    const last = routeWaypoints[routeWaypoints.length - 1];
+    const last = computedPath[computedPath.length - 1];
     return { x: last.x, y: last.y, angle: 0 };
-  }, [routeWaypoints, walkerT]);
+  }, [computedPath, isRouteSuccess, walkerT, routeWaypoints]);
 
   const walkerPos = getWalkerPosition();
 
@@ -427,61 +448,119 @@ export function Floorplan2D({
           </g>
         )}
 
-        {/* 4. Route Clearance Envelope Buffer */}
-        {(stage === "analysis" || stage === "improve" || stage === "before") && layerToggles.clearance && (
-          <g id="clearance-envelope-layer" className="pointer-events-none">
-            <path
-              d={routeWaypoints.reduce((acc, pt, i) => `${acc} ${i === 0 ? "M" : "L"} ${pt.x} ${pt.y}`, "")}
-              fill="none"
-              stroke="#60a5fa"
-              strokeWidth="45"
-              strokeOpacity="0.18"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-            />
-            {/* Pinch warning circle only in Before or un-improved stages */}
-            {isBefore && (
-              <circle
-                cx={235}
-                cy={220}
-                r="35"
+        {/* 4. Route Clearance Envelope Buffer (Rendered only on successful computed route) */}
+        {(stage === "routes" || stage === "analysis" || stage === "improve" || stage === "before") &&
+          layerToggles.clearance &&
+          isRouteSuccess && (
+            <g id="clearance-envelope-layer" className="pointer-events-none">
+              <path
+                d={computedPath.reduce(
+                  (acc, pt, i) => `${acc} ${i === 0 ? "M" : "L"} ${pt.x} ${pt.y}`,
+                  ""
+                )}
                 fill="none"
-                stroke="#dc2626"
-                strokeWidth="2"
-                strokeDasharray="4,4"
+                stroke="#60a5fa"
+                strokeWidth={activeProfile.minClearanceCm}
+                strokeOpacity="0.18"
+                strokeLinecap="round"
+                strokeLinejoin="round"
               />
-            )}
-          </g>
-        )}
+              {/* Highlight narrowest bottleneck if present */}
+              {routeResult.bottlenecks.length > 0 &&
+                routeResult.minimumClearanceCm < requiredRadiusCm && (
+                  <g
+                    transform={`translate(${routeResult.bottlenecks[0].position.x}, ${routeResult.bottlenecks[0].position.y})`}
+                  >
+                    <circle
+                      r="22"
+                      fill="none"
+                      stroke="#dc2626"
+                      strokeWidth="2"
+                      strokeDasharray="4,4"
+                      className="animate-pulse"
+                    />
+                    <rect
+                      x="-26"
+                      y="-28"
+                      width="52"
+                      height="16"
+                      rx="3"
+                      fill="#dc2626"
+                      opacity="0.9"
+                    />
+                    <text
+                      textAnchor="middle"
+                      y="-17"
+                      fill="#ffffff"
+                      fontSize="9"
+                      fontWeight="bold"
+                      fontFamily="monospace"
+                    >
+                      {Math.round(routeResult.bottlenecks[0].clearanceCm)} cm
+                    </text>
+                  </g>
+                )}
+              {/* Pinch warning circle only in Before or un-improved stages */}
+              {isBefore && (
+                <circle
+                  cx={235}
+                  cy={220}
+                  r="35"
+                  fill="none"
+                  stroke="#dc2626"
+                  strokeWidth="2"
+                  strokeDasharray="4,4"
+                />
+              )}
+            </g>
+          )}
 
         {/* 5. Walking Route Line */}
         {(stage === "routes" || stage === "analysis" || stage === "improve" || stage === "before") &&
           layerToggles.route && (
             <g id="route-layer">
-              {/* Segments */}
-              {routeWaypoints.map((pt, i) => {
-                if (i === routeWaypoints.length - 1) return null;
-                const next = routeWaypoints[i + 1];
-                const isConstrained =
-                  isBefore ||
-                  stage !== "improve" &&
-                  ((pt.id === "pt-3" && next.id === "pt-4") ||
-                    (pt.id === "pt-4" && next.id === "pt-5"));
+              {/* Computed route path if success */}
+              {isRouteSuccess &&
+                computedPath.map((pt, i) => {
+                  if (i === computedPath.length - 1) return null;
+                  const next = computedPath[i + 1];
+                  const isConstrained =
+                    routeResult.minimumClearanceCm < requiredRadiusCm;
 
-                return (
-                  <line
-                    key={`seg-${pt.id}-${next.id}`}
-                    x1={pt.x}
-                    y1={pt.y}
-                    x2={next.x}
-                    y2={next.y}
-                    stroke={isConstrained ? "#dc2626" : "#1d63b8"}
-                    strokeWidth={isConstrained ? "3" : "2"}
-                    strokeDasharray={isConstrained ? "5,3" : undefined}
-                    markerEnd={isConstrained ? "url(#route-arrow-pinch)" : "url(#route-arrow)"}
-                  />
-                );
-              })}
+                  return (
+                    <line
+                      key={`seg-${i}-${next.x}-${next.y}`}
+                      x1={pt.x}
+                      y1={pt.y}
+                      x2={next.x}
+                      y2={next.y}
+                      stroke={isConstrained ? "#dc2626" : "#1d63b8"}
+                      strokeWidth={isConstrained ? "3" : "2"}
+                      strokeDasharray={isConstrained ? "5,3" : undefined}
+                      markerEnd={isConstrained ? "url(#route-arrow-pinch)" : "url(#route-arrow)"}
+                    />
+                  );
+                })}
+
+              {/* If route calculation failed, render neutral dashed line connecting authored checkpoints */}
+              {!isRouteSuccess &&
+                routeWaypoints.map((pt, i) => {
+                  if (i === routeWaypoints.length - 1) return null;
+                  const next = routeWaypoints[i + 1];
+
+                  return (
+                    <line
+                      key={`req-seg-${pt.id}-${next.id}`}
+                      x1={pt.x}
+                      y1={pt.y}
+                      x2={next.x}
+                      y2={next.y}
+                      stroke="#94a3b8"
+                      strokeWidth="1.5"
+                      strokeDasharray="4,4"
+                    />
+                  );
+                })}
 
               {/* Waypoint Nodes: DEFAULT USE NUMBER ONLY, HOVER/SELECT SHOWS NAME (Fixes route screen clutter!) */}
               {routeWaypoints.map((pt, i) => {
@@ -546,8 +625,8 @@ export function Floorplan2D({
                 );
               })}
 
-              {/* Walker Footprint Animation */}
-              {isWalkerAnimating && (
+              {/* Walker Footprint Animation: Rendered ONLY on computed route success */}
+              {isWalkerAnimating && isRouteSuccess && (
                 <g
                   transform={`translate(${walkerPos.x}, ${walkerPos.y}) rotate(${walkerPos.angle})`}
                   className="pointer-events-none transition-transform duration-75"
@@ -555,7 +634,16 @@ export function Floorplan2D({
                   <circle
                     r="20"
                     fill="none"
-                    stroke={(isBefore || stage !== "improve") && Math.hypot(walkerPos.x - 235, walkerPos.y - 220) < 45 ? "#dc2626" : "#0284c7"}
+                    stroke={
+                      routeResult.bottlenecks.length > 0 &&
+                      routeResult.minimumClearanceCm < requiredRadiusCm &&
+                      Math.hypot(
+                        walkerPos.x - routeResult.bottlenecks[0].position.x,
+                        walkerPos.y - routeResult.bottlenecks[0].position.y
+                      ) < 45
+                        ? "#dc2626"
+                        : "#0284c7"
+                    }
                     strokeWidth="1.5"
                     strokeDasharray="2,3"
                     opacity="0.8"

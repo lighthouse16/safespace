@@ -124,3 +124,12 @@ export type {
   RouteResult,
   RouteSuccessResult,
 } from "./routing/types";
+
+// Domain Adapters
+export {
+  DEMO_CLINIC_ENVELOPE,
+  toCanonicalObjects,
+  toCanonicalProfile,
+  toCanonicalRoom,
+  toCanonicalWallObstacles,
+} from "./adapter";
