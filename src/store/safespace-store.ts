@@ -180,8 +180,8 @@ function computeStoreRoute(
   rooms: SpatialRoom[],
   profile: MobilityProfileData,
   waypoints: RouteWaypoint[],
-  walls: SpatialWall[] = INITIAL_WALLS,
-  doors: SpatialDoor[] = INITIAL_DOORS
+  walls: SpatialWall[],
+  doors: SpatialDoor[]
 ): RouteResult | null {
   if (!waypoints || waypoints.length < 2) return null;
   const room = toCanonicalRoom(rooms);
@@ -255,13 +255,13 @@ export const useSafeSpaceStore = create<SafeSpaceState>((set, get) => ({
   future: [],
 
   moveFurniture: (id, x, y) => {
-    const { furniture, history, rooms, activeProfile, routeWaypoints } = get();
+    const { furniture, history, rooms, activeProfile, routeWaypoints, walls, doors } = get();
     const item = furniture.find((f) => f.id === id);
     if (!item || item.isFixed) return;
 
     const newHistory = [...history, cloneFurniture(furniture)].slice(-20);
     const updated = furniture.map((f) => (f.id === id ? { ...f, x, y } : f));
-    const newRouteResult = computeStoreRoute(updated, rooms, activeProfile, routeWaypoints);
+    const newRouteResult = computeStoreRoute(updated, rooms, activeProfile, routeWaypoints, walls, doors);
     set({
       furniture: updated,
       history: newHistory,
@@ -271,14 +271,14 @@ export const useSafeSpaceStore = create<SafeSpaceState>((set, get) => ({
   },
 
   rotateFurniture: (id) => {
-    const { furniture, history, rooms, activeProfile, routeWaypoints } = get();
+    const { furniture, history, rooms, activeProfile, routeWaypoints, walls, doors } = get();
     const item = furniture.find((f) => f.id === id);
     if (!item || item.isFixed) return;
 
     const newHistory = [...history, cloneFurniture(furniture)].slice(-20);
     const newRot = (item.rotation + 90) % 360;
     const updated = furniture.map((f) => (f.id === id ? { ...f, rotation: newRot } : f));
-    const newRouteResult = computeStoreRoute(updated, rooms, activeProfile, routeWaypoints);
+    const newRouteResult = computeStoreRoute(updated, rooms, activeProfile, routeWaypoints, walls, doors);
     set({
       furniture: updated,
       history: newHistory,
@@ -300,13 +300,13 @@ export const useSafeSpaceStore = create<SafeSpaceState>((set, get) => ({
   },
 
   deleteFurniture: (id) => {
-    const { furniture, history, rooms, activeProfile, routeWaypoints } = get();
+    const { furniture, history, rooms, activeProfile, routeWaypoints, walls, doors } = get();
     const item = furniture.find((f) => f.id === id);
     if (!item || item.isFixed) return;
 
     const newHistory = [...history, cloneFurniture(furniture)].slice(-20);
     const updated = furniture.filter((f) => f.id !== id);
-    const newRouteResult = computeStoreRoute(updated, rooms, activeProfile, routeWaypoints);
+    const newRouteResult = computeStoreRoute(updated, rooms, activeProfile, routeWaypoints, walls, doors);
     set({
       furniture: updated,
       selectedFurnitureId: null,
@@ -317,7 +317,7 @@ export const useSafeSpaceStore = create<SafeSpaceState>((set, get) => ({
   },
 
   addFurniture: (category) => {
-    const { furniture, history, rooms, activeProfile, routeWaypoints } = get();
+    const { furniture, history, rooms, activeProfile, routeWaypoints, walls, doors } = get();
     const newHistory = [...history, cloneFurniture(furniture)].slice(-20);
     const id = `item-${Date.now()}`;
     const newItem: SpatialFurniture = {
@@ -337,7 +337,7 @@ export const useSafeSpaceStore = create<SafeSpaceState>((set, get) => ({
       detectionConfidence: 1.0,
     };
     const updated = [...furniture, newItem];
-    const newRouteResult = computeStoreRoute(updated, rooms, activeProfile, routeWaypoints);
+    const newRouteResult = computeStoreRoute(updated, rooms, activeProfile, routeWaypoints, walls, doors);
     set({
       furniture: updated,
       selectedFurnitureId: id,
@@ -348,10 +348,10 @@ export const useSafeSpaceStore = create<SafeSpaceState>((set, get) => ({
   },
 
   undo: () => {
-    const { history, furniture, future, rooms, activeProfile, routeWaypoints } = get();
+    const { history, furniture, future, rooms, activeProfile, routeWaypoints, walls, doors } = get();
     if (history.length === 0) return;
     const prev = history[history.length - 1];
-    const newRouteResult = computeStoreRoute(prev, rooms, activeProfile, routeWaypoints);
+    const newRouteResult = computeStoreRoute(prev, rooms, activeProfile, routeWaypoints, walls, doors);
     set({
       furniture: prev,
       history: history.slice(0, -1),
@@ -361,10 +361,10 @@ export const useSafeSpaceStore = create<SafeSpaceState>((set, get) => ({
   },
 
   redo: () => {
-    const { future, furniture, history, rooms, activeProfile, routeWaypoints } = get();
+    const { future, furniture, history, rooms, activeProfile, routeWaypoints, walls, doors } = get();
     if (future.length === 0) return;
     const next = future[0];
-    const newRouteResult = computeStoreRoute(next, rooms, activeProfile, routeWaypoints);
+    const newRouteResult = computeStoreRoute(next, rooms, activeProfile, routeWaypoints, walls, doors);
     set({
       furniture: next,
       history: [...history, cloneFurniture(furniture)],
@@ -398,21 +398,21 @@ export const useSafeSpaceStore = create<SafeSpaceState>((set, get) => ({
   selectedWaypointId: null,
   selectWaypoint: (id) => set({ selectedWaypointId: id }),
   moveRouteWaypoint: (id, x, y) => {
-    const { routeWaypoints, activeStage, proposedFurniture, furniture, rooms, activeProfile } = get();
+    const { routeWaypoints, activeStage, proposedFurniture, furniture, rooms, activeProfile, walls, doors } = get();
     const updated = routeWaypoints.map((pt) => (pt.id === id ? { ...pt, x, y } : pt));
     const activeFurn = activeStage === "improve" ? proposedFurniture : furniture;
-    const newRouteResult = computeStoreRoute(activeFurn, rooms, activeProfile, updated);
+    const newRouteResult = computeStoreRoute(activeFurn, rooms, activeProfile, updated, walls, doors);
     set({
       routeWaypoints: updated,
       routeResult: newRouteResult,
     });
   },
   removeRouteWaypoint: (id) => {
-    const { routeWaypoints, activeStage, proposedFurniture, furniture, rooms, activeProfile } = get();
+    const { routeWaypoints, activeStage, proposedFurniture, furniture, rooms, activeProfile, walls, doors } = get();
     if (routeWaypoints.length <= 2) return;
     const updated = routeWaypoints.filter((pt) => pt.id !== id);
     const activeFurn = activeStage === "improve" ? proposedFurniture : furniture;
-    const newRouteResult = computeStoreRoute(activeFurn, rooms, activeProfile, updated);
+    const newRouteResult = computeStoreRoute(activeFurn, rooms, activeProfile, updated, walls, doors);
     set({
       routeWaypoints: updated,
       selectedWaypointId: null,
@@ -420,7 +420,7 @@ export const useSafeSpaceStore = create<SafeSpaceState>((set, get) => ({
     });
   },
   addRouteWaypoint: (name, x, y) => {
-    const { routeWaypoints, activeStage, proposedFurniture, furniture, rooms, activeProfile } = get();
+    const { routeWaypoints, activeStage, proposedFurniture, furniture, rooms, activeProfile, walls, doors } = get();
     const activeFurn = activeStage === "improve" ? proposedFurniture : furniture;
     const idx = routeWaypoints.length;
     let posX = x ?? 350;
@@ -443,7 +443,7 @@ export const useSafeSpaceStore = create<SafeSpaceState>((set, get) => ({
       newWp,
       routeWaypoints[routeWaypoints.length - 1],
     ];
-    const newRouteResult = computeStoreRoute(activeFurn, rooms, activeProfile, updated);
+    const newRouteResult = computeStoreRoute(activeFurn, rooms, activeProfile, updated, walls, doors);
     set({
       routeWaypoints: updated,
       selectedWaypointId: newWp.id,
@@ -451,9 +451,9 @@ export const useSafeSpaceStore = create<SafeSpaceState>((set, get) => ({
     });
   },
   recalculateRoute: () => {
-    const { activeStage, proposedFurniture, furniture, rooms, activeProfile } = get();
+    const { activeStage, proposedFurniture, furniture, rooms, activeProfile, walls, doors } = get();
     const activeFurn = activeStage === "improve" ? proposedFurniture : furniture;
-    const newRouteResult = computeStoreRoute(activeFurn, rooms, activeProfile, INITIAL_ROUTE);
+    const newRouteResult = computeStoreRoute(activeFurn, rooms, activeProfile, INITIAL_ROUTE, walls, doors);
     set({
       routeWaypoints: INITIAL_ROUTE,
       selectedWaypointId: null,
@@ -507,9 +507,9 @@ export const useSafeSpaceStore = create<SafeSpaceState>((set, get) => ({
   setOptimisationObjective: (optimisationObjective) => set({ optimisationObjective }),
   selectedAlternativeId: "balanced",
   selectAlternative: (altId) => {
-    const { rooms, activeProfile, routeWaypoints } = get();
+    const { rooms, activeProfile, routeWaypoints, walls, doors } = get();
     const proposed = generateProposedFurniture(get().furniture, altId);
-    const newRouteResult = computeStoreRoute(proposed, rooms, activeProfile, routeWaypoints);
+    const newRouteResult = computeStoreRoute(proposed, rooms, activeProfile, routeWaypoints, walls, doors);
     set({ selectedAlternativeId: altId, proposedFurniture: proposed, routeResult: newRouteResult });
   },
   compareMode: "side-by-side",
@@ -518,9 +518,9 @@ export const useSafeSpaceStore = create<SafeSpaceState>((set, get) => ({
   setCompareSliderPosition: (compareSliderPosition) => set({ compareSliderPosition }),
   proposedFurniture: generateProposedFurniture(INITIAL_FURNITURE, "balanced"),
   moveProposedFurniture: (id, x, y) => {
-    const { proposedFurniture, rooms, activeProfile, routeWaypoints } = get();
+    const { proposedFurniture, rooms, activeProfile, routeWaypoints, walls, doors } = get();
     const updated = proposedFurniture.map((f) => (f.id === id ? { ...f, x, y } : f));
-    const newRouteResult = computeStoreRoute(updated, rooms, activeProfile, routeWaypoints);
+    const newRouteResult = computeStoreRoute(updated, rooms, activeProfile, routeWaypoints, walls, doors);
     set({ proposedFurniture: updated, routeResult: newRouteResult });
   },
   approvalStatus: "draft",

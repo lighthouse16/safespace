@@ -122,7 +122,9 @@ export function Floorplan2D({
 
   // Compute walker coordinates along computedPath (only when route succeeds)
   const getWalkerPosition = useCallback(() => {
-    if (!isRouteSuccess || computedPath.length < 2) return { x: 60, y: 240, angle: 0 };
+    if (!isRouteSuccess || computedPath.length < 2) {
+      return { x: routeWaypoints[0]?.x ?? 95, y: routeWaypoints[0]?.y ?? 265, angle: 0 };
+    }
 
     const segLengths: number[] = [];
     let totalLen = 0;
@@ -152,7 +154,7 @@ export function Floorplan2D({
 
     const last = computedPath[computedPath.length - 1];
     return { x: last.x, y: last.y, angle: 0 };
-  }, [computedPath, isRouteSuccess, walkerT]);
+  }, [computedPath, isRouteSuccess, walkerT, routeWaypoints]);
 
   const walkerPos = getWalkerPosition();
 

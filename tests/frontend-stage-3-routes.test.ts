@@ -7,15 +7,22 @@ import {
   toCanonicalWallObstacles,
   DEMO_CLINIC_ENVELOPE,
   computeRoute,
+  deriveWorldFootprint,
+  segmentIntersectsPolygon,
   type CanonicalMobilityProfile,
+  type CanonicalRoom,
+  type Segment2D,
 } from "../src/lib/spatial";
 import {
   INITIAL_FURNITURE,
   INITIAL_ROOMS,
   INITIAL_WALLS,
   INITIAL_DOORS,
+  INITIAL_ROUTE,
   MOBILITY_PROFILES,
   type SpatialFurniture,
+  type SpatialWall,
+  type SpatialDoor,
 } from "../src/lib/spatial-model";
 import { useSafeSpaceStore } from "../src/store/safespace-store";
 
@@ -26,7 +33,7 @@ import { useSafeSpaceStore } from "../src/store/safespace-store";
 test("adapter: toCanonicalRoom generates valid canonical room with bounding polygon", () => {
   const defaultRoom = toCanonicalRoom();
   assert.equal(defaultRoom.id, "clinic-room");
-  assert.equal(defaultRoom.boundary.length, DEMO_CLINIC_ENVELOPE.length);
+  assert.equal(defaultRoom.boundary.length, 4);
   assert.deepEqual(defaultRoom.boundary[0], { x: 40, y: 40 });
   assert.deepEqual(defaultRoom.boundary[2], { x: 760, y: 560 });
 
@@ -157,7 +164,7 @@ test("core routing: computeRoute detects bottleneck next to Chair C-04 for walke
   const req = {
     room,
     obstacles,
-    start: { x: 60, y: 240 },
+    start: { x: 95, y: 265 },
     end: { x: 550, y: 450 },
     mobilityProfile: profile,
     userWaypoints: [
@@ -206,7 +213,7 @@ test("core routing: moving Chair C-04 eliminates corridor constriction", () => {
   const res = computeRoute({
     room,
     obstacles,
-    start: { x: 60, y: 240 },
+    start: { x: 95, y: 265 },
     end: { x: 550, y: 450 },
     mobilityProfile: profile60,
     userWaypoints: [
@@ -332,7 +339,7 @@ test("route engine: unreachable or clearance-insufficient routes return empty pa
   const res = computeRoute({
     room,
     obstacles,
-    start: { x: 60, y: 240 },
+    start: { x: 95, y: 265 },
     end: { x: 550, y: 450 },
     mobilityProfile: profile,
     userWaypoints: [
@@ -384,4 +391,237 @@ test("store: setProfile fallback sets activeProfileId and activeProfile atomical
   const state = useSafeSpaceStore.getState();
   assert.equal(state.activeProfileId, "walker");
   assert.equal(state.activeProfile.id, "walker");
+});
+
+// ---------------------------------------------------------------------------
+// 8. Truthful Envelope & Entrance Waypoint Derivation (Blocker 1)
+// ---------------------------------------------------------------------------
+
+test("truthful envelope: DEMO_CLINIC_ENVELOPE has 4 vertices with no fabricated exterior pocket", () => {
+  assert.equal(DEMO_CLINIC_ENVELOPE.length, 4);
+  for (const pt of DEMO_CLINIC_ENVELOPE) {
+    assert.ok(pt.x >= 40, `x coordinate ${pt.x} must be >= 40 (inside physical boundary)`);
+    assert.ok(pt.x <= 760);
+    assert.ok(pt.y >= 40);
+    assert.ok(pt.y <= 560);
+  }
+});
+
+test("truthful waypoint: INITIAL_ROUTE entrance interior approach point derived from door geometry and wall clearance", () => {
+  const entranceWp = INITIAL_ROUTE[0];
+  assert.equal(entranceWp.name, "Entrance Interior Approach");
+  // Entrance door at x=40, span y=220..310 (center = 265)
+  assert.equal(entranceWp.y, 265);
+  // Interior x=95 gives 55cm clearance inside left exterior wall (x=40)
+  assert.equal(entranceWp.x, 95);
+  assert.ok(entranceWp.x - 40 >= 45, "x clearance satisfies walker 45cm required corridor radius");
+});
+
+// ---------------------------------------------------------------------------
+// 9. Wall Routing & Opening Integration Fixtures (Blocker 2)
+// ---------------------------------------------------------------------------
+
+test("wall routing integration: solid internal wall blocks route (unreachable)", () => {
+  const room: CanonicalRoom = {
+    id: "test-room",
+    floorId: "floor-1",
+    name: "Wall Test Room",
+    boundary: [
+      { x: 0, y: 0 },
+      { x: 500, y: 0 },
+      { x: 500, y: 400 },
+      { x: 0, y: 400 },
+    ],
+  };
+
+  const solidWall: SpatialWall = {
+    id: "solid-dividing-wall",
+    start: { x: 250, y: 0 },
+    end: { x: 250, y: 400 },
+    thickness: 12,
+    isExterior: false,
+  };
+
+  const wallObstacles = toCanonicalWallObstacles([solidWall], []);
+  const profile: CanonicalMobilityProfile = {
+    id: "test-profile-60",
+    name: "Narrow Profile",
+    aidType: "rollator-walker",
+    preferredClearanceCm: {
+      value: 60,
+      unit: "cm",
+      source: { type: "clinical-input", referenceId: "TEST", verificationStatus: "unverified" },
+    },
+    turningDiameterCm: {
+      value: 120,
+      unit: "cm",
+      source: { type: "clinical-input", referenceId: "TEST", verificationStatus: "unverified" },
+    },
+  };
+
+  const res = computeRoute({
+    room,
+    obstacles: wallObstacles,
+    start: { x: 100, y: 200 },
+    end: { x: 400, y: 200 },
+    mobilityProfile: profile,
+  });
+
+  assert.notEqual(res.status, "success");
+});
+
+test("wall routing integration: door opening permits traversal across wall, crossing in span, no wall collision", () => {
+  const room: CanonicalRoom = {
+    id: "test-room",
+    floorId: "floor-1",
+    name: "Wall Test Room",
+    boundary: [
+      { x: 0, y: 0 },
+      { x: 500, y: 0 },
+      { x: 500, y: 400 },
+      { x: 0, y: 400 },
+    ],
+  };
+
+  const dividingWall: SpatialWall = {
+    id: "dividing-wall",
+    start: { x: 250, y: 0 },
+    end: { x: 250, y: 400 },
+    thickness: 12,
+    isExterior: false,
+  };
+
+  const door: SpatialDoor = {
+    id: "door-1",
+    roomId: "test-room",
+    name: "Center Doorway",
+    position: { x: 250, y: 150 },
+    width: 100, // span y: 150..250
+    swingDeg: 0,
+    swingDirection: "inward-left",
+    hinge: { x: 250, y: 150 },
+  };
+
+  const wallObstacles = toCanonicalWallObstacles([dividingWall], [door], "test-room");
+  const profile: CanonicalMobilityProfile = {
+    id: "test-profile-60",
+    name: "Narrow Profile",
+    aidType: "rollator-walker",
+    preferredClearanceCm: {
+      value: 60,
+      unit: "cm",
+      source: { type: "clinical-input", referenceId: "TEST", verificationStatus: "unverified" },
+    },
+    turningDiameterCm: {
+      value: 120,
+      unit: "cm",
+      source: { type: "clinical-input", referenceId: "TEST", verificationStatus: "unverified" },
+    },
+  };
+
+  const res = computeRoute({
+    room,
+    obstacles: wallObstacles,
+    start: { x: 100, y: 200 },
+    end: { x: 400, y: 200 },
+    mobilityProfile: profile,
+  });
+
+  // B: Success
+  assert.equal(res.status, "success");
+  if (res.status !== "success") return;
+
+  // C: Crossing point lies in opening span y: 150..250
+  let crossingY: number | null = null;
+  for (let i = 0; i < res.path.length - 1; i++) {
+    const p1 = res.path[i];
+    const p2 = res.path[i + 1];
+    if ((p1.x <= 250 && p2.x >= 250) || (p1.x >= 250 && p2.x <= 250)) {
+      if (Math.abs(p2.x - p1.x) < 1e-6) {
+        crossingY = (p1.y + p2.y) / 2;
+      } else {
+        const t = (250 - p1.x) / (p2.x - p1.x);
+        crossingY = p1.y + t * (p2.y - p1.y);
+      }
+      break;
+    }
+  }
+
+  assert.ok(crossingY !== null, "Route must cross the wall line at x = 250");
+  assert.ok(crossingY >= 150 && crossingY <= 250, `Crossing y (${crossingY}) must lie within door span 150..250`);
+
+  // D: Route never intersects any solid wall obstacle polygon
+  for (const obs of wallObstacles) {
+    const footprint = deriveWorldFootprint(obs);
+    for (let i = 0; i < res.path.length - 1; i++) {
+      const seg: Segment2D = { start: res.path[i], end: res.path[i + 1] };
+      const intersects = segmentIntersectsPolygon(seg, footprint);
+      assert.equal(intersects, false, `Route segment ${i} must not intersect wall obstacle ${obs.id}`);
+    }
+  }
+});
+
+test("door slicing convention: door position and width define exact opening gap along wall vector", () => {
+  const wall: SpatialWall = {
+    id: "w-test",
+    start: { x: 0, y: 100 },
+    end: { x: 400, y: 100 },
+    thickness: 10,
+    isExterior: false,
+  };
+  const door: SpatialDoor = {
+    id: "d-test",
+    roomId: "test-room",
+    name: "Span Door",
+    position: { x: 150, y: 100 },
+    width: 80, // span 150..230
+    swingDeg: 0,
+    swingDirection: "inward-left",
+    hinge: { x: 150, y: 100 },
+  };
+
+  const obstacles = toCanonicalWallObstacles([wall], [door]);
+  assert.equal(obstacles.length, 2);
+
+  // Segment 1: from x=0 to x=150 (midX = 75, width = 150)
+  assert.equal(obstacles[0].position.x, 75);
+  assert.equal(obstacles[0].dimensionsCm.width, 150);
+
+  // Segment 2: from x=230 to x=400 (midX = 315, width = 170)
+  assert.equal(obstacles[1].position.x, 315);
+  assert.equal(obstacles[1].dimensionsCm.width, 170);
+});
+
+// ---------------------------------------------------------------------------
+// 10. Store Geometry State Snapshot Consistency (Blocker 3)
+// ---------------------------------------------------------------------------
+
+test("store route recomputation: consumes CURRENT store walls and doors state snapshot", () => {
+  useSafeSpaceStore.getState().resetToDemo();
+
+  // Install custom blocking wall across corridor into store state
+  const blockingWall: SpatialWall = {
+    id: "store-blocker-wall",
+    start: { x: 260, y: 400 },
+    end: { x: 260, y: 560 },
+    thickness: 20,
+    isExterior: false,
+  };
+
+  useSafeSpaceStore.setState({
+    walls: [...INITIAL_WALLS, blockingWall],
+    doors: [], // no doors -> corridor portal is blocked
+  });
+
+  // Trigger route recomputation via moveFurniture
+  useSafeSpaceStore.getState().moveFurniture("chair-c01", 105, 85);
+
+  const result = useSafeSpaceStore.getState().routeResult;
+  assert.ok(result !== null);
+  // Route is blocked or clearance insufficient because of the custom wall
+  assert.notEqual(result.status, "success");
+
+  // Restore demo
+  useSafeSpaceStore.getState().resetToDemo();
+  assert.equal(useSafeSpaceStore.getState().walls.length, INITIAL_WALLS.length);
 });

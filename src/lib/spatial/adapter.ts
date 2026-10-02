@@ -16,20 +16,15 @@ import type {
 
 /**
  * Canonical floor envelope for the Queen Care Clinic demo fixture.
- * Encloses the interior room space [40, 760] × [40, 560] and includes
- * the exterior entrance doorway threshold landing [0, 40] × [190, 340]
- * so routes beginning at the entrance doorway (60, 240) remain within
- * the interior computational envelope without allowing shortcuts into exterior margins.
+ * Derived from the real exterior perimeter walls (w-top, w-right, w-bottom, w-left)
+ * defining the interior room boundaries [40, 760] × [40, 560].
+ * Does not contain fabricated exterior pockets or outside-building geometry.
  */
 export const DEMO_CLINIC_ENVELOPE: Polygon2D = [
   { x: 40, y: 40 },
   { x: 760, y: 40 },
   { x: 760, y: 560 },
   { x: 40, y: 560 },
-  { x: 40, y: 340 },
-  { x: 0, y: 340 },
-  { x: 0, y: 190 },
-  { x: 40, y: 190 },
 ];
 
 /**
@@ -114,6 +109,12 @@ export function toCanonicalObjects(
  * Converts internal SpatialWall structures into CanonicalObject obstacle polygons for computeRoute,
  * splitting continuous walls around known opening/door spans so doorways remain traversable.
  * Exterior perimeter walls are excluded as they are defined by the canonical room boundary.
+ *
+ * Door slicing convention:
+ * - door.position is treated as one opening endpoint along the wall direction vector.
+ * - door.width defines the span extent along the wall.
+ * - Slicing produces solid CanonicalObject wall segments for the wall spans outside the openings.
+ * - Does not infer statutory or clinical door behavior.
  */
 export function toCanonicalWallObstacles(
   walls: readonly SpatialWall[],
