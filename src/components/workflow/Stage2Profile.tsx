@@ -27,9 +27,14 @@ export function Stage2Profile() {
           <p className="text-xs font-semibold uppercase tracking-wider text-[#1e7168]">
             Stage 2 · Mobility Profile
           </p>
-          <h1 className="text-xl font-bold text-[#192329] tracking-tight mt-0.5">
-            Select Mobility Profile
-          </h1>
+          <div className="flex flex-wrap items-center justify-between gap-2 mt-0.5">
+            <h1 className="text-xl font-bold text-[#192329] tracking-tight">
+              Select Mobility Profile
+            </h1>
+            <span className="text-[11px] font-medium text-amber-800 bg-amber-50 border border-amber-200 px-2 py-0.5 rounded">
+              Demo Fixture · Unverified Inputs (Not statutory or clinical standards)
+            </span>
+          </div>
         </div>
 
         {/* Profile Selection Grid */}
@@ -66,11 +71,16 @@ export function Stage2Profile() {
 
         {/* Concise Profile Adjustment Panel */}
         <div className="bg-white rounded-xl border border-[#e2e8e4] p-5 shadow-xs space-y-5">
-          <div className="flex items-center gap-2 border-b border-slate-100 pb-2.5">
-            <Sliders className="w-4 h-4 text-[#1e7168]" />
-            <h2 className="font-semibold text-xs text-slate-900 uppercase tracking-wide">
-              Safety Thresholds · {activeProfile.name}
-            </h2>
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-1 border-b border-slate-100 pb-2.5">
+            <div className="flex items-center gap-2">
+              <Sliders className="w-4 h-4 text-[#1e7168]" />
+              <h2 className="font-semibold text-xs text-slate-900 uppercase tracking-wide">
+                Safety Thresholds · {activeProfile.name}
+              </h2>
+            </div>
+            <span className="text-[10px] text-slate-400">
+              Reference: DEMO-PRESET-{activeProfile.id.toUpperCase()} · Unverified
+            </span>
           </div>
 
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
