@@ -1,6 +1,7 @@
 "use client";
 
 import React from "react";
+import Link from "next/link";
 import { useSafeSpaceStore, type WorkflowStage } from "@/store/safespace-store";
 import {
   Check,
@@ -18,45 +19,85 @@ const STAGES: { id: WorkflowStage; label: string; stepNumber: number }[] = [
 ];
 
 export function TopAppBar() {
-  const { activeStage, setStage, resetToDemo } = useSafeSpaceStore();
+  const {
+    activeStage,
+    setStage,
+    assessmentType,
+    assessmentMetadata,
+    storageStatus,
+    resetToDemo,
+    loadDemoAssessment,
+  } = useSafeSpaceStore();
 
   const currentStageIndex = STAGES.findIndex((s) => s.id === activeStage);
+  const isUserAssessment = assessmentType === "user";
 
   return (
     <header className="h-14 border-b border-[#e2e8e4] bg-[#ffffff] px-4 flex items-center justify-between z-20 shrink-0 select-none">
       {/* Brand & Assessment Context */}
       <div className="flex items-center gap-3">
-        <div className="flex items-center gap-2">
+        <Link href="/" className="flex items-center gap-2">
           <div className="w-7 h-7 rounded-md bg-[#1e7168] flex items-center justify-center text-white font-bold text-sm tracking-tight shadow-xs">
             S
           </div>
           <span className="font-bold text-[#192329] tracking-tight text-base">
             SafeSpace
           </span>
-        </div>
+        </Link>
 
         <span className="text-[#cbd5e1] font-light">/</span>
 
         <div className="flex items-center gap-2">
           <span className="text-xs font-semibold text-[#1e293b]">
-            Queen Care Clinic
+            {isUserAssessment
+              ? assessmentMetadata?.facilityName || "Custom Assessment"
+              : "Queen Care Clinic"}
           </span>
-          <span className="rounded bg-slate-100 px-1.5 py-0.5 text-[10px] font-medium text-slate-500 border border-slate-200">
-            Demo Fixture
+          <span
+            className={`rounded px-1.5 py-0.5 text-[10px] font-medium border ${
+              isUserAssessment
+                ? "bg-emerald-50 text-emerald-800 border-emerald-200"
+                : "bg-slate-100 text-slate-500 border-slate-200"
+            }`}
+          >
+            {isUserAssessment ? "User Assessment" : "Demo Fixture"}
           </span>
           <span className="text-[#94a3b8] text-xs">·</span>
           <span className="text-xs text-[#64748b] hidden sm:inline">
-            Waiting Area & Consultation Corridor
+            {isUserAssessment
+              ? assessmentMetadata?.spaceName || "Calibrated Room"
+              : "Waiting Area & Consultation Corridor"}
           </span>
         </div>
 
         <Tooltip
           position="bottom"
-          label="Session only: in-memory state. Persistent storage will connect to canonical store."
+          label={
+            isUserAssessment
+              ? "Persisted in browser localStorage (v1 schema). Survives page reload."
+              : "Session only: in-memory state. Create a new calibrated assessment to persist in browser storage."
+          }
         >
           <div className="hidden lg:flex items-center gap-1.5 ml-2 px-2 py-0.5 rounded-full bg-[#f1f5f3] border border-[#e2e8e4] text-[11px] text-[#475569] cursor-help">
-            <span className="w-1.5 h-1.5 rounded-full bg-[#d97706]" aria-hidden="true" />
-            <span className="font-medium">Session only</span>
+            <span
+              className={`w-1.5 h-1.5 rounded-full ${
+                isUserAssessment
+                  ? storageStatus === "saved"
+                    ? "bg-emerald-600"
+                    : storageStatus === "error" || storageStatus === "quota_exceeded"
+                    ? "bg-red-600"
+                    : "bg-amber-500"
+                  : "bg-[#d97706]"
+              }`}
+              aria-hidden="true"
+            />
+            <span className="font-medium">
+              {isUserAssessment
+                ? storageStatus === "saved"
+                  ? "Saved to browser"
+                  : "Local draft"
+                : "Session only"}
+            </span>
           </div>
         </Tooltip>
       </div>
@@ -102,14 +143,32 @@ export function TopAppBar() {
 
       {/* Right Quick Controls */}
       <div className="flex items-center gap-2">
-        <button
-          onClick={resetToDemo}
-          className="text-xs text-[#64748b] hover:text-[#1e7168] px-2.5 py-1 rounded-md border border-transparent hover:border-[#cbd5e1] hover:bg-slate-50 transition flex items-center gap-1.5 cursor-pointer focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-[#1e7168]"
-          title="Reset to initial Queen Care Clinic scenario"
+        <Link
+          href="/assessments/new"
+          className="text-xs text-[#1e7168] hover:bg-[#f0f7f5] px-2.5 py-1 rounded-md border border-[#1e7168]/30 font-medium transition flex items-center gap-1 cursor-pointer"
         >
-          <RotateCcw className="w-3.5 h-3.5" />
-          <span className="hidden sm:inline">Reset Demo</span>
-        </button>
+          <span>+ New Intake</span>
+        </Link>
+
+        {isUserAssessment ? (
+          <button
+            onClick={loadDemoAssessment}
+            className="text-xs text-[#64748b] hover:text-[#1e7168] px-2.5 py-1 rounded-md border border-transparent hover:border-[#cbd5e1] hover:bg-slate-50 transition flex items-center gap-1.5 cursor-pointer focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-[#1e7168]"
+            title="Switch back to demo clinic scenario"
+          >
+            <RotateCcw className="w-3.5 h-3.5" />
+            <span className="hidden sm:inline">Switch to Demo</span>
+          </button>
+        ) : (
+          <button
+            onClick={resetToDemo}
+            className="text-xs text-[#64748b] hover:text-[#1e7168] px-2.5 py-1 rounded-md border border-transparent hover:border-[#cbd5e1] hover:bg-slate-50 transition flex items-center gap-1.5 cursor-pointer focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-[#1e7168]"
+            title="Reset to initial Queen Care Clinic scenario"
+          >
+            <RotateCcw className="w-3.5 h-3.5" />
+            <span className="hidden sm:inline">Reset Demo</span>
+          </button>
+        )}
       </div>
     </header>
   );

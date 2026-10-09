@@ -1,6 +1,6 @@
 "use client";
 
-import React from "react";
+import React, { useEffect } from "react";
 import { useSafeSpaceStore } from "@/store/safespace-store";
 import { TopAppBar } from "@/components/workflow/TopAppBar";
 import { Stage1Layout } from "@/components/workflow/Stage1Layout";
@@ -12,7 +12,11 @@ import { AnalysisTransition } from "@/components/workflow/AnalysisTransition";
 import { ReportModal } from "@/components/workflow/ReportModal";
 
 export default function SafeSpaceApp() {
-  const { activeStage } = useSafeSpaceStore();
+  const { activeStage, hydrateFromStorage } = useSafeSpaceStore();
+
+  useEffect(() => {
+    hydrateFromStorage();
+  }, [hydrateFromStorage]);
 
   return (
     <div className="flex flex-col h-screen w-screen overflow-hidden bg-[#f7f8f6] text-[#192329] font-sans antialiased">

@@ -21,6 +21,9 @@ import {
 
 export function Stage5Improve() {
   const {
+    assessmentType,
+    assessmentMetadata,
+    loadDemoAssessment,
     viewMode,
     setViewMode,
     selectedAlternativeId,
@@ -54,6 +57,76 @@ export function Stage5Improve() {
   const toggleChecklist = (key: string) => {
     setOtChecklist((prev) => ({ ...prev, [key]: !prev[key] }));
   };
+
+  if (assessmentType === "user") {
+    return (
+      <div className="flex flex-col h-[calc(100vh-3.5rem)] w-full overflow-hidden bg-[#f7f8f6]">
+        {/* Top Stage 5 Toolbar */}
+        <div className="h-10 bg-white border-b border-[#e2e8e4] px-3.5 flex items-center justify-between shrink-0 select-none z-10">
+          <div className="flex items-center gap-2">
+            <span className="text-xs font-semibold text-[#1e7168]">
+              Stage 5 · Layout Optimization
+            </span>
+            <span className="text-slate-300">/</span>
+            <span className="text-xs text-slate-500">
+              {assessmentMetadata?.facilityName || "Custom Assessment"}
+            </span>
+          </div>
+          <button
+            onClick={() => setReportModalOpen(true)}
+            className="px-2.5 py-1 rounded bg-[#1e7168] text-white text-xs font-semibold hover:bg-[#175b54] transition cursor-pointer flex items-center gap-1"
+          >
+            <FileText className="w-3.5 h-3.5" />
+            <span>View Summary Report</span>
+          </button>
+        </div>
+
+        <div className="flex flex-1 items-center justify-center p-6">
+          <div className="max-w-md w-full bg-white rounded-xl border border-slate-200 p-6 shadow-xs text-center space-y-4">
+            <div className="w-12 h-12 rounded-full bg-emerald-50 border border-emerald-200 flex items-center justify-center mx-auto text-[#1e7168]">
+              <ShieldCheck className="w-6 h-6" />
+            </div>
+            <div>
+              <h3 className="text-base font-bold text-slate-900">
+                Layout Improvement Pending for Custom Spaces
+              </h3>
+              <p className="text-xs text-slate-600 mt-2 leading-relaxed">
+                Automated furniture rearrangement and fixture recommendations are currently calibrated to the Queen Care Clinic demonstration scenario. Custom space alternative layout authoring is scheduled for Gate 3.
+              </p>
+            </div>
+            <div className="p-3 bg-slate-50 rounded-lg border border-slate-200 text-left text-xs font-mono space-y-1">
+              <div className="flex justify-between">
+                <span className="text-slate-500 font-sans">Active Space:</span>
+                <span className="font-semibold">{assessmentMetadata?.spaceName || "Custom Space"}</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-slate-500 font-sans">Clearance Margin:</span>
+                <span className="font-semibold text-emerald-700">{metrics.minClearanceCm} cm</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-slate-500 font-sans">Critical Route Length:</span>
+                <span className="font-semibold">{metrics.routeLengthM} m</span>
+              </div>
+            </div>
+            <div className="flex flex-col gap-2 pt-2">
+              <button
+                onClick={() => setStage("routes")}
+                className="w-full py-2 px-3 bg-[#1e7168] text-white rounded-lg text-xs font-semibold hover:bg-[#185e56] transition cursor-pointer"
+              >
+                Back to Route Clearance (Stage 3)
+              </button>
+              <button
+                onClick={loadDemoAssessment}
+                className="w-full py-2 px-3 border border-slate-200 bg-white text-slate-700 rounded-lg text-xs font-semibold hover:bg-slate-50 transition cursor-pointer"
+              >
+                Switch to Demo Clinic Scenario
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="flex flex-col h-[calc(100vh-3.5rem)] w-full overflow-hidden bg-[#f7f8f6]">

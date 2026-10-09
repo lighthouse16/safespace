@@ -128,8 +128,27 @@ export type {
 // Domain Adapters
 export {
   DEMO_CLINIC_ENVELOPE,
+  resolveCanonicalRoom,
   toCanonicalObjects,
   toCanonicalProfile,
   toCanonicalRoom,
   toCanonicalWallObstacles,
 } from "./adapter";
+
+// Intake Conversion & Validation
+export {
+  INTAKE_ORIGIN_POLICY,
+  computePolygonBoundsCm,
+  computePolygonShoelaceAreaCm2,
+  convertCmPointToPixels,
+  convertCmPolygonToPixels,
+  convertCmToCanvasPx,
+  convertIntakePointToCm,
+  convertIntakePolygonToCm,
+  convertPixelPointToCm,
+  convertPixelPolygonToCm,
+  isSimplePolygon,
+  validateIntakeBoundary,
+  type CoordinateConversionPolicy,
+  type IntakeBoundaryValidationResult,
+} from "./intake-conversion";

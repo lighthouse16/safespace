@@ -2,6 +2,7 @@
 
 import React, { useState } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import {
   type AssessmentDetails,
@@ -11,7 +12,13 @@ import {
   type SourceType,
   type UploadedFileInfo,
 } from "./intake-view-types";
-import { formatFileSize } from "./intake-validation";
+import { formatFileSize, computePixelDistance } from "./intake-validation";
+import {
+  validateIntakeBoundary,
+  INTAKE_ORIGIN_POLICY,
+  type IntakeBoundaryValidationResult,
+} from "@/lib/spatial";
+import { useSafeSpaceStore } from "@/store/safespace-store";
 
 export type IntakeReviewStepProps = {
   details: AssessmentDetails;
@@ -34,28 +41,104 @@ export function IntakeReviewStep({
   onResetAll,
   onExitToAssessments,
 }: IntakeReviewStepProps) {
-  const [integrationAcknowledged, setIntegrationAcknowledged] = useState(false);
+  const router = useRouter();
+  const createAndLoadUserAssessment = useSafeSpaceStore((s) => s.createAndLoadUserAssessment);
+  const [validationError, setValidationError] = useState<string | null>(null);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+
+  // Pre-validate for preview statistics
+  const previewValidation: IntakeBoundaryValidationResult = validateIntakeBoundary(
+    boundary.vertices,
+    boundary.isClosed,
+    calibration.pixelsPerCm
+  );
 
   const polygonPoints = boundary.vertices.map((v) => `${v.x},${v.y}`).join(" ");
 
+  const handleConfirmAndOpen = () => {
+    setValidationError(null);
+
+    const validation = validateIntakeBoundary(
+      boundary.vertices,
+      boundary.isClosed,
+      calibration.pixelsPerCm
+    );
+
+    if (!validation.isValid || !validation.polygonCm || !validation.boundsCm) {
+      setValidationError(validation.error || "Boundary validation failed.");
+      return;
+    }
+
+    if (!details.assessmentName.trim()) {
+      setValidationError("Assessment name is required.");
+      return;
+    }
+
+    try {
+      setIsSubmitting(true);
+      const pixelDist =
+        calibration.p1 && calibration.p2
+          ? computePixelDistance(calibration.p1, calibration.p2)
+          : 0;
+
+      createAndLoadUserAssessment({
+        metadata: {
+          id: `assessment-${Date.now()}`,
+          name: details.assessmentName.trim(),
+          facilityName: details.facilityName.trim(),
+          spaceName: details.spaceName.trim(),
+          environmentType: details.environmentType,
+          notes: details.notes?.trim() || undefined,
+          createdAt: new Date().toISOString(),
+          updatedAt: new Date().toISOString(),
+        },
+        boundaryCm: validation.polygonCm,
+        calibration: {
+          pixelsPerCm: calibration.pixelsPerCm!,
+          realLength: calibration.realLength!,
+          unit: calibration.unit,
+          pixelDistance: pixelDist,
+          originPolicy: INTAKE_ORIGIN_POLICY,
+        },
+      });
+
+      router.push("/");
+    } catch (err) {
+      setIsSubmitting(false);
+      const message = err instanceof Error ? err.message : String(err);
+      setValidationError(`Failed to initialize assessment workspace: ${message}`);
+    }
+  };
+
   return (
     <div className="space-y-6">
-      {/* Session Truthfulness Notice */}
+      {/* Session & Storage Disclosure */}
       <div className="rounded-xl border border-slate-200 bg-white p-6 shadow-xs space-y-6">
         <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between border-b border-slate-100 pb-4">
           <div>
-            <span className="inline-flex items-center gap-1.5 rounded-full bg-slate-100 px-2.5 py-1 text-xs font-semibold text-slate-700 border border-slate-200">
-              <span className="size-1.5 rounded-full bg-slate-500" />
-              Session only
+            <span className="inline-flex items-center gap-1.5 rounded-full bg-emerald-50 px-2.5 py-1 text-xs font-semibold text-emerald-800 border border-emerald-200">
+              <span className="size-1.5 rounded-full bg-emerald-600" />
+              Ready for Confirmation
             </span>
             <h2 className="mt-2 text-lg font-semibold text-[#192329]">
               Review Intake & Boundary Draft
             </h2>
           </div>
           <p className="text-xs text-[#64748b] max-w-sm sm:text-right">
-            This draft remains in the current browser session until project storage is connected.
+            Confirming this intake creates an independent user assessment and opens it in the main spatial workspace.
           </p>
         </div>
+
+        {/* Validation Error Banner */}
+        {validationError && (
+          <div
+            role="alert"
+            className="rounded-lg border border-red-200 bg-red-50 p-4 text-xs text-red-800 space-y-1"
+          >
+            <div className="font-semibold text-sm">Cannot Confirm Assessment</div>
+            <p>{validationError}</p>
+          </div>
+        )}
 
         {/* Fact Sheet Grid */}
         <div className="grid gap-6 md:grid-cols-2">
@@ -68,19 +151,19 @@ export function IntakeReviewStep({
               <div className="p-3 flex justify-between">
                 <dt className="text-slate-500">Assessment Name</dt>
                 <dd className="font-semibold text-slate-900 text-right">
-                  {details.assessmentName}
+                  {details.assessmentName || "—"}
                 </dd>
               </div>
               <div className="p-3 flex justify-between">
                 <dt className="text-slate-500">Facility / Residence</dt>
                 <dd className="font-medium text-slate-900 text-right">
-                  {details.facilityName}
+                  {details.facilityName || "—"}
                 </dd>
               </div>
               <div className="p-3 flex justify-between">
                 <dt className="text-slate-500">Space / Area</dt>
                 <dd className="font-medium text-slate-900 text-right">
-                  {details.spaceName}
+                  {details.spaceName || "—"}
                 </dd>
               </div>
               <div className="p-3 flex justify-between">
@@ -140,34 +223,46 @@ export function IntakeReviewStep({
                   {boundary.isClosed ? "Closed loop" : "Open path"})
                 </dd>
               </div>
+              {previewValidation.boundsCm && (
+                <div className="p-3 flex justify-between">
+                  <dt className="text-slate-500">Physical Dimensions</dt>
+                  <dd className="font-mono font-semibold text-slate-800">
+                    {Math.round(previewValidation.boundsCm.widthCm)} × {Math.round(previewValidation.boundsCm.heightCm)} cm
+                    {previewValidation.areaCm2 && (
+                      <span className="text-slate-500 font-normal ml-1">
+                        ({(previewValidation.areaCm2 / 10000).toFixed(1)} m²)
+                      </span>
+                    )}
+                  </dd>
+                </div>
+              )}
             </dl>
           </div>
 
-          {/* Right Column: Visual Preview of Traced Boundary */}
+          {/* Right Column: Geometry Preview */}
           <div className="space-y-4">
             <h3 className="text-xs font-semibold uppercase tracking-wider text-slate-400">
-              Traced Perimeter Preview
+              Drafted Geometry Preview
             </h3>
-            <div className="overflow-hidden rounded-xl border border-slate-300 bg-slate-900 p-2 shadow-inner aspect-[4/3] flex items-center justify-center relative">
-              <svg viewBox="0 0 800 600" className="w-full h-full select-none block">
-                {/* Background Floorplan image if available */}
-                {source === "upload" && uploadedFile && uploadedFile.previewAvailable ? (
-                  <image
-                    href={uploadedFile.objectUrl}
-                    x="0"
-                    y="0"
-                    width={800}
-                    height={600}
-                    preserveAspectRatio="xMidYMid meet"
-                    opacity="0.5"
-                  />
-                ) : null}
+            <div className="relative aspect-4/3 w-full overflow-hidden rounded-lg border border-slate-200 bg-[#f8faf8] p-4 flex items-center justify-center">
+              <svg
+                viewBox="0 0 800 600"
+                className="w-full h-full max-h-72"
+                aria-label="Boundary draft preview"
+              >
+                {/* SVG background grid */}
+                <defs>
+                  <pattern id="preview-grid" width="40" height="40" patternUnits="userSpaceOnUse">
+                    <path d="M 40 0 L 0 0 0 40" fill="none" stroke="#e2e8e4" strokeWidth="0.5" />
+                  </pattern>
+                </defs>
+                <rect width="800" height="600" fill="url(#preview-grid)" />
 
-                {/* Traced polygon */}
-                {boundary.isClosed ? (
+                {/* Boundary Polygon */}
+                {boundary.isClosed && boundary.vertices.length >= 3 ? (
                   <polygon
                     points={polygonPoints}
-                    fill="rgba(30, 113, 104, 0.35)"
+                    fill="rgba(30, 113, 104, 0.25)"
                     stroke="#1e7168"
                     strokeWidth={3}
                   />
@@ -195,25 +290,23 @@ export function IntakeReviewStep({
               </svg>
             </div>
             <p className="text-[11px] text-[#64748b] text-center">
-              Boundary contains {boundary.vertices.length} traced vertices using the current scale calibration.
+              Boundary contains {boundary.vertices.length} traced vertices using current scale calibration ({calibration.pixelsPerCm ? calibration.pixelsPerCm.toFixed(2) : "0"} px/cm).
             </p>
+
+            {/* Storage Lifecycle Disclosure */}
+            <div className="rounded-lg border border-slate-200 bg-slate-50 p-3 text-[11px] text-slate-600 space-y-1">
+              <div className="font-semibold text-slate-800">
+                Data Persistence & Source File Lifecycle
+              </div>
+              <p>
+                Your confirmed room boundary, scale calibration provenance, and assessment metadata will be saved permanently in browser storage.
+              </p>
+              <p className="text-slate-500">
+                Uploaded floorplan images remain in browser memory for the active session and are never saved as durable blob URLs.
+              </p>
+            </div>
           </div>
         </div>
-
-        {/* Integration Notification */}
-        {integrationAcknowledged && (
-          <div
-            role="status"
-            className="rounded-lg border border-[#a7f3d0] bg-[#ecfdf5] p-4 text-xs text-[#065f46] space-y-1"
-          >
-            <div className="font-semibold text-sm">
-              Draft complete for session workspace integration
-            </div>
-            <p>
-              Your boundary draft and scale calibration are held in browser memory for this session. When canonical project storage is connected, intake drafts will be retained across sessions.
-            </p>
-          </div>
-        )}
       </div>
 
       {/* Action Footer */}
@@ -235,10 +328,11 @@ export function IntakeReviewStep({
           <Button
             type="button"
             size="md"
-            onClick={() => setIntegrationAcknowledged(true)}
-            className="font-semibold"
+            onClick={handleConfirmAndOpen}
+            disabled={isSubmitting || !previewValidation.isValid}
+            className="font-semibold bg-[#1e7168] hover:bg-[#185e56] text-white"
           >
-            Draft complete for workspace integration
+            {isSubmitting ? "Opening Workspace..." : "Confirm & Open in Workspace"}
           </Button>
 
           <Link

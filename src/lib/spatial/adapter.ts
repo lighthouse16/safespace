@@ -73,6 +73,34 @@ export function toCanonicalRoom(
 }
 
 /**
+ * Resolves a CanonicalRoom for routing, with typed explicit canonical boundary override for user scenes.
+ * - If canonicalBoundaryOverride is provided and has >= 3 vertices, it is used directly as the room boundary.
+ * - Otherwise (demo scenes or missing override), it delegates to toCanonicalRoom(rooms, id, name).
+ * - Guarantees user-created scenes NEVER fall back to DEMO_CLINIC_ENVELOPE.
+ */
+export function resolveCanonicalRoom(
+  canonicalBoundaryOverride?: Polygon2D | null,
+  rooms?: readonly SpatialRoom[] | null,
+  id = "room-1",
+  name = "Assessed Space"
+): CanonicalRoom {
+  if (
+    canonicalBoundaryOverride &&
+    Array.isArray(canonicalBoundaryOverride) &&
+    canonicalBoundaryOverride.length >= 3
+  ) {
+    return {
+      id,
+      floorId: "floor-1",
+      name,
+      boundary: canonicalBoundaryOverride.map((p) => ({ x: p.x, y: p.y })),
+    };
+  }
+
+  return toCanonicalRoom(rooms, id, name);
+}
+
+/**
  * Converts UI SpatialFurniture array into CanonicalObject array for routing and clearance.
  * Non-blocking items (mats, lights, handrails) are excluded from physical route collision.
  */

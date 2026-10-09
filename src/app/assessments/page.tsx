@@ -1,13 +1,46 @@
+"use client";
+
+import React, { useEffect, useState } from "react";
 import Link from "next/link";
 import { AppShell } from "@/components/shell";
+import {
+  loadPersistedAssessment,
+  clearPersistedAssessment,
+  type PersistedAssessmentState,
+} from "@/lib/storage/persistence";
+import { useSafeSpaceStore } from "@/store/safespace-store";
 
 export default function AssessmentsPage() {
+  const { hydrateFromStorage } = useSafeSpaceStore();
+  const [savedAssessment, setSavedAssessment] = useState<PersistedAssessmentState | null>(null);
+
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      const res = loadPersistedAssessment();
+      if (res.success && res.data.assessmentType === "user") {
+        setSavedAssessment(res.data);
+      } else {
+        setSavedAssessment(null);
+      }
+    }, 0);
+    return () => clearTimeout(timer);
+  }, []);
+
+  const handleOpenUserAssessment = () => {
+    hydrateFromStorage();
+  };
+
+  const handleDeleteUserAssessment = () => {
+    clearPersistedAssessment();
+    setSavedAssessment(null);
+  };
+
   return (
     <AppShell
       activePath="/assessments"
-      facilityName={null}
+      facilityName={savedAssessment?.metadata?.facilityName ?? null}
       workspaceLabel="SafeSpace workspace"
-      storageLabel="Storage not connected"
+      storageLabel={savedAssessment ? "Saved in browser" : "Storage not connected"}
     >
       <div className="mx-auto max-w-5xl space-y-6">
         {/* Header */}
@@ -19,9 +52,13 @@ export default function AssessmentsPage() {
               </p>
               <span
                 role="status"
-                className="rounded-full bg-slate-100 px-2.5 py-0.5 text-[11px] font-medium text-slate-600 border border-slate-200"
+                className={`rounded-full px-2.5 py-0.5 text-[11px] font-medium border ${
+                  savedAssessment
+                    ? "bg-emerald-50 text-emerald-800 border-emerald-200"
+                    : "bg-slate-100 text-slate-600 border-slate-200"
+                }`}
               >
-                Session only
+                {savedAssessment ? "Saved to browser" : "Session only"}
               </span>
             </div>
             <h1 className="mt-1 text-2xl font-semibold tracking-tight text-[#192329] sm:text-3xl">
@@ -40,39 +77,96 @@ export default function AssessmentsPage() {
           </Link>
         </header>
 
-        {/* Real Assessments Empty State */}
-        <div className="rounded-xl border border-slate-200 bg-white p-8 text-center shadow-xs">
-          <div className="mx-auto size-11 rounded-full bg-slate-100 border border-slate-200 grid place-items-center text-slate-500">
-            <svg
-              className="size-5"
-              fill="none"
-              viewBox="0 0 24 24"
-              stroke="currentColor"
-              aria-hidden="true"
-            >
-              <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                strokeWidth={1.5}
-                d="M9 13h6m-3-3v6m5 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"
-              />
-            </svg>
+        {/* Real User Assessment or Empty State */}
+        {savedAssessment ? (
+          <section aria-labelledby="saved-assessment-heading" className="space-y-3">
+            <div className="flex items-center justify-between">
+              <h2
+                id="saved-assessment-heading"
+                className="text-xs font-semibold uppercase tracking-wider text-[#1e7168]"
+              >
+                Confirmed User Assessment
+              </h2>
+              <span className="text-[11px] text-emerald-700 font-medium">
+                Persisted in localStorage v1
+              </span>
+            </div>
+
+            <div className="overflow-hidden rounded-xl border border-emerald-200 bg-white shadow-xs">
+              <div className="p-5 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+                <div className="space-y-1">
+                  <div className="flex items-center gap-2">
+                    <span className="font-semibold text-sm text-[#192329]">
+                      {savedAssessment.metadata?.facilityName || "Custom Facility"}
+                    </span>
+                    <span className="rounded bg-emerald-50 px-2 py-0.5 text-[10px] font-semibold text-emerald-800 border border-emerald-200">
+                      User Assessment
+                    </span>
+                    <span className="text-slate-400 text-xs">·</span>
+                    <span className="text-xs font-medium text-slate-600">
+                      {savedAssessment.metadata?.spaceName || "Room"}
+                    </span>
+                  </div>
+                  <p className="text-xs text-slate-600">
+                    Boundary: {savedAssessment.canonicalBoundary?.length ?? 0} vertices · Scale: {savedAssessment.calibration?.pixelsPerCm.toFixed(2)} px/cm
+                  </p>
+                  <p className="text-[11px] text-slate-400">
+                    Saved: {savedAssessment.metadata?.updatedAt ? new Date(savedAssessment.metadata.updatedAt).toLocaleString() : "Recently"}
+                  </p>
+                </div>
+
+                <div className="flex items-center gap-2 shrink-0">
+                  <button
+                    onClick={handleDeleteUserAssessment}
+                    className="rounded-lg border border-red-200 bg-white px-3 py-1.5 text-xs font-semibold text-red-600 hover:bg-red-50 transition cursor-pointer"
+                  >
+                    Delete
+                  </button>
+                  <Link
+                    href="/"
+                    onClick={handleOpenUserAssessment}
+                    className="rounded-lg bg-[#1e7168] px-3.5 py-1.5 text-xs font-semibold text-white hover:bg-[#175b54] transition cursor-pointer"
+                  >
+                    Open in workspace &rarr;
+                  </Link>
+                </div>
+              </div>
+            </div>
+          </section>
+        ) : (
+          <div className="rounded-xl border border-slate-200 bg-white p-8 text-center shadow-xs">
+            <div className="mx-auto size-11 rounded-full bg-slate-100 border border-slate-200 grid place-items-center text-slate-500">
+              <svg
+                className="size-5"
+                fill="none"
+                viewBox="0 0 24 24"
+                stroke="currentColor"
+                aria-hidden="true"
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth={1.5}
+                  d="M9 13h6m-3-3v6m5 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"
+                />
+              </svg>
+            </div>
+            <h2 className="mt-3 text-sm font-semibold text-[#192329]">
+              No assessments saved yet
+            </h2>
+            <p className="mt-1 text-xs text-[#64748b] max-w-md mx-auto">
+              Intake drafts exist only while the intake session remains open; leaving or refreshing discards unsaved session state until canonical project storage is connected.
+            </p>
+            <div className="mt-4">
+              <Link
+                href="/assessments/new"
+                className="inline-flex items-center justify-center rounded-lg border border-slate-300 bg-white px-3.5 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-50 transition"
+              >
+                Start an assessment
+              </Link>
+            </div>
           </div>
-          <h2 className="mt-3 text-sm font-semibold text-[#192329]">
-            No assessments saved yet
-          </h2>
-          <p className="mt-1 text-xs text-[#64748b] max-w-md mx-auto">
-            Intake drafts exist only while the intake session remains open; leaving or refreshing discards unsaved session state until canonical project storage is connected.
-          </p>
-          <div className="mt-4">
-            <Link
-              href="/assessments/new"
-              className="inline-flex items-center justify-center rounded-lg border border-slate-300 bg-white px-3.5 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-50 transition"
-            >
-              Start an assessment
-            </Link>
-          </div>
-        </div>
+        )}
 
         {/* Labelled Demo Fixture Section */}
         <section aria-labelledby="demo-fixtures-heading" className="space-y-3">

@@ -10,9 +10,15 @@ export function ReportModal() {
     setReportModalOpen,
     activeProfile,
     approvalStatus,
+    assessmentType,
+    assessmentMetadata,
+    getLiveMetrics,
   } = useSafeSpaceStore();
 
   if (!reportModalOpen) return null;
+
+  const isUserAssessment = assessmentType === "user";
+  const metrics = getLiveMetrics();
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-xs p-4 select-none">
@@ -39,11 +45,22 @@ export function ReportModal() {
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 p-3.5 bg-slate-50 rounded-lg border border-slate-100 text-xs font-mono">
             <div>
               <span className="text-slate-400 block text-[10px]">FACILITY</span>
-              <span className="font-semibold text-slate-900">Queen Care Clinic <span className="font-normal text-[10px] text-slate-500">(Demo Fixture)</span></span>
+              <span className="font-semibold text-slate-900">
+                {isUserAssessment
+                  ? assessmentMetadata?.facilityName || "Custom Assessment"
+                  : "Queen Care Clinic"}{" "}
+                <span className="font-normal text-[10px] text-slate-500">
+                  ({isUserAssessment ? "User Assessment" : "Demo Fixture"})
+                </span>
+              </span>
             </div>
             <div>
               <span className="text-slate-400 block text-[10px]">ASSESSED SPACE</span>
-              <span className="font-semibold text-slate-900">Waiting & Corridor</span>
+              <span className="font-semibold text-slate-900">
+                {isUserAssessment
+                  ? assessmentMetadata?.spaceName || "Calibrated Space"
+                  : "Waiting & Corridor"}
+              </span>
             </div>
             <div>
               <span className="text-slate-400 block text-[10px]">MOBILITY PROFILE</span>
@@ -52,7 +69,11 @@ export function ReportModal() {
             <div>
               <span className="text-slate-400 block text-[10px]">STATUS</span>
               <span className="font-semibold text-emerald-700 uppercase">
-                {approvalStatus === "approved" ? "OT Approved" : "Pending Sign-off"}
+                {isUserAssessment
+                  ? "Calibrated Draft"
+                  : approvalStatus === "approved"
+                  ? "OT Approved"
+                  : "Pending Sign-off"}
               </span>
             </div>
           </div>
@@ -63,85 +84,159 @@ export function ReportModal() {
               Objective Risk & Clearance Metrics
             </h3>
             <div className="overflow-hidden rounded-lg border border-slate-200">
-              <table className="w-full text-left text-xs">
-                <thead className="bg-slate-50 border-b border-slate-200 text-slate-600 font-semibold">
-                  <tr>
-                    <th className="p-2.5">Evaluation Parameter</th>
-                    <th className="p-2.5">Current Condition</th>
-                    <th className="p-2.5">Proposed (Balanced)</th>
-                    <th className="p-2.5">Variance</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-slate-100 font-mono">
-                  <tr>
-                    <td className="p-2.5 font-sans font-medium text-slate-800">
-                      Environmental Risk Index
-                    </td>
-                    <td className="p-2.5 text-red-600 font-bold">68 (High)</td>
-                    <td className="p-2.5 text-emerald-700 font-bold">27 (Low)</td>
-                    <td className="p-2.5 text-emerald-700 font-semibold">-41 pts (-60%)</td>
-                  </tr>
-                  <tr>
-                    <td className="p-2.5 font-sans font-medium text-slate-800">
-                      Minimum Walking Clearance
-                    </td>
-                    <td className="p-2.5 text-red-600 font-bold">54 cm</td>
-                    <td className="p-2.5 text-emerald-700 font-bold">96 cm</td>
-                    <td className="p-2.5 text-emerald-700 font-semibold">+42 cm (+77%)</td>
-                  </tr>
-                  <tr>
-                    <td className="p-2.5 font-sans font-medium text-slate-800">
-                      Critical Route Length
-                    </td>
-                    <td className="p-2.5 text-slate-600">11.8 m</td>
-                    <td className="p-2.5 text-slate-800 font-semibold">10.4 m</td>
-                    <td className="p-2.5 text-slate-700 font-semibold">-1.4 m (-12%)</td>
-                  </tr>
-                  <tr>
-                    <td className="p-2.5 font-sans font-medium text-slate-800">
-                      High-Priority Hazards
-                    </td>
-                    <td className="p-2.5 text-red-600 font-bold">3 detected</td>
-                    <td className="p-2.5 text-emerald-700 font-bold">0 remaining</td>
-                    <td className="p-2.5 text-emerald-700 font-semibold">-3 resolved</td>
-                  </tr>
-                </tbody>
-              </table>
+              {isUserAssessment ? (
+                <table className="w-full text-left text-xs">
+                  <thead className="bg-slate-50 border-b border-slate-200 text-slate-600 font-semibold">
+                    <tr>
+                      <th className="p-2.5">Evaluation Parameter</th>
+                      <th className="p-2.5">Measured Value</th>
+                      <th className="p-2.5">Standard / Benchmark</th>
+                      <th className="p-2.5">Status</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100 font-mono">
+                    <tr>
+                      <td className="p-2.5 font-sans font-medium text-slate-800">
+                        Minimum Walking Clearance
+                      </td>
+                      <td className={`p-2.5 font-bold ${
+                        metrics.minClearanceCm >= activeProfile.minClearanceCm / 2
+                          ? "text-emerald-700"
+                          : "text-red-600"
+                      }`}>
+                        {metrics.minClearanceCm > 0 ? `${metrics.minClearanceCm} cm` : "—"}
+                      </td>
+                      <td className="p-2.5 text-slate-600">
+                        ≥ {activeProfile.minClearanceCm / 2} cm (corridor {activeProfile.minClearanceCm} cm)
+                      </td>
+                      <td className="p-2.5 font-sans font-semibold">
+                        {metrics.minClearanceCm >= activeProfile.minClearanceCm / 2 ? (
+                          <span className="text-emerald-700">Meets Standard</span>
+                        ) : (
+                          <span className="text-red-600">Constrained</span>
+                        )}
+                      </td>
+                    </tr>
+                    <tr>
+                      <td className="p-2.5 font-sans font-medium text-slate-800">
+                        Critical Route Length
+                      </td>
+                      <td className="p-2.5 text-slate-800 font-bold">
+                        {metrics.routeLengthM > 0 ? `${metrics.routeLengthM} m` : "—"}
+                      </td>
+                      <td className="p-2.5 text-slate-600 font-sans">Authored checkpoints</td>
+                      <td className="p-2.5 font-sans text-slate-500">Verified Path</td>
+                    </tr>
+                    <tr>
+                      <td className="p-2.5 font-sans font-medium text-slate-800">
+                        Environmental Risk Index
+                      </td>
+                      <td className="p-2.5 text-slate-500 font-sans">Pending OT Review</td>
+                      <td className="p-2.5 text-slate-500 font-sans">&lt; 30 (Target)</td>
+                      <td className="p-2.5 font-sans text-amber-700">Scheduled Gate 3</td>
+                    </tr>
+                    <tr>
+                      <td className="p-2.5 font-sans font-medium text-slate-800">
+                        Identified Hazards
+                      </td>
+                      <td className="p-2.5 text-slate-800 font-bold">0 recorded</td>
+                      <td className="p-2.5 text-slate-500 font-sans">Zero critical</td>
+                      <td className="p-2.5 font-sans text-emerald-700">Clear</td>
+                    </tr>
+                  </tbody>
+                </table>
+              ) : (
+                <table className="w-full text-left text-xs">
+                  <thead className="bg-slate-50 border-b border-slate-200 text-slate-600 font-semibold">
+                    <tr>
+                      <th className="p-2.5">Evaluation Parameter</th>
+                      <th className="p-2.5">Current Condition</th>
+                      <th className="p-2.5">Proposed (Balanced)</th>
+                      <th className="p-2.5">Variance</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100 font-mono">
+                    <tr>
+                      <td className="p-2.5 font-sans font-medium text-slate-800">
+                        Environmental Risk Index
+                      </td>
+                      <td className="p-2.5 text-red-600 font-bold">68 (High)</td>
+                      <td className="p-2.5 text-emerald-700 font-bold">27 (Low)</td>
+                      <td className="p-2.5 text-emerald-700 font-semibold">-41 pts (-60%)</td>
+                    </tr>
+                    <tr>
+                      <td className="p-2.5 font-sans font-medium text-slate-800">
+                        Minimum Walking Clearance
+                      </td>
+                      <td className="p-2.5 text-red-600 font-bold">54 cm</td>
+                      <td className="p-2.5 text-emerald-700 font-bold">96 cm</td>
+                      <td className="p-2.5 text-emerald-700 font-semibold">+42 cm (+77%)</td>
+                    </tr>
+                    <tr>
+                      <td className="p-2.5 font-sans font-medium text-slate-800">
+                        Critical Route Length
+                      </td>
+                      <td className="p-2.5 text-slate-600">11.8 m</td>
+                      <td className="p-2.5 text-slate-800 font-semibold">10.4 m</td>
+                      <td className="p-2.5 text-slate-700 font-semibold">-1.4 m (-12%)</td>
+                    </tr>
+                    <tr>
+                      <td className="p-2.5 font-sans font-medium text-slate-800">
+                        High-Priority Hazards
+                      </td>
+                      <td className="p-2.5 text-red-600 font-bold">3 detected</td>
+                      <td className="p-2.5 text-emerald-700 font-bold">0 remaining</td>
+                      <td className="p-2.5 text-emerald-700 font-semibold">-3 resolved</td>
+                    </tr>
+                  </tbody>
+                </table>
+              )}
             </div>
           </div>
 
           {/* Implementation Actions Checklist */}
           <div>
             <h3 className="font-bold text-xs uppercase tracking-wider text-slate-500 mb-2">
-              Prescribed Modification Schedule (Est. HK$850)
+              {isUserAssessment
+                ? "Custom Space Modification Protocol"
+                : "Prescribed Modification Schedule (Est. HK$850)"}
             </h3>
-            <ul className="space-y-1.5 text-xs text-slate-700">
-              <li className="flex items-start gap-2">
-                <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0 mt-0.5" />
-                <span>Move waiting chair C-04 by 70 cm into north perimeter row (Zero cost).</span>
-              </li>
-              <li className="flex items-start gap-2">
-                <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0 mt-0.5" />
-                <span>Rotate chair C-05 by 90 degrees outward away from consultation arc.</span>
-              </li>
-              <li className="flex items-start gap-2">
-                <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0 mt-0.5" />
-                <span>Remove loose curl-edge entrance mat and restore flush threshold.</span>
-              </li>
-              <li className="flex items-start gap-2">
-                <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0 mt-0.5" />
-                <span>Install 2.4 m wall-mounted continuous corridor handrail (HK$620).</span>
-              </li>
-              <li className="flex items-start gap-2">
-                <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0 mt-0.5" />
-                <span>Install 3000K warm LED downlight luminaire at consultation portal (HK$230).</span>
-              </li>
-            </ul>
+            {isUserAssessment ? (
+              <div className="p-3 bg-slate-50 border border-slate-200 rounded-lg text-xs text-slate-600 space-y-1">
+                <p>• <strong>Geometric Clearance Verification:</strong> Walking corridor evaluated at {metrics.minClearanceCm} cm narrowest margin.</p>
+                <p>• <strong>Occupational Therapy Sign-off:</strong> Prescriptions and custom furniture rearrangement will be enabled in Gate 3.</p>
+              </div>
+            ) : (
+              <ul className="space-y-1.5 text-xs text-slate-700">
+                <li className="flex items-start gap-2">
+                  <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0 mt-0.5" />
+                  <span>Move waiting chair C-04 by 70 cm into north perimeter row (Zero cost).</span>
+                </li>
+                <li className="flex items-start gap-2">
+                  <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0 mt-0.5" />
+                  <span>Rotate chair C-05 by 90 degrees outward away from consultation arc.</span>
+                </li>
+                <li className="flex items-start gap-2">
+                  <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0 mt-0.5" />
+                  <span>Remove loose curl-edge entrance mat and restore flush threshold.</span>
+                </li>
+                <li className="flex items-start gap-2">
+                  <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0 mt-0.5" />
+                  <span>Install 2.4 m wall-mounted continuous corridor handrail (HK$620).</span>
+                </li>
+                <li className="flex items-start gap-2">
+                  <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0 mt-0.5" />
+                  <span>Install 3000K warm LED downlight luminaire at consultation portal (HK$230).</span>
+                </li>
+              </ul>
+            )}
           </div>
 
           {/* Disclaimer */}
           <div className="p-3 bg-slate-50 rounded text-xs text-slate-500 border border-slate-200 leading-relaxed">
-            This document certifies environmental geometry evaluation conducted via SafeSpace v0.1. It provides objective physical measurements and architectural recommendations for facility operations and occupational therapy consultation.
+            {isUserAssessment
+              ? `This document certifies environmental geometry and walking clearance for ${assessmentMetadata?.facilityName || "user assessment"} using SafeSpace calibrated canonical boundary. Automated hazard scoring and layout recommendations are pending occupational therapy protocol integration.`
+              : "This document certifies environmental geometry evaluation conducted via SafeSpace v0.1. It provides objective physical measurements and architectural recommendations for facility operations and occupational therapy consultation."}
           </div>
         </div>
 

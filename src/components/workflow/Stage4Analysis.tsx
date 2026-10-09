@@ -14,6 +14,8 @@ import {
 
 export function Stage4Analysis() {
   const {
+    assessmentType,
+    assessmentMetadata,
     viewMode,
     setViewMode,
     layerToggles,
@@ -27,6 +29,7 @@ export function Stage4Analysis() {
   } = useSafeSpaceStore();
 
   const metrics = getLiveMetrics();
+  const isUserAssessment = assessmentType === "user";
   const [filterSeverity, setFilterSeverity] = useState<"all" | "high" | "medium">("all");
 
   const filteredHazards = hazards.filter((h) =>
@@ -129,29 +132,43 @@ export function Stage4Analysis() {
         <aside className="w-96 sm:w-[420px] bg-white border-l border-[#e2e8e4] flex flex-col justify-between p-4 z-10 shrink-0 select-none overflow-y-auto">
           <div className="space-y-3.5">
             {/* Top Score Banner */}
-            <div className="p-3 rounded-lg border border-red-200 bg-red-50/70">
+            <div className={`p-3 rounded-lg border ${
+              isUserAssessment
+                ? "border-emerald-200 bg-emerald-50/60"
+                : "border-red-200 bg-red-50/70"
+            }`}>
               <div className="flex items-center justify-between">
                 <div>
-                  <span className="text-[10px] uppercase font-bold text-red-800">
+                  <span className={`text-[10px] uppercase font-bold ${
+                    isUserAssessment ? "text-emerald-800" : "text-red-800"
+                  }`}>
                     Environmental Risk Index
                   </span>
                   <div className="flex items-baseline gap-2 mt-0.5">
-                    <span className="text-2xl font-bold text-red-950 font-mono">
-                      {metrics.riskIndex}
+                    <span className={`text-2xl font-bold font-mono ${
+                      isUserAssessment ? "text-emerald-950" : "text-red-950"
+                    }`}>
+                      {isUserAssessment ? "—" : metrics.riskIndex}
                     </span>
-                    <span className="px-1.5 py-0.2 rounded text-[10px] font-bold uppercase bg-red-600 text-white">
-                      {metrics.riskLevel}
+                    <span className={`px-1.5 py-0.2 rounded text-[10px] font-bold uppercase ${
+                      isUserAssessment ? "bg-emerald-600 text-white" : "bg-red-600 text-white"
+                    }`}>
+                      {isUserAssessment ? "Pending OT Review" : metrics.riskLevel}
                     </span>
                   </div>
                 </div>
-                <ShieldAlert className="w-7 h-7 text-red-600 stroke-[1.5]" />
+                <ShieldAlert className={`w-7 h-7 stroke-[1.5] ${
+                  isUserAssessment ? "text-emerald-600" : "text-red-600"
+                }`} />
               </div>
 
               {/* 3 Metrics */}
-              <div className="grid grid-cols-3 gap-1 pt-2 mt-2 border-t border-red-200/60 text-center font-mono text-[11px]">
+              <div className="grid grid-cols-3 gap-1 pt-2 mt-2 border-t border-slate-200/60 text-center font-mono text-[11px]">
                 <div className="bg-white/80 p-1 rounded">
                   <span className="text-[9px] text-slate-400 block">CLEARANCE</span>
-                  <span className="font-bold text-red-700">{metrics.minClearanceCm} cm</span>
+                  <span className={`font-bold ${metrics.minClearanceCm > 0 ? "text-emerald-700" : "text-slate-500"}`}>
+                    {metrics.minClearanceCm > 0 ? `${metrics.minClearanceCm} cm` : "—"}
+                  </span>
                 </div>
                 <div className="bg-white/80 p-1 rounded">
                   <span className="text-[9px] text-slate-400 block">TOTAL HAZARDS</span>
@@ -159,14 +176,24 @@ export function Stage4Analysis() {
                 </div>
                 <div className="bg-white/80 p-1 rounded">
                   <span className="text-[9px] text-slate-400 block">CRITICAL</span>
-                  <span className="font-bold text-red-700">{metrics.highPriorityHazardsCount}</span>
+                  <span className="font-bold text-slate-800">{metrics.highPriorityHazardsCount}</span>
                 </div>
               </div>
             </div>
 
-            {/* Configured Demo Threshold Notice */}
+            {/* Configured Threshold Notice */}
             <div className="p-2 rounded bg-slate-50 border border-slate-200 text-[11px] text-slate-600 leading-snug">
-              <span className="font-semibold text-slate-800">Configured Demo Threshold:</span> Clearance ≥ 90 cm · Demonstration Risk: 68. Baseline for occupational therapy review.
+              {isUserAssessment ? (
+                <>
+                  <span className="font-semibold text-slate-800">Custom User Space:</span>{" "}
+                  Calibrated room geometry active ({assessmentMetadata?.spaceName || "Space"}). Geometric clearance is actively computed from authored route. Automated hazard scoring is pending OT engine.
+                </>
+              ) : (
+                <>
+                  <span className="font-semibold text-slate-800">Configured Demo Threshold:</span>{" "}
+                  Clearance ≥ 90 cm · Demonstration Risk: 68. Baseline for occupational therapy review.
+                </>
+              )}
             </div>
 
             {/* Filter Tabs */}
@@ -233,9 +260,19 @@ export function Stage4Analysis() {
 
             {/* Prioritised Hazard List (No title truncations!) */}
             <div className="space-y-2 max-h-[calc(100vh-27rem)] overflow-y-auto pr-0.5">
-              {filteredHazards.map((h, i) => {
-                const isSelected = selectedHazardId === h.id;
-                const isHigh = h.severity === "high";
+              {filteredHazards.length === 0 ? (
+                <div className="p-4 text-center border border-dashed border-slate-200 rounded-lg bg-slate-50">
+                  <p className="text-xs text-slate-600 font-semibold">No hazards identified</p>
+                  <p className="text-[11px] text-slate-500 mt-1 leading-relaxed">
+                    {isUserAssessment
+                      ? "User assessment does not inherit demo clinic hazards. Geometric walking clearance is actively monitored above. Custom hazard tagging will arrive in Gate 3."
+                      : "No hazards match the active severity filter."}
+                  </p>
+                </div>
+              ) : (
+                filteredHazards.map((h, i) => {
+                  const isSelected = selectedHazardId === h.id;
+                  const isHigh = h.severity === "high";
 
                 return (
                   <div
@@ -292,7 +329,7 @@ export function Stage4Analysis() {
                     </div>
                   </div>
                 );
-              })}
+              }))}
             </div>
 
             {/* Disclaimer */}

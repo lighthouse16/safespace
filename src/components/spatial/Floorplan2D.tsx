@@ -3,6 +3,7 @@
 import React, { useRef, useState, useEffect, useCallback, useMemo } from "react";
 import { useSafeSpaceStore } from "@/store/safespace-store";
 import { type SpatialFurniture, type Point2D, type RouteWaypoint } from "@/lib/spatial-model";
+import { computePolygonBoundsCm } from "@/lib/spatial";
 import {
   ZoomIn,
   ZoomOut,
@@ -63,12 +64,30 @@ export function Floorplan2D({
     moveRouteWaypoint,
     routeResult,
     activeProfile,
+    canonicalBoundary,
   } = useSafeSpaceStore();
 
   const isBefore = isBeforeCondition || overrideStage === "before";
   const stage = isBefore ? "before" : (overrideStage || activeStage);
   const furniture = customFurniture || storeFurniture;
   const handleMove = onCustomMove || moveFurniture;
+
+  const userBounds = useMemo(() => {
+    if (!canonicalBoundary || canonicalBoundary.length < 3) return null;
+    return computePolygonBoundsCm(canonicalBoundary);
+  }, [canonicalBoundary]);
+
+  const { vbX, vbY, vbW, vbH, viewBoxStr } = useMemo(() => {
+    if (userBounds) {
+      const pad = Math.max(40, Math.round(Math.max(userBounds.widthCm, userBounds.heightCm) * 0.1));
+      const x = Math.round(userBounds.minX - pad);
+      const y = Math.round(userBounds.minY - pad);
+      const w = Math.round(userBounds.widthCm + 2 * pad);
+      const h = Math.round(userBounds.heightCm + 2 * pad);
+      return { vbX: x, vbY: y, vbW: w, vbH: h, viewBoxStr: `${x} ${y} ${w} ${h}` };
+    }
+    return { vbX: 0, vbY: 0, vbW: 800, vbH: 600, viewBoxStr: "0 0 800 600" };
+  }, [userBounds]);
 
   const isRouteSuccess =
     routeResult?.status === "success" && routeResult.path.length >= 2;
@@ -158,20 +177,31 @@ export function Floorplan2D({
 
   const walkerPos = getWalkerPosition();
 
-  // Convert client mouse coordinates to SVG 800x600 coordinates
+  // Convert client mouse coordinates to SVG user coordinates
   const clientToSvgCoords = (clientX: number, clientY: number): Point2D => {
     if (!svgRef.current) return { x: 0, y: 0 };
+    try {
+      const pt = svgRef.current.createSVGPoint();
+      pt.x = clientX;
+      pt.y = clientY;
+      const ctm = svgRef.current.getScreenCTM();
+      if (ctm) {
+        const transformed = pt.matrixTransform(ctm.inverse());
+        return { x: transformed.x, y: transformed.y };
+      }
+    } catch {
+      // Fallback to proportional calculation
+    }
+
     const rect = svgRef.current.getBoundingClientRect();
     const rawX = clientX - rect.left;
     const rawY = clientY - rect.top;
 
-    const svgWidth = 800 * zoom;
-    const svgHeight = 600 * zoom;
-    const scaleX = 800 / svgWidth;
-    const scaleY = 600 / svgHeight;
+    const scaleX = vbW / (rect.width * zoom);
+    const scaleY = vbH / (rect.height * zoom);
 
-    const x = (rawX - panOffset.x) * scaleX;
-    const y = (rawY - panOffset.y) * scaleY;
+    const x = vbX + (rawX - panOffset.x) * scaleX;
+    const y = vbY + (rawY - panOffset.y) * scaleY;
     return { x, y };
   };
 
@@ -202,8 +232,13 @@ export function Floorplan2D({
       targetY = Math.round(targetY / 10) * 10;
     }
 
-    targetX = Math.max(50, Math.min(720, targetX));
-    targetY = Math.max(50, Math.min(520, targetY));
+    const minBoundX = userBounds ? Math.round(userBounds.minX + 5) : 50;
+    const maxBoundX = userBounds ? Math.round(userBounds.maxX - 5) : 720;
+    const minBoundY = userBounds ? Math.round(userBounds.minY + 5) : 50;
+    const maxBoundY = userBounds ? Math.round(userBounds.maxY - 5) : 520;
+
+    targetX = Math.max(minBoundX, Math.min(maxBoundX, targetX));
+    targetY = Math.max(minBoundY, Math.min(maxBoundY, targetY));
 
     if (draggingItem.type === "furniture") {
       handleMove(draggingItem.id, targetX, targetY);
@@ -351,7 +386,7 @@ export function Floorplan2D({
       {/* SVG Canvas Area */}
       <svg
         ref={svgRef}
-        viewBox="0 0 800 600"
+        viewBox={viewBoxStr}
         className={`w-full h-full cursor-${selectedTool === "pan" ? "grab" : "default"}`}
         onMouseDown={handleMouseDown}
         style={{
@@ -392,35 +427,59 @@ export function Floorplan2D({
         </defs>
 
         {/* 1. Grid */}
-        {showGrid && <rect width="800" height="600" fill="url(#grid-major)" />}
+        {showGrid && <rect x={vbX} y={vbY} width={vbW} height={vbH} fill="url(#grid-major)" />}
 
-        {/* 2. Room Zones */}
+        {/* 2. Room Zones / Canonical Boundary */}
         <g id="rooms-layer">
-          {rooms.map((room) => (
-            <g key={room.id}>
-              <rect
-                x={room.x}
-                y={room.y}
-                width={room.width}
-                height={room.depth}
-                fill={room.color}
-                stroke="#d2dbd6"
-                strokeWidth="1"
+          {canonicalBoundary && canonicalBoundary.length >= 3 ? (
+            <g id="user-canonical-boundary">
+              <polygon
+                points={canonicalBoundary.map((p) => `${p.x},${p.y}`).join(" ")}
+                fill="#f4f8f6"
+                stroke="#0f766e"
+                strokeWidth="2.5"
+                strokeLinejoin="round"
               />
               <text
-                x={room.x + 12}
-                y={room.y + 20}
-                fill="#70837e"
-                fontSize="10"
-                fontWeight="600"
+                x={(userBounds?.minX ?? 0) + 16}
+                y={(userBounds?.minY ?? 0) + 24}
+                fill="#0f766e"
+                fontSize="12"
+                fontWeight="700"
                 letterSpacing="1"
                 fontFamily="var(--font-inter), Inter, sans-serif"
                 className="select-none pointer-events-none"
               >
-                {room.name.toUpperCase()}
+                USER BOUNDARY ({Math.round(userBounds?.widthCm ?? 0)} × {Math.round(userBounds?.heightCm ?? 0)} CM)
               </text>
             </g>
-          ))}
+          ) : (
+            rooms.map((room) => (
+              <g key={room.id}>
+                <rect
+                  x={room.x}
+                  y={room.y}
+                  width={room.width}
+                  height={room.depth}
+                  fill={room.color}
+                  stroke="#d2dbd6"
+                  strokeWidth="1"
+                />
+                <text
+                  x={room.x + 12}
+                  y={room.y + 20}
+                  fill="#70837e"
+                  fontSize="10"
+                  fontWeight="600"
+                  letterSpacing="1"
+                  fontFamily="var(--font-inter), Inter, sans-serif"
+                  className="select-none pointer-events-none"
+                >
+                  {room.name.toUpperCase()}
+                </text>
+              </g>
+            ))
+          )}
         </g>
 
         {/* 3. Heatmap Layer */}
@@ -500,8 +559,8 @@ export function Floorplan2D({
                     </text>
                   </g>
                 )}
-              {/* Pinch warning circle only in Before or un-improved stages */}
-              {isBefore && (
+              {/* Pinch warning circle only in Before or un-improved stages for demo clinic */}
+              {isBefore && !canonicalBoundary && (
                 <circle
                   cx={235}
                   cy={220}
@@ -566,7 +625,7 @@ export function Floorplan2D({
               {routeWaypoints.map((pt, i) => {
                 const isSelected = selectedWaypointId === pt.id;
                 const isHovered = hoveredWaypointId === pt.id;
-                const isPinch = (isBefore || stage !== "improve") && pt.id === "pt-4";
+                const isPinch = (isBefore || stage !== "improve") && pt.id === "pt-4" && !canonicalBoundary;
 
                 return (
                   <g
@@ -714,8 +773,8 @@ export function Floorplan2D({
           })}
         </g>
 
-        {/* 8. Handrail & Improved Fixtures (ONLY WHEN NOT BEFORE!) */}
-        {!isBefore && (stage === "improve" || showDiffGhost) && (
+        {/* 8. Handrail & Improved Fixtures (ONLY WHEN NOT BEFORE AND DEMO CLINIC!) */}
+        {!isBefore && (stage === "improve" || showDiffGhost) && !canonicalBoundary && (
           <g id="improvements-fixtures">
             {/* Wall Handrail */}
             <line
@@ -737,7 +796,7 @@ export function Floorplan2D({
         )}
 
         {/* 9. Ghost Changes & Movement Trajectories (Stage 5 After view) */}
-        {!isBefore && (showDiffGhost || stage === "improve") && (
+        {!isBefore && (showDiffGhost || stage === "improve") && !canonicalBoundary && (
           <g id="ghost-diff-layer" className="pointer-events-none">
             {/* Ghost of Chair C-04 at old position (230, 205) */}
             <g transform="translate(230, 205)">
