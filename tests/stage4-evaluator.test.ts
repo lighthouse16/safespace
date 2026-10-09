@@ -1,6 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { evaluateSpatialScene } from "../src/lib/spatial/analysis/evaluator";
+import { resolveReportStatus } from "../src/components/workflow/ReportModal";
 import type { SpatialFurniture, MobilityProfileData } from "../src/lib/spatial-model";
 import type { Polygon2D } from "../src/lib/spatial";
 import { useSafeSpaceStore } from "../src/store/safespace-store";
@@ -602,4 +603,169 @@ test("Stage 4 Regression: removes unsupported 1.1 kN claims and claims of regula
     false,
     "Evidence must not claim 1.1 kN"
   );
+});
+
+test("Stage 4 Regression: invalid inputs and out-of-bounds are validation observations without physical severity", () => {
+  const boundary = createRectBoundary(800, 600);
+
+  // 1. Invalid geometry from non-positive profile clearance
+  const invalidProfile: MobilityProfileData = {
+    ...defaultProfile,
+    minClearanceCm: 0,
+  };
+  const geomResult = evaluateSpatialScene({
+    canonicalBoundary: boundary,
+    furniture: [],
+    routeWaypoints: [
+      { id: "w1", x: 100, y: 100 },
+      { id: "w2", x: 500, y: 500 },
+    ],
+    profile: invalidProfile,
+  });
+
+  assert.equal(geomResult.summary.routeFeasibility, "invalid-geometry");
+  assert.equal(geomResult.summary.actionableDeficitsCount, 0, "Invalid geometry must not inflate actionable deficit count");
+  const geomFinding = geomResult.findings.find((f) => f.kind === "route-invalid-geometry");
+  assert.ok(geomFinding);
+  assert.equal(geomFinding?.classification, "advisory-observation");
+  assert.equal(geomFinding?.status, "needs-review");
+  assert.equal(geomFinding?.severity, undefined, "Validation issue must have no physical/clinical severity");
+
+  // 2. Out of bounds waypoint
+  const oobResult = evaluateSpatialScene({
+    canonicalBoundary: boundary,
+    furniture: [],
+    routeWaypoints: [
+      { id: "w1", x: 100, y: 100 },
+      { id: "w2", x: 900, y: 900 }, // outside 800x600 boundary
+    ],
+    profile: defaultProfile,
+  });
+
+  assert.equal(oobResult.summary.routeFeasibility, "out-of-bounds");
+  assert.equal(oobResult.summary.actionableDeficitsCount, 0, "Out of bounds waypoint must not count as physical obstacle hazard");
+  const oobFinding = oobResult.findings.find((f) => f.kind === "route-out-of-bounds");
+  assert.ok(oobFinding);
+  assert.equal(oobFinding?.classification, "advisory-observation");
+  assert.equal(oobFinding?.status, "needs-review");
+  assert.equal(oobFinding?.severity, undefined, "Out of bounds waypoint must not have physical severity");
+});
+
+test("Stage 4 Regression: Report status truthfulness across assessment scenarios", () => {
+  // Scenario 1: New user scene with 0 waypoints (unconfigured)
+  const unconfiguredResult = evaluateSpatialScene({
+    assessmentType: "user",
+    canonicalBoundary: createRectBoundary(600, 400),
+    furniture: [],
+    routeWaypoints: [],
+    profile: defaultProfile,
+  });
+  const unconfiguredStatus = resolveReportStatus(unconfiguredResult.summary);
+  assert.equal(unconfiguredStatus.isClear, false);
+  assert.equal(unconfiguredStatus.isAmber, true);
+  assert.equal(unconfiguredStatus.statusLabel, "Incomplete — Transit Route Unconfigured");
+  assert.equal(unconfiguredStatus.statusBadgeClass, "text-amber-700");
+  assert.equal(unconfiguredStatus.deficitsBadgeLabel, "Route Unconfigured");
+  assert.notEqual(unconfiguredStatus.statusLabel, "Passage Clear");
+  assert.notEqual(unconfiguredStatus.deficitsBadgeLabel, "No Geometric Deficits");
+
+  // Scenario 2: Invalid geometry
+  const invalidGeomResult = evaluateSpatialScene({
+    assessmentType: "user",
+    canonicalBoundary: null,
+    furniture: [],
+    routeWaypoints: [
+      { id: "w1", x: 100, y: 100 },
+      { id: "w2", x: 300, y: 300 },
+    ],
+    profile: defaultProfile,
+  });
+  const invalidStatus = resolveReportStatus(invalidGeomResult.summary);
+  assert.equal(invalidStatus.isClear, false);
+  assert.equal(invalidStatus.isAmber, true);
+  assert.equal(invalidStatus.statusLabel, "Incomplete — Invalid Geometry / Input Validation");
+  assert.equal(invalidStatus.deficitsBadgeLabel, "Invalid Geometry");
+
+  // Scenario 3: Route clearance deficit failure
+  const deficitResult = evaluateSpatialScene({
+    assessmentType: "user",
+    canonicalBoundary: createRectBoundary(800, 600),
+    furniture: [
+      {
+        id: "f-top",
+        name: "Top Cabinet",
+        category: "cabinet",
+        roomId: "room-1",
+        x: 350,
+        y: 170,
+        width: 100,
+        depth: 100,
+        height: 80,
+        rotation: 0,
+        isFixed: false,
+        isStableSupport: false,
+        isConfirmed: true,
+      },
+      {
+        id: "f-bottom",
+        name: "Bottom Desk",
+        category: "desk",
+        roomId: "room-1",
+        x: 350,
+        y: 330,
+        width: 100,
+        depth: 100,
+        height: 75,
+        rotation: 0,
+        isFixed: false,
+        isStableSupport: false,
+        isConfirmed: true,
+      },
+    ],
+    routeWaypoints: [
+      { id: "w1", x: 100, y: 300 },
+      { id: "w2", x: 400, y: 300 },
+      { id: "w3", x: 700, y: 300 },
+    ],
+    profile: defaultProfile,
+  });
+  const deficitStatus = resolveReportStatus(deficitResult.summary);
+  assert.equal(deficitStatus.isClear, false);
+  assert.equal(deficitStatus.isRed, true);
+  assert.equal(deficitStatus.deficitsBadgeLabel, "Action Required");
+  assert.equal(deficitStatus.clearanceBadgeLabel, "Clearance Deficit");
+
+  // Scenario 4: Adequate route with no physical deficits
+  const adequateResult = evaluateSpatialScene({
+    assessmentType: "user",
+    canonicalBoundary: createRectBoundary(800, 600),
+    furniture: [],
+    routeWaypoints: [
+      { id: "w1", x: 100, y: 300 },
+      { id: "w2", x: 700, y: 300 },
+    ],
+    profile: defaultProfile,
+  });
+  const adequateStatus = resolveReportStatus(adequateResult.summary);
+  assert.equal(adequateStatus.isClear, true);
+  assert.equal(adequateStatus.statusLabel, "Configured route target satisfied (limited 2D scope)");
+  assert.equal(adequateStatus.statusBadgeClass, "text-emerald-700");
+  assert.equal(adequateStatus.deficitsBadgeLabel, "No Detected Deficits (2D Scope)");
+  assert.equal(adequateStatus.clearanceBadgeLabel, "Target Satisfied (2D Scope)");
+
+  // Scenario 5: Demo fixture initial state
+  const demoResult = evaluateSpatialScene({
+    assessmentType: "demo",
+    routeWaypoints: [
+      { id: "dw1", x: 120, y: 360 },
+      { id: "dw2", x: 400, y: 320 },
+      { id: "dw3", x: 620, y: 200 },
+      { id: "dw4", x: 720, y: 200 },
+    ],
+    profile: defaultProfile,
+  });
+  const demoStatus = resolveReportStatus(demoResult.summary);
+  assert.equal(demoStatus.isClear, false);
+  assert.equal(demoStatus.isRed, true);
+  assert.ok(demoStatus.statusLabel.includes("Deficit"));
 });

@@ -98,7 +98,11 @@ export function Stage5Improve() {
               <span className="text-slate-500 font-sans">Actionable Deficits:</span>
               <span
                 className={`font-semibold ${
-                  summary.actionableDeficitsCount > 0 ? "text-red-700" : "text-emerald-700"
+                  summary.actionableDeficitsCount > 0
+                    ? "text-red-700"
+                    : summary.routeFeasibility === "adequate"
+                    ? "text-emerald-700"
+                    : "text-slate-500"
                 }`}
               >
                 {summary.actionableDeficitsCount}

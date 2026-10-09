@@ -3,6 +3,100 @@
 import React from "react";
 import { useSafeSpaceStore } from "@/store/safespace-store";
 import { X, Printer, ShieldCheck, AlertCircle, ShieldAlert } from "lucide-react";
+import type { SpatialEvaluationSummary } from "@/lib/spatial";
+
+export interface ReportStatusPresentation {
+  statusLabel: string;
+  isClear: boolean;
+  isAmber: boolean;
+  isRed: boolean;
+  statusBadgeClass: string;
+  deficitsBadgeLabel: string;
+  deficitsBadgeClass: string;
+  clearanceBadgeLabel: string;
+  clearanceBadgeClass: string;
+}
+
+export function resolveReportStatus(summary: SpatialEvaluationSummary): ReportStatusPresentation {
+  const isAdequate = summary.routeFeasibility === "adequate";
+  const hasDeficits = summary.actionableDeficitsCount > 0;
+
+  if (isAdequate && !hasDeficits) {
+    return {
+      statusLabel: "Configured route target satisfied (limited 2D scope)",
+      isClear: true,
+      isAmber: false,
+      isRed: false,
+      statusBadgeClass: "text-emerald-700",
+      deficitsBadgeLabel: "No Detected Deficits (2D Scope)",
+      deficitsBadgeClass: "text-emerald-700",
+      clearanceBadgeLabel: "Target Satisfied (2D Scope)",
+      clearanceBadgeClass: "text-emerald-700",
+    };
+  }
+
+  if (summary.routeFeasibility === "unconfigured") {
+    return {
+      statusLabel: "Incomplete — Transit Route Unconfigured",
+      isClear: false,
+      isAmber: true,
+      isRed: false,
+      statusBadgeClass: "text-amber-700",
+      deficitsBadgeLabel: "Route Unconfigured",
+      deficitsBadgeClass: "text-amber-700",
+      clearanceBadgeLabel: "Unconfigured",
+      clearanceBadgeClass: "text-slate-500",
+    };
+  }
+
+  if (summary.routeFeasibility === "invalid-geometry") {
+    return {
+      statusLabel: "Incomplete — Invalid Geometry / Input Validation",
+      isClear: false,
+      isAmber: true,
+      isRed: false,
+      statusBadgeClass: "text-amber-700",
+      deficitsBadgeLabel: "Invalid Geometry",
+      deficitsBadgeClass: "text-amber-700",
+      clearanceBadgeLabel: "Invalid Geometry",
+      clearanceBadgeClass: "text-amber-700",
+    };
+  }
+
+  if (summary.routeFeasibility === "out-of-bounds") {
+    return {
+      statusLabel: "Incomplete — Waypoints Outside Room Boundary",
+      isClear: false,
+      isAmber: true,
+      isRed: false,
+      statusBadgeClass: "text-amber-700",
+      deficitsBadgeLabel: "Out of Bounds",
+      deficitsBadgeClass: "text-amber-700",
+      clearanceBadgeLabel: "Out of Bounds",
+      clearanceBadgeClass: "text-amber-700",
+    };
+  }
+
+  // Clearance deficit, blocked route, or physical deficits detected
+  return {
+    statusLabel: hasDeficits
+      ? `${summary.actionableDeficitsCount} Deficit(s) Detected`
+      : "Designated Route Impassable",
+    isClear: false,
+    isAmber: false,
+    isRed: true,
+    statusBadgeClass: "text-red-700",
+    deficitsBadgeLabel: "Action Required",
+    deficitsBadgeClass: "text-red-600",
+    clearanceBadgeLabel:
+      summary.routeFeasibility === "clearance-deficit"
+        ? "Clearance Deficit"
+        : summary.routeFeasibility === "unreachable"
+        ? "Route Blocked"
+        : "Action Required",
+    clearanceBadgeClass: "text-red-600",
+  };
+}
 
 export function ReportModal() {
   const {
@@ -20,6 +114,7 @@ export function ReportModal() {
   const evaluation = getSpatialFindings();
   const { summary, findings } = evaluation;
   const deficits = findings.filter((f) => f.classification === "actionable-deficit");
+  const reportStatus = resolveReportStatus(summary);
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-xs p-4 select-none">
@@ -69,14 +164,8 @@ export function ReportModal() {
             </div>
             <div>
               <span className="text-slate-400 block text-[10px]">EVALUATION STATUS</span>
-              <span
-                className={`font-semibold uppercase text-[11px] ${
-                  summary.actionableDeficitsCount > 0 ? "text-red-700" : "text-emerald-700"
-                }`}
-              >
-                {summary.actionableDeficitsCount > 0
-                  ? `${summary.actionableDeficitsCount} Deficit(s)`
-                  : "Passage Clear"}
+              <span className={`font-semibold uppercase text-[11px] ${reportStatus.statusBadgeClass}`}>
+                {reportStatus.statusLabel}
               </span>
             </div>
           </div>
@@ -122,19 +211,9 @@ export function ReportModal() {
                         : "Unconfigured"}
                     </td>
                     <td className="p-2.5 font-sans font-semibold">
-                      {summary.routeFeasibility === "adequate" ? (
-                        <span className="text-emerald-700">Target Satisfied</span>
-                      ) : summary.routeFeasibility === "clearance-deficit" ? (
-                        <span className="text-red-600">Clearance Deficit</span>
-                      ) : summary.routeFeasibility === "out-of-bounds" ? (
-                        <span className="text-red-600">Out of Bounds</span>
-                      ) : summary.routeFeasibility === "invalid-geometry" ? (
-                        <span className="text-amber-700">Invalid Geometry</span>
-                      ) : summary.routeFeasibility === "unreachable" ? (
-                        <span className="text-red-600">Route Blocked</span>
-                      ) : (
-                        <span className="text-slate-500">Unconfigured</span>
-                      )}
+                      <span className={reportStatus.clearanceBadgeClass}>
+                        {reportStatus.clearanceBadgeLabel}
+                      </span>
                     </td>
                   </tr>
                   <tr>
@@ -157,18 +236,20 @@ export function ReportModal() {
                     </td>
                     <td
                       className={`p-2.5 font-bold ${
-                        summary.actionableDeficitsCount > 0 ? "text-red-600" : "text-emerald-700"
+                        summary.actionableDeficitsCount > 0
+                          ? "text-red-600"
+                          : reportStatus.isClear
+                          ? "text-emerald-700"
+                          : "text-slate-500"
                       }`}
                     >
                       {summary.actionableDeficitsCount} recorded
                     </td>
                     <td className="p-2.5 text-slate-600 font-sans">0 collisions / deficits</td>
                     <td className="p-2.5 font-sans font-semibold">
-                      {summary.actionableDeficitsCount === 0 ? (
-                        <span className="text-emerald-700">No Geometric Deficits</span>
-                      ) : (
-                        <span className="text-red-600">Action Required</span>
-                      )}
+                      <span className={reportStatus.deficitsBadgeClass}>
+                        {reportStatus.deficitsBadgeLabel}
+                      </span>
                     </td>
                   </tr>
                   <tr>
@@ -247,7 +328,7 @@ export function ReportModal() {
 
           {/* Honest Disclaimer */}
           <div className="p-3 bg-slate-50 rounded text-xs text-slate-500 border border-slate-200 leading-relaxed">
-            Deterministic 2D spatial clearance and footprint boundary evaluation. SafeSpace measures geometric clearances along configured pathways; it does not certify clinical safety, building code compliance, or hazard exemption. Composite risk scoring and multi-alternative layout optimization are scheduled for Gate 3 delivery.
+            Deterministic 2D spatial clearance and footprint boundary evaluation. Zero detected findings does not constitute proof of clinical safety or statutory building compliance. SafeSpace measures geometric clearances along configured pathways; it does not certify clinical safety, building code compliance, or hazard exemption. Environmental factors (illumination, traction, anchorage, moisture) and 3D architectural clearances remain unassessed. Composite risk scoring and multi-alternative layout optimization are scheduled for Gate 3 delivery.
           </div>
         </div>
 

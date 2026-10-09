@@ -216,9 +216,8 @@ export function evaluateSpatialScene(
     findings.push({
       id: "finding-route-out-of-bounds",
       kind: "route-out-of-bounds",
-      status: "observed",
-      classification: "actionable-deficit",
-      severity: "critical",
+      status: "needs-review",
+      classification: "advisory-observation",
       title:
         routeResult.status === "start-out-of-bounds"
           ? "Route Start Outside Room Boundary"
@@ -250,9 +249,8 @@ export function evaluateSpatialScene(
     findings.push({
       id: "finding-route-invalid-geometry",
       kind: "route-invalid-geometry",
-      status: "observed",
-      classification: "actionable-deficit",
-      severity: "high",
+      status: "needs-review",
+      classification: "advisory-observation",
       title: "Invalid Route Geometry or Parameters",
       description: failureReason,
       evidence: {
@@ -686,13 +684,21 @@ export function evaluateSpatialScene(
   let overallStatusLabel = "";
   if (routeFeasibility === "unconfigured") {
     overallStatusLabel =
-      assessmentType === "user"
+      actionableDeficitsCount > 0
+        ? `Incomplete Assessment — Transit Route Unconfigured (${actionableDeficitsCount} Deficit${actionableDeficitsCount > 1 ? "s" : ""})`
+        : assessmentType === "user"
         ? "Incomplete Assessment — Transit Route Unconfigured"
         : "Demo Fixture — Transit Route Unconfigured";
   } else if (routeFeasibility === "invalid-geometry") {
-    overallStatusLabel = "Action Required — Invalid Geometry or Profile Parameters";
+    overallStatusLabel =
+      actionableDeficitsCount > 0
+        ? `Incomplete Assessment — Invalid Geometry (${actionableDeficitsCount} Deficit${actionableDeficitsCount > 1 ? "s" : ""})`
+        : "Incomplete Assessment — Invalid Geometry or Profile Parameters";
   } else if (routeFeasibility === "out-of-bounds") {
-    overallStatusLabel = "Action Required — Waypoints Outside Room Boundary";
+    overallStatusLabel =
+      actionableDeficitsCount > 0
+        ? `Incomplete Assessment — Waypoints Outside Boundary (${actionableDeficitsCount} Deficit${actionableDeficitsCount > 1 ? "s" : ""})`
+        : "Incomplete Assessment — Waypoints Outside Room Boundary";
   } else if (routeFeasibility === "unreachable") {
     overallStatusLabel = "Action Required — Designated Route Impassable";
   } else if (actionableDeficitsCount > 0) {

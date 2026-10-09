@@ -1,9 +1,8 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { useSafeSpaceStore } from "@/store/safespace-store";
 import { Floorplan2D } from "@/components/spatial/Floorplan2D";
-import { Floorplan3D } from "@/components/spatial/Floorplan3D";
 import {
   ShieldAlert,
   ShieldCheck,
@@ -28,8 +27,13 @@ export function Stage4Analysis() {
     selectFinding,
     setStage,
     getSpatialFindings,
-    setCameraPreset,
   } = useSafeSpaceStore();
+
+  useEffect(() => {
+    if (viewMode === "3d") {
+      setViewMode("2d");
+    }
+  }, [viewMode, setViewMode]);
 
   const evaluation = getSpatialFindings();
   const { summary, findings } = evaluation;
@@ -48,35 +52,29 @@ export function Stage4Analysis() {
 
   const isDeficit = summary.actionableDeficitsCount > 0;
   const isUnconfigured = summary.routeFeasibility === "unconfigured";
+  const isInvalidGeometry = summary.routeFeasibility === "invalid-geometry";
+  const isOutOfBounds = summary.routeFeasibility === "out-of-bounds";
   const isUnreachable = summary.routeFeasibility === "unreachable";
+  const isPendingValidation = isUnconfigured || isInvalidGeometry || isOutOfBounds;
 
   return (
     <div className="flex flex-col h-[calc(100vh-3.5rem)] w-full overflow-hidden bg-[#f7f8f6]">
       {/* Top View Toolbar */}
       <div className="h-10 bg-white border-b border-[#e2e8e4] px-3.5 flex items-center justify-between shrink-0 select-none z-10">
         <div className="flex items-center gap-2">
-          {/* 2D / 3D Switcher */}
+          {/* 2D Plan Active / 3D Analysis Pending */}
           <div className="flex items-center gap-1 bg-[#f1f5f3] p-0.5 rounded-lg border border-[#e2e8e4]">
-            <button
-              onClick={() => setViewMode("2d")}
-              className={`px-2.5 py-0.5 rounded text-xs font-semibold transition cursor-pointer ${
-                viewMode === "2d"
-                  ? "bg-white text-[#1e7168] shadow-xs"
-                  : "text-slate-600 hover:text-slate-900"
-              }`}
-            >
+            <span className="px-2.5 py-0.5 rounded text-xs font-semibold bg-white text-[#1e7168] shadow-xs">
               2D Plan
-            </button>
+            </span>
             <button
-              onClick={() => setViewMode("3d")}
-              className={`px-2.5 py-0.5 rounded text-xs font-semibold flex items-center gap-1 transition cursor-pointer ${
-                viewMode === "3d"
-                  ? "bg-white text-[#1e7168] shadow-xs"
-                  : "text-slate-600 hover:text-slate-900"
-              }`}
+              type="button"
+              disabled
+              title="3D spatial analysis is disabled pending synchronized canonical geometry in Gate 3"
+              className="px-2.5 py-0.5 rounded text-xs font-semibold flex items-center gap-1 text-slate-400 cursor-not-allowed opacity-60"
             >
               <Box className="w-3 h-3" />
-              <span>3D Iso</span>
+              <span>3D Analysis Pending</span>
             </button>
           </div>
 
@@ -105,55 +103,29 @@ export function Stage4Analysis() {
         </div>
 
         {/* 2D Layer Toggles */}
-        {viewMode === "2d" && (
-          <div className="hidden sm:flex items-center gap-1 text-xs">
-            {(
-              [
-                { id: "route", label: "Route" },
-                { id: "clearance", label: "Clearance" },
-                { id: "heatmap", label: "Heatmap" },
-                { id: "hazards", label: "Findings" },
-                { id: "dimensions", label: "Dim" },
-              ] as const
-            ).map((l) => (
-              <button
-                key={l.id}
-                onClick={() => toggleLayer(l.id)}
-                className={`px-2 py-0.5 rounded text-[11px] transition cursor-pointer ${
-                  layerToggles[l.id]
-                    ? "bg-[#e8f3f1] text-[#1e7168] font-medium"
-                    : "text-slate-500 hover:bg-slate-100"
-                }`}
-              >
-                {l.label}
-              </button>
-            ))}
-          </div>
-        )}
-
-        {/* 3D View Presets */}
-        {viewMode === "3d" && (
-          <div className="flex items-center gap-1 text-xs">
+        <div className="hidden sm:flex items-center gap-1 text-xs">
+          {(
+            [
+              { id: "route", label: "Route" },
+              { id: "clearance", label: "Clearance" },
+              { id: "heatmap", label: "Heatmap" },
+              { id: "hazards", label: "Findings" },
+              { id: "dimensions", label: "Dim" },
+            ] as const
+          ).map((l) => (
             <button
-              onClick={() => setCameraPreset("isometric")}
-              className="px-2 py-0.5 rounded bg-slate-100 hover:bg-slate-200 text-slate-700 text-[11px] transition cursor-pointer"
+              key={l.id}
+              onClick={() => toggleLayer(l.id)}
+              className={`px-2 py-0.5 rounded text-[11px] transition cursor-pointer ${
+                layerToggles[l.id]
+                  ? "bg-[#e8f3f1] text-[#1e7168] font-medium"
+                  : "text-slate-500 hover:bg-slate-100"
+              }`}
             >
-              Iso
+              {l.label}
             </button>
-            <button
-              onClick={() => setCameraPreset("top")}
-              className="px-2 py-0.5 rounded bg-slate-100 hover:bg-slate-200 text-slate-700 text-[11px] transition cursor-pointer"
-            >
-              Top
-            </button>
-            <button
-              onClick={() => setCameraPreset("reset")}
-              className="px-2 py-0.5 rounded bg-slate-100 hover:bg-slate-200 text-slate-700 text-[11px] transition cursor-pointer"
-            >
-              Reset
-            </button>
-          </div>
-        )}
+          ))}
+        </div>
       </div>
 
       {/* Main Body: Responsive flex container */}
@@ -168,11 +140,7 @@ export function Stage4Analysis() {
               : "flex-1 h-full p-2.5 overflow-hidden flex flex-col"
           }
         >
-          {viewMode === "2d" ? (
-            <Floorplan2D className="flex-1" />
-          ) : (
-            <Floorplan3D className="flex-1" />
-          )}
+          <Floorplan2D className="flex-1" />
         </main>
 
         {/* Right Evidence & Findings Panel */}
@@ -187,7 +155,7 @@ export function Stage4Analysis() {
             {/* Top Evidence Evaluation Banner */}
             <div
               className={`p-3 rounded-lg border ${
-                isUnconfigured
+                isPendingValidation
                   ? "border-amber-200 bg-amber-50/70"
                   : isUnreachable || isDeficit
                   ? "border-red-200 bg-red-50/70"
@@ -198,7 +166,7 @@ export function Stage4Analysis() {
                 <div>
                   <span
                     className={`text-[10px] uppercase font-bold tracking-wider ${
-                      isUnconfigured
+                      isPendingValidation
                         ? "text-amber-800"
                         : isUnreachable || isDeficit
                         ? "text-red-800"
@@ -210,7 +178,7 @@ export function Stage4Analysis() {
                   <div className="flex items-baseline gap-2 mt-0.5">
                     <span
                       className={`text-base font-bold leading-tight ${
-                        isUnconfigured
+                        isPendingValidation
                           ? "text-amber-950"
                           : isUnreachable || isDeficit
                           ? "text-red-950"
@@ -221,7 +189,7 @@ export function Stage4Analysis() {
                     </span>
                   </div>
                 </div>
-                {isUnconfigured ? (
+                {isPendingValidation ? (
                   <AlertCircle className="w-6 h-6 text-amber-600 stroke-[1.8] shrink-0" />
                 ) : isUnreachable || isDeficit ? (
                   <ShieldAlert className="w-6 h-6 text-red-600 stroke-[1.8] shrink-0" />
@@ -258,7 +226,11 @@ export function Stage4Analysis() {
                   <span className="text-[8px] text-slate-400 block font-sans">DEFICITS</span>
                   <span
                     className={`font-bold ${
-                      summary.actionableDeficitsCount > 0 ? "text-red-700" : "text-emerald-700"
+                      summary.actionableDeficitsCount > 0
+                        ? "text-red-700"
+                        : summary.routeFeasibility === "adequate"
+                        ? "text-emerald-700"
+                        : "text-slate-500"
                     }`}
                   >
                     {summary.actionableDeficitsCount}
@@ -280,7 +252,7 @@ export function Stage4Analysis() {
                   ? `Custom Workspace (${assessmentMetadata?.spaceName || "User Space"}): `
                   : "Queen Care Demonstration Workspace: "}
               </span>
-              Findings are derived from canonical geometry and active route clearance (configured profile target (unverified): ≥ {summary.corridorWidthCm ?? 90} cm for {activeProfile.name}). Non-holonomic turning space and 3D grab bar anchorage are unassessed in 2D evaluation. Composite risk scoring is disabled pending professional occupational therapy validation.
+              Findings are derived from canonical geometry and active route clearance ({summary.corridorWidthCm !== null && summary.corridorWidthCm > 0 ? `configured profile target (unverified): ≥ ${summary.corridorWidthCm} cm for ${activeProfile.name}` : `No valid configured profile width for ${activeProfile.name}`}). Non-holonomic turning space and 3D grab bar anchorage are unassessed in 2D evaluation. Composite risk scoring is disabled pending professional occupational therapy validation.
             </div>
 
             {/* Classification Filter Tabs */}
