@@ -64,6 +64,7 @@ export {
 } from "./geometry/polygons";
 
 export {
+  isFootprintContainedInBoundary,
   polygonIntersectsPolygon,
   segmentIntersectionPoint,
   segmentIntersectsPolygon,

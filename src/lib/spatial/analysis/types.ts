@@ -8,6 +8,9 @@ export type SpatialFindingKind =
   | "route-deficit"
   | "route-adequate"
   | "route-bottleneck"
+  | "route-out-of-bounds"
+  | "route-invalid-geometry"
+  | "route-endpoint-blocked"
   | "obstacle-collision"
   | "obstacle-encroachment"
   | "boundary-encroachment"
@@ -86,6 +89,8 @@ export interface SpatialEvaluationSummary {
   unassessedScopeCount: number;
   routeFeasibility:
     | "unconfigured"
+    | "invalid-geometry"
+    | "out-of-bounds"
     | "unreachable"
     | "clearance-deficit"
     | "adequate";

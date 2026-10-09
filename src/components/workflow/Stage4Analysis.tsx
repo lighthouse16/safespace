@@ -35,6 +35,7 @@ export function Stage4Analysis() {
   const { summary, findings } = evaluation;
   const isUserAssessment = assessmentType === "user";
 
+  const [mobileTab, setMobileTab] = useState<"both" | "plan" | "findings">("both");
   const [filterClassification, setFilterClassification] = useState<
     "all" | SpatialFindingClassification
   >("all");
@@ -53,29 +54,54 @@ export function Stage4Analysis() {
     <div className="flex flex-col h-[calc(100vh-3.5rem)] w-full overflow-hidden bg-[#f7f8f6]">
       {/* Top View Toolbar */}
       <div className="h-10 bg-white border-b border-[#e2e8e4] px-3.5 flex items-center justify-between shrink-0 select-none z-10">
-        {/* 2D / 3D Switcher */}
-        <div className="flex items-center gap-1 bg-[#f1f5f3] p-0.5 rounded-lg border border-[#e2e8e4]">
-          <button
-            onClick={() => setViewMode("2d")}
-            className={`px-2.5 py-0.5 rounded text-xs font-semibold transition cursor-pointer ${
-              viewMode === "2d"
-                ? "bg-white text-[#1e7168] shadow-xs"
-                : "text-slate-600 hover:text-slate-900"
-            }`}
-          >
-            2D Plan
-          </button>
-          <button
-            onClick={() => setViewMode("3d")}
-            className={`px-2.5 py-0.5 rounded text-xs font-semibold flex items-center gap-1 transition cursor-pointer ${
-              viewMode === "3d"
-                ? "bg-white text-[#1e7168] shadow-xs"
-                : "text-slate-600 hover:text-slate-900"
-            }`}
-          >
-            <Box className="w-3 h-3" />
-            <span>3D Iso</span>
-          </button>
+        <div className="flex items-center gap-2">
+          {/* 2D / 3D Switcher */}
+          <div className="flex items-center gap-1 bg-[#f1f5f3] p-0.5 rounded-lg border border-[#e2e8e4]">
+            <button
+              onClick={() => setViewMode("2d")}
+              className={`px-2.5 py-0.5 rounded text-xs font-semibold transition cursor-pointer ${
+                viewMode === "2d"
+                  ? "bg-white text-[#1e7168] shadow-xs"
+                  : "text-slate-600 hover:text-slate-900"
+              }`}
+            >
+              2D Plan
+            </button>
+            <button
+              onClick={() => setViewMode("3d")}
+              className={`px-2.5 py-0.5 rounded text-xs font-semibold flex items-center gap-1 transition cursor-pointer ${
+                viewMode === "3d"
+                  ? "bg-white text-[#1e7168] shadow-xs"
+                  : "text-slate-600 hover:text-slate-900"
+              }`}
+            >
+              <Box className="w-3 h-3" />
+              <span>3D Iso</span>
+            </button>
+          </div>
+
+          {/* Mobile / Tablet View Switcher [Both | Plan | Findings] */}
+          <div className="flex lg:hidden items-center gap-0.5 bg-[#f1f5f3] p-0.5 rounded-lg border border-[#e2e8e4]">
+            {(
+              [
+                { id: "both", label: "Both" },
+                { id: "plan", label: "Plan" },
+                { id: "findings", label: "Findings" },
+              ] as const
+            ).map((t) => (
+              <button
+                key={t.id}
+                onClick={() => setMobileTab(t.id)}
+                className={`px-2 py-0.5 rounded text-[11px] font-semibold transition cursor-pointer ${
+                  mobileTab === t.id
+                    ? "bg-white text-[#1e7168] shadow-xs"
+                    : "text-slate-600 hover:text-slate-900"
+                }`}
+              >
+                {t.label}
+              </button>
+            ))}
+          </div>
         </div>
 
         {/* 2D Layer Toggles */}
@@ -130,10 +156,18 @@ export function Stage4Analysis() {
         )}
       </div>
 
-      {/* Main Body */}
-      <div className="flex flex-1 overflow-hidden">
+      {/* Main Body: Responsive flex container */}
+      <div className="flex flex-col lg:flex-row flex-1 overflow-hidden">
         {/* Primary Spatial Canvas */}
-        <main className="flex-1 h-full p-2.5 overflow-hidden flex flex-col">
+        <main
+          className={
+            mobileTab === "findings"
+              ? "hidden lg:flex flex-1 h-full p-2.5 overflow-hidden flex-col"
+              : mobileTab === "both"
+              ? "h-[320px] sm:h-[400px] lg:h-full lg:flex-1 shrink-0 lg:shrink p-2.5 overflow-hidden flex flex-col border-b lg:border-b-0 border-[#e2e8e4]"
+              : "flex-1 h-full p-2.5 overflow-hidden flex flex-col"
+          }
+        >
           {viewMode === "2d" ? (
             <Floorplan2D className="flex-1" />
           ) : (
@@ -142,7 +176,13 @@ export function Stage4Analysis() {
         </main>
 
         {/* Right Evidence & Findings Panel */}
-        <aside className="w-96 sm:w-[430px] bg-white border-l border-[#e2e8e4] flex flex-col justify-between p-4 z-10 shrink-0 select-none overflow-y-auto">
+        <aside
+          className={
+            mobileTab === "plan"
+              ? "hidden lg:flex w-full lg:w-[420px] bg-white lg:border-l border-[#e2e8e4] flex-col justify-between p-4 z-10 shrink-0 select-none overflow-y-auto"
+              : "flex-1 lg:flex-initial w-full lg:w-[420px] bg-white lg:border-l border-[#e2e8e4] flex flex-col justify-between p-4 z-10 shrink-0 select-none overflow-y-auto"
+          }
+        >
           <div className="space-y-3.5">
             {/* Top Evidence Evaluation Banner */}
             <div
@@ -240,7 +280,7 @@ export function Stage4Analysis() {
                   ? `Custom Workspace (${assessmentMetadata?.spaceName || "User Space"}): `
                   : "Queen Care Demonstration Workspace: "}
               </span>
-              Findings are derived from canonical geometry and active route clearance (corridor width requirement: ≥ {summary.corridorWidthCm ?? 90} cm for {activeProfile.name}). Composite risk scoring (EHS) is disabled pending professional occupational therapy validation.
+              Findings are derived from canonical geometry and active route clearance (configured profile target (unverified): ≥ {summary.corridorWidthCm ?? 90} cm for {activeProfile.name}). Non-holonomic turning space and 3D grab bar anchorage are unassessed in 2D evaluation. Composite risk scoring is disabled pending professional occupational therapy validation.
             </div>
 
             {/* Classification Filter Tabs */}
@@ -451,7 +491,7 @@ export function Stage4Analysis() {
 
             {/* Disclaimer */}
             <p className="text-[10px] text-slate-400 leading-tight">
-              Deterministic spatial evidence for professional occupational therapy and architectural evaluation. Not clinical diagnosis.
+              Deterministic 2D spatial clearance and footprint evaluation. Does not claim statutory building code certification or clinical diagnosis.
             </p>
           </div>
 

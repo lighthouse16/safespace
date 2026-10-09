@@ -19,8 +19,10 @@ import {
   toCanonicalWallObstacles,
 } from "../adapter";
 import { deriveWorldFootprint } from "../geometry/footprints";
-import { isPointInPolygon } from "../geometry/polygons";
-import { polygonIntersectsPolygon } from "../geometry/intersections";
+import {
+  isFootprintContainedInBoundary,
+  polygonIntersectsPolygon,
+} from "../geometry/intersections";
 import { distanceSegmentToPolygon } from "../geometry/clearance";
 import type {
   EvidenceSource,
@@ -75,24 +77,50 @@ export function evaluateSpatialScene(
   const routeWaypoints = params.routeWaypoints ?? [];
   let routeResult = params.routeResult ?? null;
 
-  if (!routeResult && routeWaypoints.length >= 2) {
-    const room = resolveCanonicalRoom(canonicalBoundary, rooms);
-    const furnitureObstacles = toCanonicalObjects(furniture);
-    const wallObstacles = toCanonicalWallObstacles(params.walls || [], params.doors || []);
-    const obstacles = [...furnitureObstacles, ...wallObstacles];
-    const canonicalProfile = toCanonicalProfile(profile);
-    const start = { x: routeWaypoints[0].x, y: routeWaypoints[0].y };
-    const end = { x: routeWaypoints[routeWaypoints.length - 1].x, y: routeWaypoints[routeWaypoints.length - 1].y };
-    const userWaypoints = routeWaypoints.slice(1, -1).map((pt) => ({ x: pt.x, y: pt.y }));
+  const isUserScene = assessmentType === "user";
+  const hasUserBoundary =
+    canonicalBoundary &&
+    Array.isArray(canonicalBoundary) &&
+    canonicalBoundary.length >= 3;
+  const isProfileClearanceValid =
+    typeof profile?.minClearanceCm === "number" &&
+    Number.isFinite(profile.minClearanceCm) &&
+    profile.minClearanceCm > 0;
 
-    routeResult = computeRoute({
-      room,
-      obstacles,
-      start,
-      end,
-      mobilityProfile: canonicalProfile,
-      userWaypoints,
-    });
+  const corridorWidthCm = isProfileClearanceValid ? profile.minClearanceCm : null;
+  const requiredRadiusCm =
+    corridorWidthCm !== null ? Math.round((corridorWidthCm / 2) * 10) / 10 : null;
+
+  if (!routeResult && routeWaypoints.length >= 2) {
+    if (isUserScene && !hasUserBoundary) {
+      routeResult = {
+        status: "invalid-geometry",
+        reason: "User assessment scene is missing required 2D room boundary polygon (minimum 3 vertices required)",
+      };
+    } else if (!isProfileClearanceValid) {
+      routeResult = {
+        status: "invalid-geometry",
+        reason: "Mobility profile clearance width must be a positive finite number",
+      };
+    } else {
+      const room = resolveCanonicalRoom(canonicalBoundary, rooms);
+      const furnitureObstacles = toCanonicalObjects(furniture);
+      const wallObstacles = toCanonicalWallObstacles(params.walls || [], params.doors || []);
+      const obstacles = [...furnitureObstacles, ...wallObstacles];
+      const canonicalProfile = toCanonicalProfile(profile);
+      const start = { x: routeWaypoints[0].x, y: routeWaypoints[0].y };
+      const end = { x: routeWaypoints[routeWaypoints.length - 1].x, y: routeWaypoints[routeWaypoints.length - 1].y };
+      const userWaypoints = routeWaypoints.slice(1, -1).map((pt) => ({ x: pt.x, y: pt.y }));
+
+      routeResult = computeRoute({
+        room,
+        obstacles,
+        start,
+        end,
+        mobilityProfile: canonicalProfile,
+        userWaypoints,
+      });
+    }
   }
 
   const evaluatedAt = new Date().toISOString();
@@ -107,13 +135,6 @@ export function evaluateSpatialScene(
       : "Queen Care Clinic · Waiting & Consultation Corridor (Demo Fixture)";
 
   const findings: SpatialFinding[] = [];
-
-  // Required clearance radius (half-width margin along route polyline)
-  const corridorWidthCm =
-    typeof profile.minClearanceCm === "number" && Number.isFinite(profile.minClearanceCm) && profile.minClearanceCm > 0
-      ? profile.minClearanceCm
-      : 90;
-  const requiredRadiusCm = Math.round((corridorWidthCm / 2) * 10) / 10;
 
   // 1. Evaluate Transit Route Feasibility & Clearance Margins
   let routeFeasibility: SpatialEvaluationSummary["routeFeasibility"] = "unconfigured";
@@ -148,9 +169,8 @@ export function evaluateSpatialScene(
   } else if (routeResult && routeResult.status === "clearance-insufficient") {
     routeFeasibility = "clearance-deficit";
     const failureReason = routeResult.reason;
-    const match = failureReason.match(/(\d+(?:\.\d+)?)\s*cm/);
-    const measuredVal = match ? parseFloat(match[1]) : Math.round(requiredRadiusCm * 0.7 * 10) / 10;
-    minClearanceMeasured = measuredVal;
+    minClearanceMeasured = null;
+    pathLengthMeasured = null;
 
     findings.push({
       id: "finding-route-deficit",
@@ -162,12 +182,18 @@ export function evaluateSpatialScene(
       evidence: {
         label: "Transit Corridor Clearance Deficit",
         rawEvidenceString: failureReason,
-        measuredQuantity: `${measuredVal} cm clearance radius`,
-        requiredQuantity: `${requiredRadiusCm} cm corridor radius (${corridorWidthCm} cm corridor)`,
-        margin: `${Math.round((measuredVal - requiredRadiusCm) * 10) / 10} cm deficit`,
         source: evidenceSource,
         failureReason,
       },
+      requirement:
+        requiredRadiusCm !== null
+          ? {
+              targetValue: requiredRadiusCm,
+              unit: "cm",
+              label: "Configured Profile Target (Unverified)",
+              sourceDescription: `Configured profile target (unverified): ${profile.name} (${corridorWidthCm} cm corridor)`,
+            }
+          : undefined,
       severity: "high",
       reviewNeeded: true,
       uncertaintyExplanation:
@@ -178,10 +204,111 @@ export function evaluateSpatialScene(
       },
       recommendation: "Relocate obstructing furniture or increase walking path clearance.",
     });
+  } else if (
+    routeResult &&
+    (routeResult.status === "start-out-of-bounds" || routeResult.status === "end-out-of-bounds")
+  ) {
+    routeFeasibility = "out-of-bounds";
+    const failureReason = routeResult.reason;
+    minClearanceMeasured = null;
+    pathLengthMeasured = null;
+
+    findings.push({
+      id: "finding-route-out-of-bounds",
+      kind: "route-out-of-bounds",
+      status: "observed",
+      classification: "actionable-deficit",
+      severity: "critical",
+      title:
+        routeResult.status === "start-out-of-bounds"
+          ? "Route Start Outside Room Boundary"
+          : "Route Destination Outside Room Boundary",
+      description: failureReason,
+      evidence: {
+        label: "Waypoint Out of Bounds",
+        source: evidenceSource,
+        rawEvidenceString: `Route engine status: ${routeResult.status} — ${failureReason}`,
+        failureReason,
+      },
+      reviewNeeded: true,
+      uncertaintyExplanation:
+        "Waypoints must be placed within the walkable room boundary envelope.",
+      suggestedAction: {
+        type: "configure-route",
+        label: "Reposition waypoint inside room boundary.",
+      },
+    });
+  } else if (
+    routeResult &&
+    (routeResult.status === "invalid-geometry" || routeResult.status === "insufficient-input")
+  ) {
+    routeFeasibility = "invalid-geometry";
+    const failureReason = routeResult.reason;
+    minClearanceMeasured = null;
+    pathLengthMeasured = null;
+
+    findings.push({
+      id: "finding-route-invalid-geometry",
+      kind: "route-invalid-geometry",
+      status: "observed",
+      classification: "actionable-deficit",
+      severity: "high",
+      title: "Invalid Route Geometry or Parameters",
+      description: failureReason,
+      evidence: {
+        label: "Geometry Validation Failure",
+        source: evidenceSource,
+        rawEvidenceString: `Route engine status: ${routeResult.status} — ${failureReason}`,
+        failureReason,
+      },
+      reviewNeeded: true,
+      uncertaintyExplanation:
+        "Input coordinates or geometry envelopes failed validation. Pathfinding cannot proceed.",
+      suggestedAction: {
+        type: "configure-route",
+        label: "Verify boundary coordinates and mobility profile parameters.",
+      },
+    });
+  } else if (
+    routeResult &&
+    (routeResult.status === "start-blocked" || routeResult.status === "end-blocked")
+  ) {
+    routeFeasibility = "unreachable";
+    const failureReason = routeResult.reason;
+    minClearanceMeasured = null;
+    pathLengthMeasured = null;
+
+    findings.push({
+      id: "finding-route-endpoint-blocked",
+      kind: "route-endpoint-blocked",
+      status: "observed",
+      classification: "actionable-deficit",
+      severity: "critical",
+      title:
+        routeResult.status === "start-blocked"
+          ? "Route Start Obstructed by Furniture"
+          : "Route Destination Obstructed by Furniture",
+      description: failureReason,
+      evidence: {
+        label: "Route Endpoint Blocked",
+        source: evidenceSource,
+        rawEvidenceString: `Route engine status: ${routeResult.status} — ${failureReason}`,
+        failureReason,
+      },
+      reviewNeeded: true,
+      uncertaintyExplanation:
+        "A route endpoint is positioned inside an obstacle footprint.",
+      suggestedAction: {
+        type: "reposition-obstacle",
+        label: "Relocate obstructing furniture away from route endpoints.",
+      },
+    });
   } else if (!routeResult || routeResult.status !== "success") {
     routeFeasibility = "unreachable";
     const failureReason =
       routeResult && "reason" in routeResult ? routeResult.reason : "No traversable path exists";
+    minClearanceMeasured = null;
+    pathLengthMeasured = null;
 
     findings.push({
       id: "finding-route-unreachable",
@@ -209,7 +336,8 @@ export function evaluateSpatialScene(
     // Route succeeded
     minClearanceMeasured = Math.round(routeResult.minimumClearanceCm);
     pathLengthMeasured = Number((routeResult.pathLengthCm / 100).toFixed(1));
-    const isDeficit = routeResult.minimumClearanceCm < requiredRadiusCm;
+    const isDeficit =
+      requiredRadiusCm !== null && routeResult.minimumClearanceCm < requiredRadiusCm;
 
     routeFeasibility = isDeficit ? "clearance-deficit" : "adequate";
 
@@ -223,7 +351,7 @@ export function evaluateSpatialScene(
         ? "Transit Corridor Clearance Margin Deficit"
         : "Transit Corridor Clearance Margin Satisfied",
       description: isDeficit
-        ? `Narrowest walking clearance radius (${minClearanceMeasured} cm) is below the configured profile requirement (≥ ${requiredRadiusCm} cm, half of ${corridorWidthCm} cm corridor).`
+        ? `Narrowest walking clearance radius (${minClearanceMeasured} cm) is below the configured profile target (≥ ${requiredRadiusCm} cm, half of ${corridorWidthCm} cm corridor).`
         : `Transit corridor maintains at least ${minClearanceMeasured} cm clearance radius along entire path (target ≥ ${requiredRadiusCm} cm).`,
       location: routeResult.bottlenecks[0]?.position,
       evidence: {
@@ -233,15 +361,18 @@ export function evaluateSpatialScene(
         source: evidenceSource,
         rawEvidenceString: `${minClearanceMeasured} cm clearance radius (${pathLengthMeasured} m route)`,
       },
-      requirement: {
-        targetValue: requiredRadiusCm,
-        unit: "cm",
-        label: "Profile Minimum Clearance Radius (Unverified)",
-        sourceDescription: `Mobility profile: ${profile.name} (${corridorWidthCm} cm full corridor width)`,
-      },
+      requirement:
+        requiredRadiusCm !== null
+          ? {
+              targetValue: requiredRadiusCm,
+              unit: "cm",
+              label: "Configured Profile Target (Unverified)",
+              sourceDescription: `Configured profile target (unverified): ${profile.name} (${corridorWidthCm} cm full corridor width)`,
+            }
+          : undefined,
       reviewNeeded: isDeficit,
       uncertaintyExplanation:
-        "Clearance is measured along 2D center-line polyline. Three-dimensional overhead, floor texture, and handrail continuity require physical inspection.",
+        "Clearance is measured along 2D center-line polyline. Three-dimensional overhead, floor texture, and handrail continuity require physical inspection. Non-holonomic turning space unverified.",
       suggestedAction: isDeficit
         ? {
             type: "reposition-obstacle",
@@ -256,7 +387,7 @@ export function evaluateSpatialScene(
 
       for (let bIdx = 0; bIdx < routeResult.bottlenecks.length; bIdx++) {
         const b = routeResult.bottlenecks[bIdx];
-        if (b.clearanceCm < requiredRadiusCm) {
+        if (requiredRadiusCm !== null && b.clearanceCm < requiredRadiusCm) {
           const locKey = `${Math.round(b.position.x)},${Math.round(b.position.y)}`;
           if (recordedLocations.has(locKey)) continue;
           recordedLocations.add(locKey);
@@ -293,8 +424,8 @@ export function evaluateSpatialScene(
             requirement: {
               targetValue: requiredRadiusCm,
               unit: "cm",
-              label: "Profile Clearance Radius Target",
-              sourceDescription: `Profile: ${profile.name}`,
+              label: "Profile Minimum Clearance Radius Target (Unverified)",
+              sourceDescription: `Configured profile target (unverified): ${profile.name}`,
             },
             reviewNeeded: true,
             suggestedAction: {
@@ -308,12 +439,15 @@ export function evaluateSpatialScene(
   }
 
   // 2. Physical Obstacle Footprints & Encroachments
-  const canonicalRoom = resolveCanonicalRoom(
-    canonicalBoundary,
-    rooms,
-    "room-eval",
-    sceneLabel
-  );
+  const canonicalRoom =
+    isUserScene && !hasUserBoundary
+      ? null
+      : resolveCanonicalRoom(
+          canonicalBoundary,
+          rooms,
+          "room-eval",
+          sceneLabel
+        );
   const canonicalObjs = toCanonicalObjects(furniture);
 
   // Derive world footprints
@@ -356,25 +490,19 @@ export function evaluateSpatialScene(
     }
   }
 
-  // Check Boundary Encroachments (Furniture extending outside room perimeter)
-  if (canonicalRoom.boundary && canonicalRoom.boundary.length >= 3) {
+  // Check Boundary Encroachments (Furniture extending outside room boundary)
+  if (canonicalRoom && canonicalRoom.boundary && canonicalRoom.boundary.length >= 3) {
     for (const item of objectFootprints) {
-      let isOutside = false;
-      for (const vertex of item.footprint) {
-        if (!isPointInPolygon(vertex, canonicalRoom.boundary, true)) {
-          isOutside = true;
-          break;
-        }
-      }
+      const isContained = isFootprintContainedInBoundary(item.footprint, canonicalRoom.boundary);
 
-      if (isOutside) {
+      if (!isContained) {
         findings.push({
           id: `finding-boundary-encroach-${item.obj.id}`,
           kind: "boundary-encroachment",
           status: "observed",
           classification: "actionable-deficit",
           title: `Room Boundary Overhang: ${item.obj.name}`,
-          description: `Footprint vertices of ${item.obj.name} extend outside the verified room perimeter boundary.`,
+          description: `Footprint of ${item.obj.name} extends outside the drafted/confirmed 2D room boundary.`,
           entityIds: [item.obj.id],
           location: {
             x: Math.round(item.obj.position.x),
@@ -383,7 +511,7 @@ export function evaluateSpatialScene(
           evidence: {
             label: "Boundary Violation",
             source: evidenceSource,
-            rawEvidenceString: `Footprint extends beyond room perimeter`,
+            rawEvidenceString: `Footprint extends beyond room boundary`,
           },
           reviewNeeded: true,
           suggestedAction: {
@@ -415,7 +543,7 @@ export function evaluateSpatialScene(
       }
 
       // If object encroaches within required radius and hasn't already been reported as a bottleneck
-      if (minObsDist < requiredRadiusCm) {
+      if (requiredRadiusCm !== null && minObsDist < requiredRadiusCm) {
         const alreadyReported = findings.some(
           (f) => f.kind === "route-bottleneck" && f.entityIds?.includes(item.obj.id)
         );
@@ -428,7 +556,7 @@ export function evaluateSpatialScene(
             status: "observed",
             classification: "actionable-deficit",
             title: `Corridor Margin Encroachment: ${item.obj.name}`,
-            description: `${item.obj.name} encroaches into the designated transit corridor (clearance radius: ${roundedDist} cm, required: ≥ ${requiredRadiusCm} cm).`,
+            description: `${item.obj.name} encroaches into the designated transit corridor (clearance radius: ${roundedDist} cm, target: ≥ ${requiredRadiusCm} cm).`,
             entityIds: [item.obj.id],
             location: closestPt,
             evidence: {
@@ -441,8 +569,8 @@ export function evaluateSpatialScene(
             requirement: {
               targetValue: requiredRadiusCm,
               unit: "cm",
-              label: "Profile Minimum Clearance Radius Target",
-              sourceDescription: `Profile: ${profile.name}`,
+              label: "Profile Minimum Clearance Radius Target (Unverified)",
+              sourceDescription: `Configured profile target (unverified): ${profile.name}`,
             },
             reviewNeeded: true,
             suggestedAction: {
@@ -507,11 +635,11 @@ export function evaluateSpatialScene(
     classification: "unassessed-scope",
     title: "Grip Stability & Fixture Anchorage (Unassessed)",
     description:
-      "Wall substrate structural integrity, grab bar anchorage (minimum 1.1 kN pull load), and handrail continuity require physical audit.",
+      "Wall substrate structural integrity, grab bar anchorage, and handrail continuity require physical audit.",
     evidence: {
       label: "Structural Anchorage",
       source: "unassessed",
-      rawEvidenceString: "Unassessed — physical pull-load audit required",
+      rawEvidenceString: "Unassessed — physical structural/tactile audit required",
     },
     reviewNeeded: true,
     uncertaintyExplanation:
@@ -561,6 +689,10 @@ export function evaluateSpatialScene(
       assessmentType === "user"
         ? "Incomplete Assessment — Transit Route Unconfigured"
         : "Demo Fixture — Transit Route Unconfigured";
+  } else if (routeFeasibility === "invalid-geometry") {
+    overallStatusLabel = "Action Required — Invalid Geometry or Profile Parameters";
+  } else if (routeFeasibility === "out-of-bounds") {
+    overallStatusLabel = "Action Required — Waypoints Outside Room Boundary";
   } else if (routeFeasibility === "unreachable") {
     overallStatusLabel = "Action Required — Designated Route Impassable";
   } else if (actionableDeficitsCount > 0) {
@@ -581,6 +713,7 @@ export function evaluateSpatialScene(
     minimumClearanceCm: minClearanceMeasured,
     requiredClearanceRadiusCm: requiredRadiusCm,
     corridorWidthCm,
+    corridorClearanceWidthCm: corridorWidthCm,
     pathLengthM: pathLengthMeasured,
     overallStatusLabel,
   };
