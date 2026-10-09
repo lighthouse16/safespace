@@ -1,8 +1,12 @@
 import type { Point2D, Polygon2D } from "@/lib/spatial";
-import type { RouteWaypoint, SpatialFurniture } from "@/lib/spatial-model";
+import { isSimplePolygon, polygonArea, validatePolygon2D } from "@/lib/spatial";
+import type { MobilityProfileData, RouteWaypoint, SpatialFurniture } from "@/lib/spatial-model";
 
 export const SAFESPACE_STORAGE_VERSION = 1;
 export const SAFESPACE_STORAGE_KEY = "safespace_confirmed_assessment_v1";
+export const SAFESPACE_ACTIVE_WORKSPACE_KEY = "safespace_active_workspace_v1";
+
+export type ActiveWorkspace = "demo" | "user";
 
 export type AssessmentMetadata = {
   id: string;
@@ -30,6 +34,7 @@ export type PersistedAssessmentState = {
   canonicalBoundary: Polygon2D | null;
   calibration: CalibrationProvenance | null;
   activeProfileId: string;
+  activeProfileSnapshot?: MobilityProfileData | null;
   routeWaypoints: RouteWaypoint[];
   furniture: SpatialFurniture[];
 };
@@ -43,11 +48,19 @@ export type StorageSaveResult =
   | { success: false; error: string };
 
 function getLocalStorage(): Storage | null {
-  if (typeof window !== "undefined" && window.localStorage) {
-    return window.localStorage;
+  try {
+    if (typeof window !== "undefined" && window.localStorage) {
+      return window.localStorage;
+    }
+  } catch {
+    return null;
   }
-  if (typeof globalThis !== "undefined" && (globalThis as unknown as { localStorage?: Storage }).localStorage) {
-    return (globalThis as unknown as { localStorage: Storage }).localStorage;
+  try {
+    if (typeof globalThis !== "undefined" && (globalThis as unknown as { localStorage?: Storage }).localStorage) {
+      return (globalThis as unknown as { localStorage: Storage }).localStorage;
+    }
+  } catch {
+    return null;
   }
   return null;
 }
@@ -67,6 +80,38 @@ export function isStorageAvailable(): boolean {
     return true;
   } catch {
     return false;
+  }
+}
+
+/**
+ * Persists user's explicit active workspace selection ("demo" | "user").
+ */
+export function saveActiveWorkspace(workspace: ActiveWorkspace): boolean {
+  const storage = getLocalStorage();
+  if (!storage || !isStorageAvailable()) return false;
+  try {
+    storage.setItem(SAFESPACE_ACTIVE_WORKSPACE_KEY, workspace);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Loads user's explicit active workspace selection, defaulting safely.
+ */
+export function loadActiveWorkspace(): ActiveWorkspace {
+  const storage = getLocalStorage();
+  if (!storage || !isStorageAvailable()) return "demo";
+  try {
+    const raw = storage.getItem(SAFESPACE_ACTIVE_WORKSPACE_KEY);
+    if (raw === "user" || raw === "demo") {
+      return raw;
+    }
+    const hasUser = storage.getItem(SAFESPACE_STORAGE_KEY);
+    return hasUser ? "user" : "demo";
+  } catch {
+    return "demo";
   }
 }
 
@@ -99,11 +144,50 @@ export function validatePersistedPayload(val: unknown): {
     return { isValid: false, error: "activeProfileId must be a non-empty string" };
   }
 
+  // Validate activeProfileSnapshot if present
+  let activeProfileSnapshot: MobilityProfileData | null = null;
+  if (obj.activeProfileSnapshot !== null && obj.activeProfileSnapshot !== undefined) {
+    if (typeof obj.activeProfileSnapshot !== "object") {
+      return { isValid: false, error: "activeProfileSnapshot must be an object or null" };
+    }
+    const snap = obj.activeProfileSnapshot as Record<string, unknown>;
+    if (
+      typeof snap.id !== "string" ||
+      !snap.id ||
+      typeof snap.name !== "string" ||
+      !snap.name ||
+      typeof snap.minClearanceCm !== "number" ||
+      !Number.isFinite(snap.minClearanceCm) ||
+      snap.minClearanceCm <= 0 ||
+      typeof snap.turningSpaceCm !== "number" ||
+      !Number.isFinite(snap.turningSpaceCm) ||
+      snap.turningSpaceCm <= 0
+    ) {
+      return { isValid: false, error: "activeProfileSnapshot must contain valid id, name, and positive finite clearance dimensions" };
+    }
+    activeProfileSnapshot = {
+      id: snap.id,
+      name: snap.name,
+      description: typeof snap.description === "string" ? snap.description : "",
+      minClearanceCm: snap.minClearanceCm,
+      turningSpaceCm: snap.turningSpaceCm,
+      fallHistory: Boolean(snap.fallHistory),
+      requiresSupport: Boolean(snap.requiresSupport),
+      lowLightSensitivity:
+        snap.lowLightSensitivity === "Low" || snap.lowLightSensitivity === "High"
+          ? snap.lowLightSensitivity
+          : "Moderate",
+    };
+  }
+
   // Validate canonicalBoundary
   let boundary: Polygon2D | null = null;
   if (obj.canonicalBoundary !== null && obj.canonicalBoundary !== undefined) {
     if (!Array.isArray(obj.canonicalBoundary)) {
       return { isValid: false, error: "canonicalBoundary must be an array or null" };
+    }
+    if (obj.canonicalBoundary.length < 3) {
+      return { isValid: false, error: `canonicalBoundary requires at least 3 vertices (found ${obj.canonicalBoundary.length})` };
     }
     const validatedPoints: Point2D[] = [];
     for (let i = 0; i < obj.canonicalBoundary.length; i++) {
@@ -120,7 +204,26 @@ export function validatePersistedPayload(val: unknown): {
       }
       validatedPoints.push({ x: p.x, y: p.y });
     }
+
+    const polyValidation = validatePolygon2D(validatedPoints);
+    if (!polyValidation.valid) {
+      return { isValid: false, error: `Invalid polygon boundary: ${polyValidation.errors?.join(", ")}` };
+    }
+
+    if (!isSimplePolygon(validatedPoints)) {
+      return { isValid: false, error: "canonicalBoundary is self-intersecting (must be a simple polygon)" };
+    }
+
+    if (polygonArea(validatedPoints) <= 1e-3) {
+      return { isValid: false, error: "canonicalBoundary area is zero or near-zero" };
+    }
+
     boundary = validatedPoints;
+  }
+
+  // User assessments strictly require a valid canonicalBoundary
+  if (obj.assessmentType === "user" && (!boundary || boundary.length < 3)) {
+    return { isValid: false, error: "User assessment requires a valid closed canonicalBoundary with >= 3 vertices" };
   }
 
   // Validate metadata
@@ -130,19 +233,24 @@ export function validatePersistedPayload(val: unknown): {
       return { isValid: false, error: "metadata must be an object or null" };
     }
     const m = obj.metadata as Record<string, unknown>;
-    if (typeof m.id !== "string" || typeof m.name !== "string") {
-      return { isValid: false, error: "metadata must include string id and name" };
+    if (typeof m.id !== "string" || !m.id.trim() || typeof m.name !== "string" || !m.name.trim()) {
+      return { isValid: false, error: "metadata must include non-empty string id and name" };
     }
     metadata = {
-      id: m.id,
-      name: m.name,
-      facilityName: typeof m.facilityName === "string" ? m.facilityName : "",
-      spaceName: typeof m.spaceName === "string" ? m.spaceName : "",
+      id: m.id.trim(),
+      name: m.name.trim(),
+      facilityName: typeof m.facilityName === "string" ? m.facilityName.trim() : "",
+      spaceName: typeof m.spaceName === "string" ? m.spaceName.trim() : "",
       environmentType: typeof m.environmentType === "string" ? m.environmentType : "residence",
-      notes: typeof m.notes === "string" ? m.notes : undefined,
+      notes: typeof m.notes === "string" ? m.notes.trim() : undefined,
       createdAt: typeof m.createdAt === "string" ? m.createdAt : new Date().toISOString(),
       updatedAt: typeof m.updatedAt === "string" ? m.updatedAt : new Date().toISOString(),
     };
+  }
+
+  // User assessments strictly require metadata
+  if (obj.assessmentType === "user" && !metadata) {
+    return { isValid: false, error: "User assessment requires non-null metadata" };
   }
 
   // Validate calibration provenance
@@ -159,13 +267,36 @@ export function validatePersistedPayload(val: unknown): {
     ) {
       return { isValid: false, error: "calibration.pixelsPerCm must be a positive finite number" };
     }
+    if (
+      typeof c.realLength !== "number" ||
+      !Number.isFinite(c.realLength) ||
+      c.realLength <= 0
+    ) {
+      return { isValid: false, error: "calibration.realLength must be a positive finite number" };
+    }
+    if (
+      typeof c.pixelDistance !== "number" ||
+      !Number.isFinite(c.pixelDistance) ||
+      c.pixelDistance <= 0
+    ) {
+      return { isValid: false, error: "calibration.pixelDistance must be a positive finite number" };
+    }
+    if (c.unit !== "cm" && c.unit !== "m") {
+      return { isValid: false, error: "calibration.unit must be 'cm' or 'm'" };
+    }
+
     calibration = {
       pixelsPerCm: c.pixelsPerCm,
-      realLength: typeof c.realLength === "number" ? c.realLength : 0,
-      unit: c.unit === "m" ? "m" : "cm",
-      pixelDistance: typeof c.pixelDistance === "number" ? c.pixelDistance : 0,
+      realLength: c.realLength,
+      unit: c.unit,
+      pixelDistance: c.pixelDistance,
       originPolicy: typeof c.originPolicy === "string" ? c.originPolicy : "canvas-origin-0-0",
     };
+  }
+
+  // User assessments strictly require calibration provenance
+  if (obj.assessmentType === "user" && !calibration) {
+    return { isValid: false, error: "User assessment requires non-null calibration provenance" };
   }
 
   // Validate routeWaypoints
@@ -179,6 +310,7 @@ export function validatePersistedPayload(val: unknown): {
       typeof wp !== "object" ||
       wp === null ||
       typeof wp.id !== "string" ||
+      !wp.id ||
       typeof wp.x !== "number" ||
       typeof wp.y !== "number" ||
       !Number.isFinite(wp.x) ||
@@ -196,9 +328,33 @@ export function validatePersistedPayload(val: unknown): {
   }
 
   // Validate furniture
-  const furniture: SpatialFurniture[] = Array.isArray(obj.furniture)
-    ? (obj.furniture as SpatialFurniture[])
-    : [];
+  if (!Array.isArray(obj.furniture)) {
+    return { isValid: false, error: "furniture must be an array" };
+  }
+  const furniture: SpatialFurniture[] = [];
+  for (let i = 0; i < obj.furniture.length; i++) {
+    const f = obj.furniture[i];
+    if (
+      typeof f !== "object" ||
+      f === null ||
+      typeof f.id !== "string" ||
+      !f.id ||
+      typeof f.name !== "string" ||
+      typeof f.x !== "number" ||
+      typeof f.y !== "number" ||
+      !Number.isFinite(f.x) ||
+      !Number.isFinite(f.y) ||
+      typeof f.width !== "number" ||
+      !Number.isFinite(f.width) ||
+      f.width <= 0 ||
+      typeof f.depth !== "number" ||
+      !Number.isFinite(f.depth) ||
+      f.depth <= 0
+    ) {
+      return { isValid: false, error: `Invalid furniture item at index ${i}` };
+    }
+    furniture.push(f as SpatialFurniture);
+  }
 
   return {
     isValid: true,
@@ -209,6 +365,7 @@ export function validatePersistedPayload(val: unknown): {
       canonicalBoundary: boundary,
       calibration,
       activeProfileId: obj.activeProfileId,
+      activeProfileSnapshot,
       routeWaypoints,
       furniture,
     },
@@ -233,6 +390,7 @@ export function savePersistedAssessment(state: PersistedAssessmentState): Storag
       canonicalBoundary: state.canonicalBoundary,
       calibration: state.calibration,
       activeProfileId: state.activeProfileId,
+      activeProfileSnapshot: state.activeProfileSnapshot,
       routeWaypoints: state.routeWaypoints,
       furniture: state.furniture,
     };

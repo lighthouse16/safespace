@@ -6,6 +6,7 @@ import { AppShell } from "@/components/shell";
 import {
   loadPersistedAssessment,
   clearPersistedAssessment,
+  saveActiveWorkspace,
   type PersistedAssessmentState,
 } from "@/lib/storage/persistence";
 import { useSafeSpaceStore } from "@/store/safespace-store";
@@ -13,6 +14,8 @@ import { useSafeSpaceStore } from "@/store/safespace-store";
 export default function AssessmentsPage() {
   const { hydrateFromStorage } = useSafeSpaceStore();
   const [savedAssessment, setSavedAssessment] = useState<PersistedAssessmentState | null>(null);
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  const [deleteError, setDeleteError] = useState<string | null>(null);
 
   useEffect(() => {
     const timer = setTimeout(() => {
@@ -27,12 +30,20 @@ export default function AssessmentsPage() {
   }, []);
 
   const handleOpenUserAssessment = () => {
+    saveActiveWorkspace("user");
     hydrateFromStorage();
   };
 
-  const handleDeleteUserAssessment = () => {
-    clearPersistedAssessment();
+  const handleConfirmDelete = () => {
+    setDeleteError(null);
+    const res = clearPersistedAssessment();
+    if (!res.success) {
+      setDeleteError(res.error || "Failed to clear storage");
+      return;
+    }
+    saveActiveWorkspace("demo");
     setSavedAssessment(null);
+    setShowDeleteConfirm(false);
   };
 
   return (
@@ -117,7 +128,10 @@ export default function AssessmentsPage() {
 
                 <div className="flex items-center gap-2 shrink-0">
                   <button
-                    onClick={handleDeleteUserAssessment}
+                    onClick={() => {
+                      setDeleteError(null);
+                      setShowDeleteConfirm(true);
+                    }}
                     className="rounded-lg border border-red-200 bg-white px-3 py-1.5 text-xs font-semibold text-red-600 hover:bg-red-50 transition cursor-pointer"
                   >
                     Delete
@@ -132,6 +146,46 @@ export default function AssessmentsPage() {
                 </div>
               </div>
             </div>
+
+            {/* Delete Confirmation Modal */}
+            {showDeleteConfirm && (
+              <div
+                role="dialog"
+                aria-modal="true"
+                aria-labelledby="delete-dialog-title"
+                className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-xs p-4"
+              >
+                <div className="bg-white rounded-xl shadow-2xl border border-slate-200 max-w-md w-full p-6 space-y-4">
+                  <h3 id="delete-dialog-title" className="text-base font-bold text-slate-900">
+                    Delete Confirmed Assessment?
+                  </h3>
+                  <p className="text-xs text-slate-600 leading-relaxed">
+                    This will permanently delete your confirmed assessment from browser storage. This action cannot be undone.
+                  </p>
+                  {deleteError && (
+                    <div role="alert" className="p-2.5 rounded bg-red-50 border border-red-200 text-xs text-red-700">
+                      {deleteError}
+                    </div>
+                  )}
+                  <div className="flex items-center justify-end gap-2 pt-2">
+                    <button
+                      type="button"
+                      onClick={() => setShowDeleteConfirm(false)}
+                      className="px-3 py-1.5 rounded-lg border border-slate-300 text-xs font-semibold text-slate-700 hover:bg-slate-50 transition cursor-pointer"
+                    >
+                      Cancel
+                    </button>
+                    <button
+                      type="button"
+                      onClick={handleConfirmDelete}
+                      className="px-3.5 py-1.5 rounded-lg bg-red-600 hover:bg-red-700 text-xs font-semibold text-white transition cursor-pointer"
+                    >
+                      Delete Assessment
+                    </button>
+                  </div>
+                </div>
+              </div>
+            )}
           </section>
         ) : (
           <div className="rounded-xl border border-slate-200 bg-white p-8 text-center shadow-xs">

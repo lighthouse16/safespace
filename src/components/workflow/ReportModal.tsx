@@ -131,7 +131,9 @@ export function ReportModal() {
                       <td className="p-2.5 font-sans font-medium text-slate-800">
                         Environmental Risk Index
                       </td>
-                      <td className="p-2.5 text-slate-500 font-sans">Pending OT Review</td>
+                      <td className="p-2.5 text-slate-500 font-sans">
+                        {metrics.riskIndex !== null ? `${metrics.riskIndex} (${metrics.riskLevel})` : "Pending OT Review"}
+                      </td>
                       <td className="p-2.5 text-slate-500 font-sans">&lt; 30 (Target)</td>
                       <td className="p-2.5 font-sans text-amber-700">Scheduled Gate 3</td>
                     </tr>
@@ -235,8 +237,8 @@ export function ReportModal() {
           {/* Disclaimer */}
           <div className="p-3 bg-slate-50 rounded text-xs text-slate-500 border border-slate-200 leading-relaxed">
             {isUserAssessment
-              ? `This document certifies environmental geometry and walking clearance for ${assessmentMetadata?.facilityName || "user assessment"} using SafeSpace calibrated canonical boundary. Automated hazard scoring and layout recommendations are pending occupational therapy protocol integration.`
-              : "This document certifies environmental geometry evaluation conducted via SafeSpace v0.1. It provides objective physical measurements and architectural recommendations for facility operations and occupational therapy consultation."}
+              ? `Preliminary unverified draft for ${assessmentMetadata?.facilityName || "user assessment"}. SafeSpace calculates geometric clearance along authored routes; it does not certify clinical safety, building code compliance, or hazard exemption. Hazard indexing and layout modifications are pending occupational therapy review.`
+              : "Demonstration assessment fixture for Queen Care Clinic. Spatial clearance calculations and layout recommendations are illustrative prototype outputs and do not constitute clinical, occupational therapy, or architectural certification."}
           </div>
         </div>
 

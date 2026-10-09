@@ -271,7 +271,7 @@ export function Stage5Improve() {
                       )}
                     </div>
                     <span className="font-mono text-[11px] text-emerald-700 font-bold">
-                      Risk {metrics.riskIndex} · {metrics.minClearanceCm} cm
+                      Risk {metrics.riskIndex ?? "—"} · {metrics.minClearanceCm} cm
                     </span>
                   </div>
                   <div className="flex-1 overflow-hidden relative">
@@ -348,7 +348,7 @@ export function Stage5Improve() {
                   Original (Risk 68 · 54 cm)
                 </div>
                 <div className="absolute top-2.5 right-2.5 z-10 px-2 py-0.5 rounded bg-[#1e7168]/90 text-white text-[11px] backdrop-blur-xs font-medium">
-                  Proposed ({currentAlt.title} · Risk {metrics.riskIndex})
+                  Proposed ({currentAlt.title} · Risk {metrics.riskIndex ?? "—"})
                 </div>
               </div>
             )
@@ -442,7 +442,9 @@ export function Stage5Improve() {
                       <tr>
                         <td className="py-1.5 font-sans font-medium text-slate-800">Environmental Risk</td>
                         <td className="py-1.5 text-red-600 font-bold">68 / 100</td>
-                        <td className="py-1.5 text-emerald-700 font-bold">{metrics.riskIndex} / 100</td>
+                        <td className="py-1.5 text-emerald-700 font-bold">
+                          {metrics.riskIndex !== null ? `${metrics.riskIndex} / 100` : "—"}
+                        </td>
                         <td className="py-1.5 text-slate-500 font-sans">&lt; 30 (Low risk)</td>
                       </tr>
                       <tr>
@@ -585,7 +587,7 @@ export function Stage5Improve() {
                 <span className="font-sans text-slate-500">Risk Index:</span>
                 <span className="font-bold">
                   <span className="text-red-600">68</span> →{" "}
-                  <span className="text-emerald-700">{metrics.riskIndex}</span>
+                  <span className="text-emerald-700">{metrics.riskIndex ?? "—"}</span>
                 </span>
               </div>
               <div className="flex justify-between">

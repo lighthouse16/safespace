@@ -24,7 +24,10 @@ import {
   toCanonicalObjects,
   toCanonicalProfile,
   toCanonicalWallObstacles,
-  computePolygonBoundsCm,
+  findInteriorProvisionalPoint,
+  validatePolygon2D,
+  isSimplePolygon,
+  polygonArea,
   type Polygon2D,
   type RouteResult,
 } from "@/lib/spatial";
@@ -33,8 +36,10 @@ import {
   savePersistedAssessment,
   loadPersistedAssessment,
   clearPersistedAssessment,
+  saveActiveWorkspace,
   type AssessmentMetadata,
   type CalibrationProvenance,
+  type PersistedAssessmentState,
 } from "@/lib/storage/persistence";
 
 export type WorkflowStage = "layout" | "profile" | "routes" | "analysis" | "improve";
@@ -162,7 +167,7 @@ export interface SafeSpaceState {
     metadata: AssessmentMetadata;
     boundaryCm: Polygon2D;
     calibration: CalibrationProvenance;
-  }) => void;
+  }) => { success: boolean; error?: string };
   loadDemoAssessment: () => void;
   resetDemoAssessment: () => void;
   clearUserAssessment: () => void;
@@ -247,6 +252,7 @@ function persistUserMutation(
       canonicalBoundary: state.canonicalBoundary,
       calibration: state.calibrationProvenance,
       activeProfileId: state.activeProfile.id,
+      activeProfileSnapshot: state.activeProfile,
       routeWaypoints: state.routeWaypoints,
       furniture: state.furniture,
     });
@@ -519,18 +525,18 @@ export const useSafeSpaceStore = create<SafeSpaceState>((set, get) => ({
 
     if (posX === undefined || posY === undefined) {
       if (canonicalBoundary && canonicalBoundary.length >= 3) {
-        const bounds = computePolygonBoundsCm(canonicalBoundary);
         if (routeWaypoints.length === 0) {
-          posX = Math.round(bounds.minX + bounds.widthCm * 0.25);
-          posY = Math.round(bounds.minY + bounds.heightCm * 0.5);
+          const pt = findInteriorProvisionalPoint(canonicalBoundary, "start");
+          posX = pt.x;
+          posY = pt.y;
         } else if (routeWaypoints.length === 1) {
-          posX = Math.round(bounds.minX + bounds.widthCm * 0.75);
-          posY = Math.round(bounds.minY + bounds.heightCm * 0.5);
+          const pt = findInteriorProvisionalPoint(canonicalBoundary, "end", routeWaypoints);
+          posX = pt.x;
+          posY = pt.y;
         } else {
-          const p1 = routeWaypoints[routeWaypoints.length - 2];
-          const p2 = routeWaypoints[routeWaypoints.length - 1];
-          posX = Math.round((p1.x + p2.x) / 2);
-          posY = Math.round((p1.y + p2.y) / 2);
+          const pt = findInteriorProvisionalPoint(canonicalBoundary, "intermediate", routeWaypoints);
+          posX = pt.x;
+          posY = pt.y;
         }
       } else {
         if (routeWaypoints.length >= 2) {
@@ -664,8 +670,8 @@ export const useSafeSpaceStore = create<SafeSpaceState>((set, get) => ({
       const isDeficit = isSuccess && routeResult.minimumClearanceCm < requiredRadiusCm;
 
       return {
-        riskIndex: 0,
-        riskLevel: "Low" as const,
+        riskIndex: null,
+        riskLevel: "Pending Review" as const,
         minClearanceCm,
         routeLengthM,
         constraintWarning: isDeficit
@@ -682,6 +688,7 @@ export const useSafeSpaceStore = create<SafeSpaceState>((set, get) => ({
   },
 
   resetToDemo: () => {
+    saveActiveWorkspace("demo");
     const defaultProfile = { ...MOBILITY_PROFILES[0] };
     const defaultFurniture = cloneFurniture(INITIAL_FURNITURE);
     const initialProposed = generateProposedFurniture(INITIAL_FURNITURE, "balanced");
@@ -724,13 +731,62 @@ export const useSafeSpaceStore = create<SafeSpaceState>((set, get) => ({
 
   createAndLoadUserAssessment: (payload) => {
     const { metadata, boundaryCm, calibration } = payload;
+
+    // Validate geometry and inputs
+    if (!boundaryCm || !Array.isArray(boundaryCm) || boundaryCm.length < 3) {
+      const err = "Boundary requires at least 3 vertices";
+      set({ storageStatus: "error", storageError: err });
+      return { success: false, error: err };
+    }
+    const polyValid = validatePolygon2D(boundaryCm);
+    if (!polyValid.valid) {
+      const err = `Invalid polygon boundary: ${polyValid.errors?.join(", ")}`;
+      set({ storageStatus: "error", storageError: err });
+      return { success: false, error: err };
+    }
+    if (!isSimplePolygon(boundaryCm)) {
+      const err = "Boundary polygon self-intersects";
+      set({ storageStatus: "error", storageError: err });
+      return { success: false, error: err };
+    }
+    if (polygonArea(boundaryCm) <= 1e-3) {
+      const err = "Boundary area is zero or near-zero";
+      set({ storageStatus: "error", storageError: err });
+      return { success: false, error: err };
+    }
+
     const defaultProfile = { ...MOBILITY_PROFILES[0] };
+    const savePayload: PersistedAssessmentState = {
+      schemaVersion: SAFESPACE_STORAGE_VERSION,
+      assessmentType: "user",
+      metadata,
+      canonicalBoundary: boundaryCm,
+      calibration,
+      activeProfileId: defaultProfile.id,
+      activeProfileSnapshot: defaultProfile,
+      routeWaypoints: [],
+      furniture: [],
+    };
+
+    const saveRes = savePersistedAssessment(savePayload);
+    if (!saveRes.success) {
+      set({
+        storageStatus: "error",
+        storageError: saveRes.error,
+      });
+      return { success: false, error: saveRes.error };
+    }
+
+    saveActiveWorkspace("user");
+
     set({
       assessmentType: "user",
       assessmentId: metadata.id,
       assessmentMetadata: metadata,
       canonicalBoundary: boundaryCm,
       calibrationProvenance: calibration,
+      activeProfileId: defaultProfile.id,
+      activeProfile: defaultProfile,
       activeStage: "layout",
       rooms: [],
       walls: [],
@@ -751,16 +807,7 @@ export const useSafeSpaceStore = create<SafeSpaceState>((set, get) => ({
       storageError: null,
     });
 
-    savePersistedAssessment({
-      schemaVersion: SAFESPACE_STORAGE_VERSION,
-      assessmentType: "user",
-      metadata,
-      canonicalBoundary: boundaryCm,
-      calibration,
-      activeProfileId: defaultProfile.id,
-      routeWaypoints: [],
-      furniture: [],
-    });
+    return { success: true };
   },
 
   loadDemoAssessment: () => {
@@ -790,8 +837,27 @@ export const useSafeSpaceStore = create<SafeSpaceState>((set, get) => ({
 
     const data = res.data;
     if (data.assessmentType === "user" && data.canonicalBoundary) {
-      const profile =
+      const baseProfile =
         MOBILITY_PROFILES.find((p) => p.id === data.activeProfileId) || MOBILITY_PROFILES[0];
+      const profile: MobilityProfileData = data.activeProfileSnapshot
+        ? {
+            ...baseProfile,
+            ...data.activeProfileSnapshot,
+            minClearanceCm:
+              typeof data.activeProfileSnapshot.minClearanceCm === "number" &&
+              Number.isFinite(data.activeProfileSnapshot.minClearanceCm) &&
+              data.activeProfileSnapshot.minClearanceCm > 0
+                ? data.activeProfileSnapshot.minClearanceCm
+                : baseProfile.minClearanceCm,
+            turningSpaceCm:
+              typeof data.activeProfileSnapshot.turningSpaceCm === "number" &&
+              Number.isFinite(data.activeProfileSnapshot.turningSpaceCm) &&
+              data.activeProfileSnapshot.turningSpaceCm > 0
+                ? data.activeProfileSnapshot.turningSpaceCm
+                : baseProfile.turningSpaceCm,
+          }
+        : baseProfile;
+
       const routeResult = computeStoreRoute(
         data.furniture || [],
         [],

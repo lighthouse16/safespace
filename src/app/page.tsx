@@ -11,12 +11,19 @@ import { Stage5Improve } from "@/components/workflow/Stage5Improve";
 import { AnalysisTransition } from "@/components/workflow/AnalysisTransition";
 import { ReportModal } from "@/components/workflow/ReportModal";
 
+import { loadActiveWorkspace } from "@/lib/storage/persistence";
+
 export default function SafeSpaceApp() {
-  const { activeStage, hydrateFromStorage } = useSafeSpaceStore();
+  const { activeStage, hydrateFromStorage, resetToDemo } = useSafeSpaceStore();
 
   useEffect(() => {
-    hydrateFromStorage();
-  }, [hydrateFromStorage]);
+    const active = loadActiveWorkspace();
+    if (active === "user") {
+      hydrateFromStorage();
+    } else {
+      resetToDemo();
+    }
+  }, [hydrateFromStorage, resetToDemo]);
 
   return (
     <div className="flex flex-col h-screen w-screen overflow-hidden bg-[#f7f8f6] text-[#192329] font-sans antialiased">

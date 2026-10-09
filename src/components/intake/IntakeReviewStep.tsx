@@ -18,6 +18,7 @@ import {
   INTAKE_ORIGIN_POLICY,
   type IntakeBoundaryValidationResult,
 } from "@/lib/spatial";
+import { loadPersistedAssessment } from "@/lib/storage/persistence";
 import { useSafeSpaceStore } from "@/store/safespace-store";
 
 export type IntakeReviewStepProps = {
@@ -45,6 +46,7 @@ export function IntakeReviewStep({
   const createAndLoadUserAssessment = useSafeSpaceStore((s) => s.createAndLoadUserAssessment);
   const [validationError, setValidationError] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [showOverwriteModal, setShowOverwriteModal] = useState(false);
 
   // Pre-validate for preview statistics
   const previewValidation: IntakeBoundaryValidationResult = validateIntakeBoundary(
@@ -55,7 +57,7 @@ export function IntakeReviewStep({
 
   const polygonPoints = boundary.vertices.map((v) => `${v.x},${v.y}`).join(" ");
 
-  const handleConfirmAndOpen = () => {
+  const executeConfirmAndOpen = () => {
     setValidationError(null);
 
     const validation = validateIntakeBoundary(
@@ -81,7 +83,7 @@ export function IntakeReviewStep({
           ? computePixelDistance(calibration.p1, calibration.p2)
           : 0;
 
-      createAndLoadUserAssessment({
+      const res = createAndLoadUserAssessment({
         metadata: {
           id: `assessment-${Date.now()}`,
           name: details.assessmentName.trim(),
@@ -102,12 +104,27 @@ export function IntakeReviewStep({
         },
       });
 
+      if (!res.success) {
+        setIsSubmitting(false);
+        setValidationError(`Failed to initialize assessment workspace: ${res.error || "Storage write error"}`);
+        return;
+      }
+
       router.push("/");
     } catch (err) {
       setIsSubmitting(false);
       const message = err instanceof Error ? err.message : String(err);
       setValidationError(`Failed to initialize assessment workspace: ${message}`);
     }
+  };
+
+  const handleConfirmAndOpen = () => {
+    const existing = loadPersistedAssessment();
+    if (existing.success && existing.data.assessmentType === "user") {
+      setShowOverwriteModal(true);
+      return;
+    }
+    executeConfirmAndOpen();
   };
 
   return (
@@ -308,6 +325,46 @@ export function IntakeReviewStep({
           </div>
         </div>
       </div>
+
+      {/* Overwrite Confirmation Modal */}
+      {showOverwriteModal && (
+        <div
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="replace-modal-title"
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-xs p-4"
+        >
+          <div className="bg-white rounded-xl shadow-2xl border border-slate-200 max-w-md w-full p-6 space-y-4">
+            <h3 id="replace-modal-title" className="text-base font-bold text-slate-900">
+              Replace Existing Saved Assessment?
+            </h3>
+            <p className="text-xs text-slate-600 leading-relaxed">
+              A previously confirmed user assessment is already saved in this browser. Confirming will permanently replace that assessment with this new space.
+            </p>
+            <div className="flex items-center justify-end gap-2 pt-2">
+              <Button
+                type="button"
+                variant="secondary"
+                size="sm"
+                onClick={() => setShowOverwriteModal(false)}
+              >
+                Cancel
+              </Button>
+              <Button
+                type="button"
+                size="sm"
+                className="bg-amber-600 hover:bg-amber-700 text-white font-semibold"
+                onClick={() => {
+                  setShowOverwriteModal(false);
+                  executeConfirmAndOpen();
+                }}
+              >
+                Replace & Open Workspace
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Action Footer */}
       <div className="flex flex-wrap items-center justify-between gap-3">

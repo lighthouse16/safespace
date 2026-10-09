@@ -147,6 +147,7 @@ export {
   convertIntakePolygonToCm,
   convertPixelPointToCm,
   convertPixelPolygonToCm,
+  findInteriorProvisionalPoint,
   isSimplePolygon,
   validateIntakeBoundary,
   type CoordinateConversionPolicy,

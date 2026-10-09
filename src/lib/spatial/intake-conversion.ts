@@ -1,6 +1,6 @@
 import type { Point2D, Polygon2D, Segment2D } from "./schema";
 import { segmentIntersectsSegment } from "./geometry/intersections";
-import { polygonArea } from "./geometry/polygons";
+import { distancePointToPolygonBoundary, isPointInPolygon, polygonArea } from "./geometry/polygons";
 
 /**
  * Coordinate Conversion & Origin Policy
@@ -266,4 +266,101 @@ export function validateIntakeBoundary(
     boundsCm: bounds,
     areaCm2: area,
   };
+}
+
+/**
+ * Finds a guaranteed interior point inside a 2D polygon with maximum wall clearance.
+ * Used for placing route waypoints (start, destination, checkpoint) safely inside concave or irregular rooms.
+ */
+export function findInteriorProvisionalPoint(
+  polygon: Polygon2D,
+  phase: "start" | "end" | "intermediate" = "start",
+  referencePoints?: readonly Point2D[]
+): Point2D {
+  if (!polygon || polygon.length < 3) {
+    return { x: 200, y: 250 };
+  }
+
+  const bounds = computePolygonBoundsCm(polygon);
+  const steps = 30;
+  const stepX = Math.max(1, bounds.widthCm / steps);
+  const stepY = Math.max(1, bounds.heightCm / steps);
+
+  const candidates: { pt: Point2D; dist: number }[] = [];
+
+  for (let ix = 1; ix < steps; ix++) {
+    const cx = bounds.minX + ix * stepX;
+    for (let iy = 1; iy < steps; iy++) {
+      const cy = bounds.minY + iy * stepY;
+      const pt: Point2D = { x: Math.round(cx), y: Math.round(cy) };
+      if (isPointInPolygon(pt, polygon, false)) {
+        const dist = distancePointToPolygonBoundary(pt, polygon);
+        if (dist > 1) {
+          candidates.push({ pt, dist });
+        }
+      }
+    }
+  }
+
+  if (candidates.length === 0) {
+    let sumX = 0;
+    let sumY = 0;
+    for (const v of polygon) {
+      sumX += v.x;
+      sumY += v.y;
+    }
+    const centroid = { x: Math.round(sumX / polygon.length), y: Math.round(sumY / polygon.length) };
+    if (isPointInPolygon(centroid, polygon, false)) {
+      return centroid;
+    }
+    return { x: Math.round(polygon[0].x), y: Math.round(polygon[0].y) };
+  }
+
+  const maxDist = Math.max(...candidates.map((c) => c.dist));
+  const clearanceThreshold = Math.min(maxDist * 0.4, 25);
+  const comfortable = candidates.filter((c) => c.dist >= clearanceThreshold);
+  const pool = comfortable.length > 0 ? comfortable : candidates;
+
+  if (phase === "start") {
+    pool.sort((a, b) => {
+      const scoreA = a.pt.x * 1.2 + a.pt.y - a.dist * 0.5;
+      const scoreB = b.pt.x * 1.2 + b.pt.y - b.dist * 0.5;
+      return scoreA - scoreB;
+    });
+    return pool[0].pt;
+  }
+
+  if (phase === "end") {
+    if (referencePoints && referencePoints.length > 0) {
+      const ref = referencePoints[0];
+      pool.sort((a, b) => {
+        const distA = Math.hypot(a.pt.x - ref.x, a.pt.y - ref.y);
+        const distB = Math.hypot(b.pt.x - ref.x, b.pt.y - ref.y);
+        return distB - distA;
+      });
+      return pool[0].pt;
+    }
+    pool.sort((a, b) => {
+      const scoreA = a.pt.x * 1.2 + a.pt.y + a.dist * 0.5;
+      const scoreB = b.pt.x * 1.2 + b.pt.y + b.dist * 0.5;
+      return scoreB - scoreA;
+    });
+    return pool[0].pt;
+  }
+
+  if (referencePoints && referencePoints.length >= 2) {
+    const p1 = referencePoints[referencePoints.length - 2];
+    const p2 = referencePoints[referencePoints.length - 1];
+    const midX = (p1.x + p2.x) / 2;
+    const midY = (p1.y + p2.y) / 2;
+    pool.sort((a, b) => {
+      const dMidA = Math.hypot(a.pt.x - midX, a.pt.y - midY);
+      const dMidB = Math.hypot(b.pt.x - midX, b.pt.y - midY);
+      return dMidA - dMidB;
+    });
+    return pool[0].pt;
+  }
+
+  pool.sort((a, b) => b.dist - a.dist);
+  return pool[0].pt;
 }
