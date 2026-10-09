@@ -62,8 +62,8 @@ export function TopAppBar() {
           >
             {isUserAssessment ? "User Assessment" : "Demo Fixture"}
           </span>
-          <span className="text-[#94a3b8] text-xs">·</span>
-          <span className="text-xs text-[#64748b] hidden sm:inline">
+          <span className="text-[#94a3b8] text-xs hidden lg:inline">·</span>
+          <span className="text-xs text-[#64748b] hidden lg:inline">
             {isUserAssessment
               ? assessmentMetadata?.spaceName || "Calibrated Room"
               : "Waiting Area & Consultation Corridor"}
@@ -132,9 +132,9 @@ export function TopAppBar() {
               >
                 {isPassed ? <Check className="w-2.5 h-2.5 stroke-[3]" /> : s.stepNumber}
               </span>
-              <span className="hidden md:inline">{s.label}</span>
+              <span className="hidden lg:inline">{s.label}</span>
               {idx < STAGES.length - 1 && (
-                <ChevronRight className="w-3 h-3 text-[#cbd5e1] ml-1 hidden sm:inline" />
+                <ChevronRight className="w-3 h-3 text-[#cbd5e1] ml-1 hidden lg:inline" />
               )}
             </button>
           );

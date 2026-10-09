@@ -32,6 +32,8 @@ import {
   type SpatialEvaluationResult,
   type Polygon2D,
   type RouteResult,
+  optimizeLayout,
+  type OptimizationResult,
 } from "@/lib/spatial";
 import {
   SAFESPACE_STORAGE_VERSION,
@@ -161,6 +163,15 @@ export interface SafeSpaceState {
   requestChanges: () => void;
   reportModalOpen: boolean;
   setReportModalOpen: (open: boolean) => void;
+
+  // Gate 3 Layout Optimization
+  activeOptimizationResult: OptimizationResult | null;
+  selectedCandidateId: string | null;
+  baselineFurnitureSnapshot: SpatialFurniture[] | null;
+  selectCandidate: (candidateId: string | null) => void;
+  runOptimization: () => OptimizationResult;
+  applyLayoutCandidate: (candidateId: string) => { success: boolean; error?: string };
+  revertLayoutCandidate: () => void;
 
   // Computed helper
   getSpatialFindings: () => SpatialEvaluationResult;
@@ -657,6 +668,92 @@ export const useSafeSpaceStore = create<SafeSpaceState>((set, get) => ({
   reportModalOpen: false,
   setReportModalOpen: (reportModalOpen) => set({ reportModalOpen }),
 
+  // Gate 3 Layout Optimization
+  activeOptimizationResult: null,
+  selectedCandidateId: null,
+  baselineFurnitureSnapshot: null,
+  selectCandidate: (candidateId) => {
+    const { activeOptimizationResult, runOptimization, furniture, baselineFurnitureSnapshot } = get();
+    const result = activeOptimizationResult || runOptimization();
+    const candidate = result.candidates.find((c) => c.id === candidateId);
+    if (candidate) {
+      set({
+        selectedCandidateId: candidate.id,
+        proposedFurniture: cloneFurniture(candidate.furniture),
+        routeResult: candidate.routeResult,
+      });
+    } else {
+      set({
+        selectedCandidateId: null,
+        proposedFurniture: cloneFurniture(baselineFurnitureSnapshot || furniture),
+      });
+    }
+  },
+  runOptimization: () => {
+    const state = get();
+    const targetFurniture = state.baselineFurnitureSnapshot || state.furniture;
+    const result = optimizeLayout({
+      furniture: targetFurniture,
+      rooms: state.rooms,
+      walls: state.walls,
+      doors: state.doors,
+      waypoints: state.routeWaypoints,
+      profile: state.activeProfile,
+      boundary: state.canonicalBoundary,
+      assessmentType: state.assessmentType,
+    });
+    const firstCand = result.candidates[0] ?? null;
+    set({
+      activeOptimizationResult: result,
+      selectedCandidateId: firstCand ? firstCand.id : null,
+      proposedFurniture: firstCand ? cloneFurniture(firstCand.furniture) : cloneFurniture(targetFurniture),
+    });
+    return result;
+  },
+  applyLayoutCandidate: (candidateId) => {
+    const state = get();
+    const result = state.activeOptimizationResult || state.runOptimization();
+    const candidate = result.candidates.find((c) => c.id === candidateId);
+    if (!candidate) {
+      return { success: false, error: "Candidate layout not found" };
+    }
+    const baseline = state.baselineFurnitureSnapshot || cloneFurniture(state.furniture);
+    const updatedFurniture = cloneFurniture(candidate.furniture);
+    set({
+      baselineFurnitureSnapshot: baseline,
+      furniture: updatedFurniture,
+      proposedFurniture: cloneFurniture(candidate.furniture),
+      routeResult: candidate.routeResult,
+      selectedCandidateId: candidate.id,
+      approvalStatus: "approved",
+    });
+    persistUserMutation(get, set);
+    return { success: true };
+  },
+  revertLayoutCandidate: () => {
+    const state = get();
+    if (!state.baselineFurnitureSnapshot) return;
+    const revertedFurniture = cloneFurniture(state.baselineFurnitureSnapshot);
+    const revertedRoute = computeStoreRoute(
+      revertedFurniture,
+      state.rooms,
+      state.activeProfile,
+      state.routeWaypoints,
+      state.walls,
+      state.doors,
+      state.canonicalBoundary
+    );
+    set({
+      furniture: revertedFurniture,
+      proposedFurniture: revertedFurniture,
+      routeResult: revertedRoute,
+      selectedCandidateId: null,
+      approvalStatus: "draft",
+      baselineFurnitureSnapshot: null,
+    });
+    persistUserMutation(get, set);
+  },
+
   getSpatialFindings: () => {
     const state = get();
     const activeFurn = state.activeStage === "improve" ? state.proposedFurniture : state.furniture;
@@ -746,6 +843,9 @@ export const useSafeSpaceStore = create<SafeSpaceState>((set, get) => ({
       approvalStatus: "draft",
       viewMode: "2d",
       routeResult: initialRouteResult,
+      activeOptimizationResult: null,
+      selectedCandidateId: null,
+      baselineFurnitureSnapshot: null,
       storageStatus: savedWs ? "idle" : "error",
       storageError: savedWs ? null : "Failed to persist active workspace selection.",
     });
@@ -833,6 +933,9 @@ export const useSafeSpaceStore = create<SafeSpaceState>((set, get) => ({
       proposedFurniture: [],
       approvalStatus: "draft",
       viewMode: "2d",
+      activeOptimizationResult: null,
+      selectedCandidateId: null,
+      baselineFurnitureSnapshot: null,
       storageStatus: "saved",
       storageError: null,
     });

@@ -3,7 +3,7 @@
 import React, { useRef, useState, useEffect, useCallback, useMemo } from "react";
 import { useSafeSpaceStore } from "@/store/safespace-store";
 import { type SpatialFurniture, type Point2D, type RouteWaypoint } from "@/lib/spatial-model";
-import { computePolygonBoundsCm } from "@/lib/spatial";
+import { computePolygonBoundsCm, type RouteResult, type SpatialEvaluationResult } from "@/lib/spatial";
 import {
   ZoomIn,
   ZoomOut,
@@ -12,6 +12,8 @@ import {
 
 interface Floorplan2DProps {
   customFurniture?: SpatialFurniture[];
+  customRouteResult?: RouteResult | null;
+  customEvaluation?: SpatialEvaluationResult | null;
   onCustomMove?: (id: string, x: number, y: number) => void;
   readOnly?: boolean;
   overrideStage?: "layout" | "profile" | "routes" | "analysis" | "improve" | "before";
@@ -23,6 +25,8 @@ interface Floorplan2DProps {
 
 export function Floorplan2D({
   customFurniture,
+  customRouteResult,
+  customEvaluation,
   onCustomMove,
   readOnly = false,
   overrideStage,
@@ -64,7 +68,7 @@ export function Floorplan2D({
     selectedWaypointId,
     selectWaypoint,
     moveRouteWaypoint,
-    routeResult,
+    routeResult: storeRouteResult,
     activeProfile,
     canonicalBoundary,
     getSpatialFindings,
@@ -74,8 +78,9 @@ export function Floorplan2D({
   const stage = isBefore ? "before" : (overrideStage || activeStage);
   const furniture = customFurniture || storeFurniture;
   const handleMove = onCustomMove || moveFurniture;
+  const routeResult = customRouteResult !== undefined ? customRouteResult : storeRouteResult;
 
-  const spatialEvaluation = getSpatialFindings();
+  const spatialEvaluation = customEvaluation !== undefined ? (customEvaluation || getSpatialFindings()) : getSpatialFindings();
   const spatialFindingsWithLocation = useMemo(
     () => spatialEvaluation.findings.filter((f) => Boolean(f.location)),
     [spatialEvaluation]
