@@ -11,7 +11,13 @@ import {
   polygonIntersectsPolygon,
 } from "../geometry/intersections";
 import { evaluateSpatialScene } from "../analysis/evaluator";
-import type { SpatialFurniture } from "@/lib/spatial-model";
+import type {
+  SpatialFurniture,
+  SpatialRoom,
+  SpatialWall,
+  SpatialDoor,
+  MobilityProfileData,
+} from "@/lib/spatial-model";
 import type {
   OptimizationInput,
   OptimizationResult,
@@ -30,26 +36,52 @@ function computeDisplacement(moves: LayoutMove[]): number {
  */
 export function computeSceneFingerprint(input: {
   furniture: readonly SpatialFurniture[];
-  waypoints: readonly { id: string; x: number; y: number }[];
+  waypoints: readonly { id: string; x: number; y: number; isMandatory?: boolean }[];
   boundary?: readonly { x: number; y: number }[] | null;
+  rooms?: readonly SpatialRoom[];
+  walls?: readonly SpatialWall[];
+  doors?: readonly SpatialDoor[];
+  profile?: MobilityProfileData | { id: string; minClearanceCm: number; turningSpaceCm?: number; [key: string]: unknown };
   profileId?: string;
   minClearanceCm?: number;
+  turningSpaceCm?: number;
 }): string {
   const furnSig = input.furniture
     .map(
       (f) =>
-        `${f.id}:${Math.round(f.x)}:${Math.round(f.y)}:${Math.round(f.rotation || 0)}:${Math.round(f.width)}:${Math.round(f.depth)}:${f.isFixed ? 1 : 0}`
+        `${f.id}:${f.x}:${f.y}:${f.rotation || 0}:${f.width}:${f.depth}:${f.height || 0}:${f.category || ""}:${f.roomId || ""}:${f.isFixed ? 1 : 0}:${f.isConfirmed ? 1 : 0}:${f.isStableSupport ? 1 : 0}`
     )
     .sort()
     .join(";");
   const wpSig = input.waypoints
-    .map((w) => `${w.id}:${Math.round(w.x)}:${Math.round(w.y)}`)
+    .map((w) => `${w.id}:${w.x}:${w.y}:${w.isMandatory ? 1 : 0}`)
     .join(";");
   const bndSig = input.boundary
-    ? input.boundary.map((p) => `${Math.round(p.x)},${Math.round(p.y)}`).join(";")
+    ? input.boundary.map((p) => `${p.x},${p.y}`).join(";")
     : "none";
-  const profSig = `${input.profileId || ""}:${input.minClearanceCm || 0}`;
-  return `${furnSig}|${wpSig}|${bndSig}|${profSig}`;
+  const wallsSig = input.walls
+    ? input.walls
+        .map((w) => `${w.id}:${w.start.x},${w.start.y}->${w.end.x},${w.end.y}:${w.thickness}:${w.isExterior ? 1 : 0}`)
+        .sort()
+        .join(";")
+    : "";
+  const doorsSig = input.doors
+    ? input.doors
+        .map((d) => `${d.id}:${d.position.x},${d.position.y}:${d.width}:${d.swingDeg}:${d.swingDirection}`)
+        .sort()
+        .join(";")
+    : "";
+  const roomsSig = input.rooms
+    ? input.rooms
+        .map((r) => `${r.id}:${r.x},${r.y},${r.width},${r.depth}`)
+        .sort()
+        .join(";")
+    : "";
+  const profId = input.profile?.id || input.profileId || "";
+  const minClr = input.profile?.minClearanceCm ?? input.minClearanceCm ?? 0;
+  const turnSp = input.profile?.turningSpaceCm ?? input.turningSpaceCm ?? 0;
+  const profSig = `${profId}:${minClr}:${turnSp}`;
+  return `${furnSig}|${wpSig}|${bndSig}|${wallsSig}|${doorsSig}|${roomsSig}|${profSig}`;
 }
 
 /**
@@ -81,8 +113,10 @@ export function optimizeLayout(input: OptimizationInput): OptimizationResult {
     furniture,
     waypoints,
     boundary,
-    profileId: input.profile.id,
-    minClearanceCm: input.profile.minClearanceCm,
+    rooms,
+    walls,
+    doors,
+    profile: input.profile,
   });
 
   let evaluatedCount = 0;
@@ -189,7 +223,7 @@ export function optimizeLayout(input: OptimizationInput): OptimizationResult {
       baselineEvaluation,
       baselineRouteResult,
       message: isBaselineClean
-        ? `Baseline configuration satisfies configured profile clearance target (${input.profile.minClearanceCm} cm). No changes required.`
+        ? `No clearance deficits detected along configured walking route (${input.profile.minClearanceCm} cm target). No modifications required.`
         : "Layout contains actionable deficits, but all furniture items are marked fixed and cannot be repositioned.",
       movableFurnitureCount: 0,
       unmovableFurnitureCount: unmovableCount,
@@ -597,7 +631,7 @@ export function optimizeLayout(input: OptimizationInput): OptimizationResult {
       candidates: topCandidates,
       baselineEvaluation,
       baselineRouteResult,
-      message: `Generated ${topCandidates.length} verified layout alternative(s) within evaluation budget (${evaluatedCount} evaluated, ${prunedCount} pruned). Bounded search does not guarantee global optimality.`,
+      message: `Generated ${topCandidates.length} alternative proposal(s) within evaluated search scope. Bounded search does not guarantee global optimality.`,
       movableFurnitureCount: movableCount,
       unmovableFurnitureCount: unmovableCount,
       sceneFingerprint,
@@ -611,8 +645,8 @@ export function optimizeLayout(input: OptimizationInput): OptimizationResult {
     baselineEvaluation,
     baselineRouteResult,
     message: isBaselineClean
-      ? `Baseline configuration satisfies configured profile clearance target (${input.profile.minClearanceCm} cm). No changes required.`
-      : `No collision-free alternative found within evaluation budget (${evaluatedCount} evaluated, ${prunedCount} pruned). Bounded solver does not guarantee global optimality.`,
+      ? `No clearance deficits detected along configured walking route (${input.profile.minClearanceCm} cm target). No modifications required.`
+      : "No suitable alternative found within bounded search scope. You can adjust the layout manually.",
     movableFurnitureCount: movableCount,
     unmovableFurnitureCount: unmovableCount,
     sceneFingerprint,

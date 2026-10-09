@@ -39,6 +39,7 @@ export type PersistedAssessmentState = {
   furniture: SpatialFurniture[];
   appliedLayoutBaseline?: SpatialFurniture[] | null;
   appliedCandidateId?: string | null;
+  appliedSceneFingerprint?: string | null;
 };
 
 export type StorageLoadResult =
@@ -438,6 +439,11 @@ export function validatePersistedPayload(val: unknown): {
       ? obj.appliedCandidateId.trim()
       : null;
 
+  const appliedSceneFingerprint =
+    typeof obj.appliedSceneFingerprint === "string" && obj.appliedSceneFingerprint.trim()
+      ? obj.appliedSceneFingerprint.trim()
+      : null;
+
   return {
     isValid: true,
     data: {
@@ -452,6 +458,7 @@ export function validatePersistedPayload(val: unknown): {
       furniture,
       appliedLayoutBaseline,
       appliedCandidateId,
+      appliedSceneFingerprint,
     },
   };
 }
@@ -484,6 +491,7 @@ export function savePersistedAssessment(state: PersistedAssessmentState): Storag
       furniture: state.furniture,
       appliedLayoutBaseline: state.appliedLayoutBaseline ?? null,
       appliedCandidateId: state.appliedCandidateId ?? null,
+      appliedSceneFingerprint: state.appliedSceneFingerprint ?? null,
     };
 
     const json = JSON.stringify(payloadToSerialize);

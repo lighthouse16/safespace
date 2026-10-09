@@ -169,6 +169,7 @@ export interface SafeSpaceState {
   activeOptimizationResult: OptimizationResult | null;
   selectedCandidateId: string | null;
   appliedCandidateId: string | null;
+  appliedSceneFingerprint: string | null;
   baselineFurnitureSnapshot: SpatialFurniture[] | null;
   selectCandidate: (candidateId: string | null) => void;
   runOptimization: () => OptimizationResult;
@@ -228,7 +229,7 @@ function generateProposedFurniture(
   return list;
 }
 
-function computeStoreRoute(
+export function computeStoreRoute(
   furniture: SpatialFurniture[],
   rooms: SpatialRoom[],
   profile: MobilityProfileData,
@@ -257,6 +258,18 @@ function computeStoreRoute(
   });
 }
 
+function getStoreSceneFingerprint(state: SafeSpaceState): string {
+  return computeSceneFingerprint({
+    furniture: state.furniture,
+    waypoints: state.routeWaypoints,
+    boundary: state.canonicalBoundary,
+    rooms: state.rooms,
+    walls: state.walls,
+    doors: state.doors,
+    profile: state.activeProfile,
+  });
+}
+
 function persistUserMutation(
   get: () => SafeSpaceState,
   set: (partial: Partial<SafeSpaceState>) => void
@@ -275,6 +288,7 @@ function persistUserMutation(
       furniture: state.furniture,
       appliedLayoutBaseline: state.baselineFurnitureSnapshot,
       appliedCandidateId: state.appliedCandidateId,
+      appliedSceneFingerprint: state.appliedSceneFingerprint,
     });
     if (saveRes.success) {
       set({ storageStatus: "saved", storageError: null });
@@ -285,6 +299,19 @@ function persistUserMutation(
     }
   }
   return { success: true };
+}
+
+function invalidateOptimizationAndAppliedBaseline(
+  currentFurniture: SpatialFurniture[]
+): Partial<SafeSpaceState> {
+  return {
+    activeOptimizationResult: null,
+    selectedCandidateId: null,
+    proposedFurniture: cloneFurniture(currentFurniture),
+    baselineFurnitureSnapshot: null,
+    appliedCandidateId: null,
+    appliedSceneFingerprint: null,
+  };
 }
 
 export const useSafeSpaceStore = create<SafeSpaceState>((set, get) => ({
@@ -364,8 +391,7 @@ export const useSafeSpaceStore = create<SafeSpaceState>((set, get) => ({
       history: newHistory,
       future: [],
       routeResult: newRouteResult,
-      activeOptimizationResult: null,
-      selectedCandidateId: null,
+      ...invalidateOptimizationAndAppliedBaseline(updated),
     });
     persistUserMutation(get, set);
   },
@@ -384,8 +410,7 @@ export const useSafeSpaceStore = create<SafeSpaceState>((set, get) => ({
       history: newHistory,
       future: [],
       routeResult: newRouteResult,
-      activeOptimizationResult: null,
-      selectedCandidateId: null,
+      ...invalidateOptimizationAndAppliedBaseline(updated),
     });
     persistUserMutation(get, set);
   },
@@ -393,14 +418,20 @@ export const useSafeSpaceStore = create<SafeSpaceState>((set, get) => ({
   confirmFurniture: (id) => {
     const { furniture } = get();
     const updated = furniture.map((f) => (f.id === id ? { ...f, isConfirmed: true } : f));
-    set({ furniture: updated });
+    set({
+      furniture: updated,
+      ...invalidateOptimizationAndAppliedBaseline(updated),
+    });
     persistUserMutation(get, set);
   },
 
   confirmAllRemaining: () => {
     const { furniture } = get();
     const updated = furniture.map((f) => ({ ...f, isConfirmed: true }));
-    set({ furniture: updated });
+    set({
+      furniture: updated,
+      ...invalidateOptimizationAndAppliedBaseline(updated),
+    });
     persistUserMutation(get, set);
   },
 
@@ -418,8 +449,7 @@ export const useSafeSpaceStore = create<SafeSpaceState>((set, get) => ({
       history: newHistory,
       future: [],
       routeResult: newRouteResult,
-      activeOptimizationResult: null,
-      selectedCandidateId: null,
+      ...invalidateOptimizationAndAppliedBaseline(updated),
     });
     persistUserMutation(get, set);
   },
@@ -467,8 +497,7 @@ export const useSafeSpaceStore = create<SafeSpaceState>((set, get) => ({
       history: newHistory,
       future: [],
       routeResult: newRouteResult,
-      activeOptimizationResult: null,
-      selectedCandidateId: null,
+      ...invalidateOptimizationAndAppliedBaseline(updated),
     });
     persistUserMutation(get, set);
   },
@@ -483,8 +512,7 @@ export const useSafeSpaceStore = create<SafeSpaceState>((set, get) => ({
       history: history.slice(0, -1),
       future: [cloneFurniture(furniture), ...future],
       routeResult: newRouteResult,
-      activeOptimizationResult: null,
-      selectedCandidateId: null,
+      ...invalidateOptimizationAndAppliedBaseline(prev),
     });
     persistUserMutation(get, set);
   },
@@ -499,8 +527,7 @@ export const useSafeSpaceStore = create<SafeSpaceState>((set, get) => ({
       history: [...history, cloneFurniture(furniture)],
       future: future.slice(1),
       routeResult: newRouteResult,
-      activeOptimizationResult: null,
-      selectedCandidateId: null,
+      ...invalidateOptimizationAndAppliedBaseline(next),
     });
     persistUserMutation(get, set);
   },
@@ -513,7 +540,12 @@ export const useSafeSpaceStore = create<SafeSpaceState>((set, get) => ({
     const { furniture, rooms, routeWaypoints, walls, doors, canonicalBoundary } = get();
     const activeFurn = furniture;
     const newRouteResult = computeStoreRoute(activeFurn, rooms, found, routeWaypoints, walls, doors, canonicalBoundary);
-    set({ activeProfileId: found.id, activeProfile: { ...found }, routeResult: newRouteResult, activeOptimizationResult: null, selectedCandidateId: null });
+    set({
+      activeProfileId: found.id,
+      activeProfile: { ...found },
+      routeResult: newRouteResult,
+      ...invalidateOptimizationAndAppliedBaseline(activeFurn),
+    });
     persistUserMutation(get, set);
   },
   updateProfile: (updates) => {
@@ -524,6 +556,7 @@ export const useSafeSpaceStore = create<SafeSpaceState>((set, get) => ({
     set({
       activeProfile: updatedProfile,
       routeResult: newRouteResult,
+      ...invalidateOptimizationAndAppliedBaseline(activeFurn),
     });
     persistUserMutation(get, set);
   },
@@ -539,6 +572,7 @@ export const useSafeSpaceStore = create<SafeSpaceState>((set, get) => ({
     set({
       routeWaypoints: updated,
       routeResult: newRouteResult,
+      ...invalidateOptimizationAndAppliedBaseline(activeFurn),
     });
     persistUserMutation(get, set);
   },
@@ -551,6 +585,7 @@ export const useSafeSpaceStore = create<SafeSpaceState>((set, get) => ({
       routeWaypoints: updated,
       selectedWaypointId: null,
       routeResult: newRouteResult,
+      ...invalidateOptimizationAndAppliedBaseline(activeFurn),
     });
     persistUserMutation(get, set);
   },
@@ -616,6 +651,7 @@ export const useSafeSpaceStore = create<SafeSpaceState>((set, get) => ({
       routeWaypoints: updated,
       selectedWaypointId: newWp.id,
       routeResult: newRouteResult,
+      ...invalidateOptimizationAndAppliedBaseline(activeFurn),
     });
     persistUserMutation(get, set);
   },
@@ -676,10 +712,10 @@ export const useSafeSpaceStore = create<SafeSpaceState>((set, get) => ({
   setCompareSliderPosition: (compareSliderPosition) => set({ compareSliderPosition }),
   proposedFurniture: generateProposedFurniture(INITIAL_FURNITURE, "balanced"),
   moveProposedFurniture: (id, x, y) => {
-    const { proposedFurniture, rooms, activeProfile, routeWaypoints, walls, doors, canonicalBoundary } = get();
+    // PREVIEW ONLY: updates proposedFurniture without mutating canonical routeResult
+    const { proposedFurniture } = get();
     const updated = proposedFurniture.map((f) => (f.id === id ? { ...f, x, y } : f));
-    const newRouteResult = computeStoreRoute(updated, rooms, activeProfile, routeWaypoints, walls, doors, canonicalBoundary);
-    set({ proposedFurniture: updated, routeResult: newRouteResult });
+    set({ proposedFurniture: updated });
   },
   approvalStatus: "draft",
   approvePlan: () => set({ approvalStatus: "approved" }),
@@ -691,6 +727,7 @@ export const useSafeSpaceStore = create<SafeSpaceState>((set, get) => ({
   activeOptimizationResult: null,
   selectedCandidateId: null,
   appliedCandidateId: null,
+  appliedSceneFingerprint: null,
   baselineFurnitureSnapshot: null,
   selectCandidate: (candidateId) => {
     const { activeOptimizationResult, baselineFurnitureSnapshot, furniture } = get();
@@ -744,14 +781,8 @@ export const useSafeSpaceStore = create<SafeSpaceState>((set, get) => ({
       return { success: false, error: "No active optimization result found" };
     }
 
-    // P0 A: Reject stale candidate if scene or profile changed
-    const currentFingerprint = computeSceneFingerprint({
-      furniture: state.furniture,
-      waypoints: state.routeWaypoints,
-      boundary: state.canonicalBoundary,
-      profileId: state.activeProfile.id,
-      minClearanceCm: state.activeProfile.minClearanceCm,
-    });
+    // P0 A & P0 3: Reject stale candidate if exact scene or profile changed
+    const currentFingerprint = getStoreSceneFingerprint(state);
     if (result.sceneFingerprint !== currentFingerprint) {
       return { success: false, error: "Scene or profile has changed. Please re-run optimization." };
     }
@@ -773,6 +804,16 @@ export const useSafeSpaceStore = create<SafeSpaceState>((set, get) => ({
       state.canonicalBoundary
     );
 
+    const appliedFingerprint = computeSceneFingerprint({
+      furniture: updatedFurniture,
+      waypoints: state.routeWaypoints,
+      boundary: state.canonicalBoundary,
+      rooms: state.rooms,
+      walls: state.walls,
+      doors: state.doors,
+      profile: state.activeProfile,
+    });
+
     // P0 B: Commit durable user assessment first with error handling
     if (state.assessmentType === "user") {
       const saveRes = savePersistedAssessment({
@@ -787,6 +828,7 @@ export const useSafeSpaceStore = create<SafeSpaceState>((set, get) => ({
         furniture: updatedFurniture,
         appliedLayoutBaseline: baseline,
         appliedCandidateId: candidate.id,
+        appliedSceneFingerprint: appliedFingerprint,
       });
 
       if (!saveRes.success) {
@@ -805,6 +847,7 @@ export const useSafeSpaceStore = create<SafeSpaceState>((set, get) => ({
       proposedFurniture: cloneFurniture(candidate.furniture),
       routeResult: updatedRoute,
       appliedCandidateId: candidate.id,
+      appliedSceneFingerprint: appliedFingerprint,
       selectedCandidateId: candidate.id,
       storageStatus: state.assessmentType === "user" ? "saved" : "idle",
       storageError: null,
@@ -816,6 +859,10 @@ export const useSafeSpaceStore = create<SafeSpaceState>((set, get) => ({
     const state = get();
     if (!state.baselineFurnitureSnapshot) {
       return { success: false, error: "No baseline snapshot to revert to." };
+    }
+
+    if (state.appliedSceneFingerprint && getStoreSceneFingerprint(state) !== state.appliedSceneFingerprint) {
+      return { success: false, error: "Scene has been modified since layout was applied. Reverting would overwrite subsequent edits." };
     }
 
     const revertedFurniture = cloneFurniture(state.baselineFurnitureSnapshot);
@@ -842,6 +889,7 @@ export const useSafeSpaceStore = create<SafeSpaceState>((set, get) => ({
         furniture: revertedFurniture,
         appliedLayoutBaseline: null,
         appliedCandidateId: null,
+        appliedSceneFingerprint: null,
       });
 
       if (!saveRes.success) {
@@ -859,6 +907,7 @@ export const useSafeSpaceStore = create<SafeSpaceState>((set, get) => ({
       routeResult: revertedRoute,
       selectedCandidateId: null,
       appliedCandidateId: null,
+      appliedSceneFingerprint: null,
       baselineFurnitureSnapshot: null,
       storageStatus: state.assessmentType === "user" ? "saved" : "idle",
       storageError: null,
@@ -869,13 +918,12 @@ export const useSafeSpaceStore = create<SafeSpaceState>((set, get) => ({
 
   getSpatialFindings: () => {
     const state = get();
-    const activeFurn = state.activeStage === "improve" ? state.proposedFurniture : state.furniture;
     return evaluateSpatialScene({
       assessmentType: state.assessmentType,
       assessmentMetadata: state.assessmentMetadata,
       canonicalBoundary: state.canonicalBoundary,
       rooms: state.rooms,
-      furniture: activeFurn,
+      furniture: state.furniture,
       profile: state.activeProfile,
       routeWaypoints: state.routeWaypoints,
       routeResult: state.routeResult,
@@ -1132,6 +1180,7 @@ export const useSafeSpaceStore = create<SafeSpaceState>((set, get) => ({
         routeResult,
         baselineFurnitureSnapshot: data.appliedLayoutBaseline || null,
         appliedCandidateId: data.appliedCandidateId || null,
+        appliedSceneFingerprint: data.appliedSceneFingerprint || null,
         storageStatus: "saved",
         storageError: null,
       });

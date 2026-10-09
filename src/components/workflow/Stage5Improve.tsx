@@ -1,7 +1,8 @@
 "use client";
 
 import React, { useState, useMemo, useEffect } from "react";
-import { useSafeSpaceStore } from "@/store/safespace-store";
+import { useSafeSpaceStore, computeStoreRoute } from "@/store/safespace-store";
+import { evaluateSpatialScene } from "@/lib/spatial";
 import { Floorplan2D } from "@/components/spatial/Floorplan2D";
 import {
   FileText,
@@ -22,6 +23,12 @@ export function Stage5Improve() {
     furniture,
     baselineFurnitureSnapshot,
     routeResult,
+    rooms,
+    walls,
+    doors,
+    activeProfile,
+    routeWaypoints,
+    canonicalBoundary,
     runOptimization,
     applyLayoutCandidate,
     revertLayoutCandidate,
@@ -59,8 +66,61 @@ export function Stage5Improve() {
     return baselineFurnitureSnapshot || furniture;
   }, [baselineFurnitureSnapshot, furniture]);
 
-  const baselineEval = optResult?.baselineEvaluation || getSpatialFindings();
-  const baselineRoute = optResult?.baselineRouteResult || routeResult;
+  const baselineRoute = useMemo(() => {
+    if (!baselineFurnitureSnapshot) {
+      return optResult?.baselineRouteResult || routeResult;
+    }
+    return computeStoreRoute(
+      baselineFurnitureSnapshot,
+      rooms,
+      activeProfile,
+      routeWaypoints,
+      walls,
+      doors,
+      canonicalBoundary
+    );
+  }, [
+    baselineFurnitureSnapshot,
+    optResult,
+    routeResult,
+    rooms,
+    activeProfile,
+    routeWaypoints,
+    walls,
+    doors,
+    canonicalBoundary,
+  ]);
+
+  const baselineEval = useMemo(() => {
+    if (!baselineFurnitureSnapshot) {
+      return optResult?.baselineEvaluation || getSpatialFindings();
+    }
+    return evaluateSpatialScene({
+      assessmentType,
+      assessmentMetadata,
+      canonicalBoundary,
+      rooms,
+      furniture: baselineFurnitureSnapshot,
+      profile: activeProfile,
+      routeWaypoints,
+      routeResult: baselineRoute,
+      doors,
+      walls,
+    });
+  }, [
+    baselineFurnitureSnapshot,
+    optResult,
+    getSpatialFindings,
+    assessmentType,
+    assessmentMetadata,
+    canonicalBoundary,
+    rooms,
+    activeProfile,
+    routeWaypoints,
+    baselineRoute,
+    doors,
+    walls,
+  ]);
 
   const handleApply = (candId: string) => {
     const res = applyLayoutCandidate(candId);
@@ -93,7 +153,7 @@ export function Stage5Improve() {
       <div className="h-10 bg-white border-b border-[#e2e8e4] px-3.5 flex items-center justify-between shrink-0 select-none z-10">
         <div className="flex items-center gap-2">
           <span className="text-xs font-semibold text-[#1e7168]">
-            Stage 5 · Layout Alternatives & Optimization
+            Improve Layout · Alternative Proposals
           </span>
           <span className="text-slate-300">/</span>
           <span className="text-xs text-slate-500">
@@ -159,9 +219,9 @@ export function Stage5Improve() {
             {candidates.length === 0 ? (
               <span className="text-xs text-slate-500 italic">
                 {optResult?.status === "already_optimal"
-                  ? "Baseline satisfies requirements (0 deficits). No changes required."
+                  ? "No clearance deficits detected along configured walking route (0 deficits). No modifications needed."
                   : optResult?.status === "infeasible"
-                  ? "No collision-free alternative found within room constraints."
+                  ? "No alternatives found within bounded search scope. You can adjust the layout manually."
                   : "Optimization unavailable."}
               </span>
             ) : (
@@ -222,33 +282,34 @@ export function Stage5Improve() {
 
           {/* Action buttons on ribbon */}
           <div className="flex items-center gap-2 shrink-0">
-            {activeCandidate && (
-              <>
-                {isCurrentCandidateApplied ? (
-                  <div className="flex items-center gap-2">
-                    <span className="flex items-center gap-1 text-xs font-semibold text-emerald-700 bg-emerald-50 px-2.5 py-1 rounded-md border border-emerald-200">
-                      <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
-                      <span>Applied to Active Plan</span>
-                    </span>
-                    <button
-                      onClick={handleRevert}
-                      className="px-2.5 py-1 rounded bg-white border border-slate-300 text-slate-700 text-xs font-medium hover:bg-slate-50 transition cursor-pointer flex items-center gap-1 shadow-2xs"
-                    >
-                      <RotateCcw className="w-3 h-3 text-slate-500" />
-                      <span>Revert Baseline</span>
-                    </button>
-                  </div>
-                ) : (
-                  <button
-                    onClick={() => handleApply(activeCandidate.id)}
-                    className="px-3 py-1 rounded bg-[#1e7168] text-white text-xs font-semibold hover:bg-[#175b54] transition cursor-pointer flex items-center gap-1 shadow-xs"
-                  >
-                    <CheckCircle2 className="w-3.5 h-3.5" />
-                    <span>Apply This Layout</span>
-                  </button>
-                )}
-              </>
+            {baselineFurnitureSnapshot && (
+              <button
+                onClick={handleRevert}
+                className="px-2.5 py-1 rounded bg-white border border-slate-300 text-slate-700 text-xs font-medium hover:bg-slate-50 transition cursor-pointer flex items-center gap-1 shadow-2xs"
+                title="Revert to pre-optimization layout baseline"
+              >
+                <RotateCcw className="w-3 h-3 text-slate-500" />
+                <span>Revert Baseline</span>
+              </button>
             )}
+
+            {activeCandidate && !isCurrentCandidateApplied && (
+              <button
+                onClick={() => handleApply(activeCandidate.id)}
+                className="px-3 py-1 rounded bg-[#1e7168] text-white text-xs font-semibold hover:bg-[#175b54] transition cursor-pointer flex items-center gap-1 shadow-xs"
+              >
+                <CheckCircle2 className="w-3.5 h-3.5" />
+                <span>Apply This Layout</span>
+              </button>
+            )}
+
+            {activeCandidate && isCurrentCandidateApplied && (
+              <span className="flex items-center gap-1 text-xs font-semibold text-emerald-700 bg-emerald-50 px-2.5 py-1 rounded-md border border-emerald-200">
+                <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
+                <span>Applied to Active Plan</span>
+              </span>
+            )}
+
             <button
               onClick={() => runOptimization()}
               title="Re-run geometric solver"
@@ -265,12 +326,8 @@ export function Stage5Improve() {
             <div className="flex items-center gap-1.5 truncate">
               <span className="text-slate-600 truncate">{optResult.message}</span>
             </div>
-            <div className="flex items-center gap-2 shrink-0 font-mono text-[10px] text-slate-400">
-              <span>Budget: {optResult.computeBudget.evaluatedCount} eval / {optResult.computeBudget.prunedCount} pruned (cap: {optResult.computeBudget.maxEvaluations})</span>
-              <span>·</span>
-              <span className="text-amber-700 bg-amber-50 px-1 py-0.2 rounded border border-amber-200 font-sans">
-                Manual editing deferred (post-MVP)
-              </span>
+            <div className="flex items-center gap-2 shrink-0 text-[10px] text-slate-400">
+              <span>Deterministic 2D spatial evaluation</span>
             </div>
           </div>
         )}
@@ -335,9 +392,13 @@ export function Stage5Improve() {
               <div className="flex items-center gap-2">
                 <span className="w-2 h-2 rounded-full bg-emerald-600" />
                 <span className="text-xs font-bold text-slate-900">
-                  {activeCandidate ? `Proposed: ${activeCandidate.name}` : "Proposed Alternative"}
+                  {activeCandidate
+                    ? `Proposed: ${activeCandidate.name}`
+                    : baselineFurnitureSnapshot
+                    ? "Current Plan (Accepted Proposal)"
+                    : "Proposed Alternative"}
                 </span>
-                {activeCandidate && (
+                {(activeCandidate || baselineFurnitureSnapshot) && (
                   <span className="text-[10px] font-bold text-emerald-800 bg-emerald-100 px-1.5 py-0.2 rounded">
                     Verified
                   </span>
@@ -359,6 +420,22 @@ export function Stage5Improve() {
                     Clr: {activeCandidate.metrics.minimumClearanceCm ? `${activeCandidate.metrics.minimumClearanceCm} cm` : "—"}
                   </span>
                 </div>
+              ) : baselineFurnitureSnapshot ? (
+                <div className="flex items-center gap-2 text-[11px] font-mono">
+                  <span
+                    className={`font-semibold ${
+                      getSpatialFindings().summary.actionableDeficitsCount === 0
+                        ? "text-emerald-700"
+                        : "text-amber-700"
+                    }`}
+                  >
+                    {getSpatialFindings().summary.actionableDeficitsCount} deficit{getSpatialFindings().summary.actionableDeficitsCount === 1 ? "" : "s"}
+                  </span>
+                  <span className="text-slate-300">|</span>
+                  <span className="text-slate-700">
+                    Clr: {getSpatialFindings().summary.minimumClearanceCm ? `${getSpatialFindings().summary.minimumClearanceCm} cm` : "—"}
+                  </span>
+                </div>
               ) : (
                 <span className="text-xs text-slate-500 italic">No alternative active</span>
               )}
@@ -370,6 +447,14 @@ export function Stage5Improve() {
                   customFurniture={activeCandidate.furniture}
                   customRouteResult={activeCandidate.routeResult}
                   customEvaluation={activeCandidate.evaluation}
+                  className="w-full h-full"
+                />
+              ) : baselineFurnitureSnapshot ? (
+                <Floorplan2D
+                  readOnly={true}
+                  customFurniture={furniture}
+                  customRouteResult={routeResult}
+                  customEvaluation={getSpatialFindings()}
                   className="w-full h-full"
                 />
               ) : (

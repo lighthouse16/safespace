@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { optimizeLayout } from "../src/lib/spatial/optimization";
-import { useSafeSpaceStore } from "../src/store/safespace-store";
+import { optimizeLayout, computeSceneFingerprint } from "../src/lib/spatial/optimization";
+import { useSafeSpaceStore, computeStoreRoute } from "../src/store/safespace-store";
 import type { SpatialFurniture, MobilityProfileData } from "../src/lib/spatial-model";
 import {
   INITIAL_FURNITURE,
@@ -173,7 +173,7 @@ test("Stage 5 Optimizer: empty room with adequate route returns already_optimal 
 
   assert.equal(result.status, "already_optimal");
   assert.equal(result.candidates.length, 0);
-  assert.match(result.message, /satisfies.*target/i);
+  assert.match(result.message, /no clearance deficits detected/i);
 });
 
 // ---------------------------------------------------------------------------
@@ -733,4 +733,359 @@ test("Stage 5 Review Hardening: evaluation count respects maxEvaluations cap det
   assert.ok(result.computeBudget.evaluatedCount <= 20);
   assert.equal(result.computeBudget.maxEvaluations, 20);
   assert.ok(typeof result.computeBudget.prunedCount === "number");
+});
+
+// ---------------------------------------------------------------------------
+// 11. Gate 3 Focused Hardening: P0 1 - Isolation of getSpatialFindings in Stage 5
+// ---------------------------------------------------------------------------
+
+test("Stage 5 Focused Hardening P0 1: getSpatialFindings isolates canonical baseline and ignores proposedFurniture in Stage 5", () => {
+  const store = useSafeSpaceStore.getState();
+  store.resetToDemo();
+  store.setStage("improve");
+
+  const baselineFindings = store.getSpatialFindings();
+  const baselineFurniture = store.furniture;
+
+  // Run optimization and select candidate
+  const optResult = store.runOptimization();
+  assert.equal(optResult.status, "improved");
+  const candId = optResult.candidates[0].id;
+  store.selectCandidate(candId);
+
+  // In Stage 5, candidate is selected -> proposedFurniture exists and differs from baseline
+  assert.ok(useSafeSpaceStore.getState().proposedFurniture !== null);
+  assert.notDeepEqual(useSafeSpaceStore.getState().proposedFurniture, baselineFurniture);
+
+  // getSpatialFindings() MUST evaluate canonical baseline (store.furniture and store.routeResult)
+  const findingsWithPreview = store.getSpatialFindings();
+  assert.deepEqual(findingsWithPreview.findings, baselineFindings.findings);
+  assert.deepEqual(findingsWithPreview.summary, baselineFindings.summary);
+
+  // Switching candidate must also keep findings strictly on baseline
+  if (optResult.candidates.length > 1) {
+    store.selectCandidate(optResult.candidates[1].id);
+    const findingsCand2 = store.getSpatialFindings();
+    assert.deepEqual(findingsCand2.findings, baselineFindings.findings);
+    assert.deepEqual(findingsCand2.summary, baselineFindings.summary);
+  }
+
+  // Deselecting candidate also preserves baseline findings
+  store.selectCandidate(null);
+  const findingsDeselected = store.getSpatialFindings();
+  assert.deepEqual(findingsDeselected.findings, baselineFindings.findings);
+  assert.deepEqual(findingsDeselected.summary, baselineFindings.summary);
+
+  store.resetToDemo();
+});
+
+// ---------------------------------------------------------------------------
+// 12. Gate 3 Focused Hardening: P1 4 - moveProposedFurniture is Preview-Only
+// ---------------------------------------------------------------------------
+
+test("Stage 5 Focused Hardening P1 4: moveProposedFurniture is preview-only and never mutates global routeResult", () => {
+  const store = useSafeSpaceStore.getState();
+  store.resetToDemo();
+  store.setStage("improve");
+
+  const baselineRouteResult = store.routeResult;
+  assert.ok(baselineRouteResult);
+
+  const optResult = store.runOptimization();
+  assert.equal(optResult.status, "improved");
+  const cand = optResult.candidates[0];
+  store.selectCandidate(cand.id);
+
+  const proposedFurn = useSafeSpaceStore.getState().proposedFurniture;
+  assert.ok(proposedFurn && proposedFurn.length > 0);
+  const targetItem = proposedFurn[0];
+
+  // Move proposed furniture item
+  store.moveProposedFurniture(targetItem.id, targetItem.x + 25, targetItem.y + 25);
+
+  // Global routeResult must remain completely untouched
+  const currentRouteResult = useSafeSpaceStore.getState().routeResult;
+  assert.deepEqual(currentRouteResult, baselineRouteResult);
+
+  // Global furniture must remain untouched
+  assert.deepEqual(useSafeSpaceStore.getState().furniture, INITIAL_FURNITURE);
+
+  store.resetToDemo();
+});
+
+// ---------------------------------------------------------------------------
+// 13. Gate 3 Focused Hardening: P0 2 - Baseline Route & Findings from Snapshot
+// ---------------------------------------------------------------------------
+
+test("Stage 5 Focused Hardening P0 2: baseline route and findings derived truthfully from baseline snapshot after apply and reload", () => {
+  if (globalThis.localStorage && typeof globalThis.localStorage.clear === "function") {
+    globalThis.localStorage.clear();
+  }
+
+  const store = useSafeSpaceStore.getState();
+  const boundary = createRectBoundary(700, 700);
+  const nowIso = new Date().toISOString();
+
+  store.createAndLoadUserAssessment({
+    metadata: {
+      id: "baseline-truth-test",
+      name: "Baseline Truth Space",
+      facilityName: "Test Clinic",
+      spaceName: "Consult 1",
+      environmentType: "clinic",
+      createdAt: nowIso,
+      updatedAt: nowIso,
+    },
+    boundaryCm: boundary,
+    calibration: {
+      pixelsPerCm: 1.0,
+      realLength: 100,
+      unit: "cm",
+      pixelDistance: 100,
+      originPolicy: "canvas-origin-0-0",
+    },
+  });
+
+  store.addRouteWaypoint("Start", 100, 350);
+  store.addRouteWaypoint("Mid", 350, 350);
+  store.addRouteWaypoint("End", 600, 350);
+
+  store.addFurniture("chair");
+  const chair = useSafeSpaceStore.getState().furniture[0];
+  store.moveFurniture(chair.id, 350, 330);
+
+  const optResult = store.runOptimization();
+  assert.equal(optResult.status, "improved");
+  const cand = optResult.candidates[0];
+
+  const applyRes = store.applyLayoutCandidate(cand.id);
+  assert.equal(applyRes.success, true);
+
+  const baselineSnapshot = useSafeSpaceStore.getState().baselineFurnitureSnapshot;
+  assert.ok(baselineSnapshot !== null);
+  assert.equal(baselineSnapshot[0].x, 350);
+  assert.equal(baselineSnapshot[0].y, 330);
+
+  // Compute baseline route from baseline snapshot + current context
+  const baselineRoute = computeStoreRoute(
+    baselineSnapshot,
+    [],
+    useSafeSpaceStore.getState().activeProfile,
+    useSafeSpaceStore.getState().routeWaypoints,
+    [],
+    [],
+    boundary
+  );
+  assert.ok(baselineRoute);
+
+  // Accepted candidate route differs from baseline route
+  const acceptedRoute = useSafeSpaceStore.getState().routeResult;
+  assert.ok(acceptedRoute);
+  assert.notDeepEqual(acceptedRoute, baselineRoute);
+
+  // Simulate reload
+  store.hydrateFromStorage();
+  assert.ok(useSafeSpaceStore.getState().baselineFurnitureSnapshot !== null);
+  assert.equal(useSafeSpaceStore.getState().appliedCandidateId, cand.id);
+
+  // Revert succeeds
+  const revRes = store.revertLayoutCandidate();
+  assert.equal(revRes.success, true);
+  assert.equal(useSafeSpaceStore.getState().baselineFurnitureSnapshot, null);
+  assert.equal(useSafeSpaceStore.getState().appliedCandidateId, null);
+  assert.equal(useSafeSpaceStore.getState().furniture[0].x, 350);
+  assert.equal(useSafeSpaceStore.getState().furniture[0].y, 330);
+
+  store.resetToDemo();
+});
+
+// ---------------------------------------------------------------------------
+// 14. Gate 3 Focused Hardening: P0 3 - Exact Scene Fingerprint & Invalidation
+// ---------------------------------------------------------------------------
+
+test("Stage 5 Focused Hardening P0 3: computeSceneFingerprint changes on sub-millimeter shift, dimensions, rotation, waypoints, profile", () => {
+  const boundary = createRectBoundary(600, 600);
+  const f: SpatialFurniture = {
+    id: "f1",
+    name: "Chair",
+    category: "chair",
+    roomId: "r1",
+    x: 100.25,
+    y: 200.5,
+    width: 60,
+    depth: 60,
+    height: 80,
+    rotation: 0,
+    isFixed: false,
+    isStableSupport: false,
+    isConfirmed: true,
+  };
+  const waypoints = [
+    { id: "w1", name: "Start", x: 50.1, y: 50.2 },
+    { id: "w2", name: "End", x: 400.3, y: 400.4 },
+  ];
+
+  const baseInput = {
+    furniture: [f],
+    waypoints,
+    profile: defaultProfile,
+    boundary,
+  };
+
+  const baseFp = computeSceneFingerprint(baseInput);
+
+  // 1. Sub-millimeter position shift (+0.05 cm)
+  const shiftFp = computeSceneFingerprint({
+    ...baseInput,
+    furniture: [{ ...f, x: 100.3 }],
+  });
+  assert.notEqual(shiftFp, baseFp, "Sub-millimeter position change must change fingerprint");
+
+  // 2. Dimension change
+  const dimFp = computeSceneFingerprint({
+    ...baseInput,
+    furniture: [{ ...f, width: 60.5 }],
+  });
+  assert.notEqual(dimFp, baseFp, "Furniture dimension change must change fingerprint");
+
+  // 3. Rotation change
+  const rotFp = computeSceneFingerprint({
+    ...baseInput,
+    furniture: [{ ...f, rotation: 15 }],
+  });
+  assert.notEqual(rotFp, baseFp, "Rotation change must change fingerprint");
+
+  // 4. Waypoint change
+  const wpFp = computeSceneFingerprint({
+    ...baseInput,
+    waypoints: [{ ...waypoints[0], x: 50.2 }, waypoints[1]],
+  });
+  assert.notEqual(wpFp, baseFp, "Waypoint change must change fingerprint");
+
+  // 5. Profile change
+  const profFp = computeSceneFingerprint({
+    ...baseInput,
+    profile: { ...defaultProfile, minClearanceCm: 95 },
+  });
+  assert.notEqual(profFp, baseFp, "Profile clearance change must change fingerprint");
+});
+
+test("Stage 5 Focused Hardening P0 3: applyLayoutCandidate rejects when scene or profile changed after optimization", () => {
+  const store = useSafeSpaceStore.getState();
+  store.resetToDemo();
+
+  const optResult = store.runOptimization();
+  assert.equal(optResult.status, "improved");
+  const cand = optResult.candidates[0];
+
+  // Modify scene after optimization was computed
+  const chair = useSafeSpaceStore.getState().furniture.find((f) => !f.isFixed)!;
+  store.moveFurniture(chair.id, chair.x + 5, chair.y + 5);
+
+  // Attempting to apply stale candidate must fail
+  const applyRes = store.applyLayoutCandidate(cand.id);
+  assert.equal(applyRes.success, false);
+  assert.ok(applyRes.error);
+  assert.match(applyRes.error, /scene has changed|no active optimization/i);
+
+  store.resetToDemo();
+});
+
+test("Stage 5 Focused Hardening P0 3: intervening user edits after Apply invalidate baseline snapshot to prevent destructive rollback", () => {
+  const store = useSafeSpaceStore.getState();
+  store.resetToDemo();
+
+  const optResult = store.runOptimization();
+  assert.equal(optResult.status, "improved");
+  const cand = optResult.candidates[0];
+
+  const applyRes = store.applyLayoutCandidate(cand.id);
+  assert.equal(applyRes.success, true);
+  assert.ok(useSafeSpaceStore.getState().baselineFurnitureSnapshot !== null);
+  assert.equal(useSafeSpaceStore.getState().appliedCandidateId, cand.id);
+
+  // User subsequently moves movable furniture (intervening edit)
+  const chair = useSafeSpaceStore.getState().furniture.find((f) => !f.isFixed)!;
+  store.moveFurniture(chair.id, chair.x + 10, chair.y + 10);
+
+  // Baseline snapshot and appliedCandidateId must be invalidated to protect new work
+  assert.equal(useSafeSpaceStore.getState().baselineFurnitureSnapshot, null);
+  assert.equal(useSafeSpaceStore.getState().appliedCandidateId, null);
+  assert.equal(useSafeSpaceStore.getState().appliedSceneFingerprint, null);
+
+  // Attempting to revert must fail gracefully
+  const revRes = store.revertLayoutCandidate();
+  assert.equal(revRes.success, false);
+  assert.match(revRes.error ?? "", /no baseline snapshot/i);
+
+  store.resetToDemo();
+});
+
+test("Stage 5 Focused Hardening P0 3: storage failure on revert preserves current furniture and rolls back state", () => {
+  if (globalThis.localStorage && typeof globalThis.localStorage.clear === "function") {
+    globalThis.localStorage.clear();
+  }
+
+  const store = useSafeSpaceStore.getState();
+  const boundary = createRectBoundary(700, 700);
+  const nowIso = new Date().toISOString();
+
+  store.createAndLoadUserAssessment({
+    metadata: {
+      id: "revert-storage-failure-test",
+      name: "Revert Failure Space",
+      facilityName: "Test Clinic",
+      spaceName: "Consult 1",
+      environmentType: "clinic",
+      createdAt: nowIso,
+      updatedAt: nowIso,
+    },
+    boundaryCm: boundary,
+    calibration: {
+      pixelsPerCm: 1.0,
+      realLength: 100,
+      unit: "cm",
+      pixelDistance: 100,
+      originPolicy: "canvas-origin-0-0",
+    },
+  });
+
+  store.addRouteWaypoint("Start", 100, 350);
+  store.addRouteWaypoint("Mid", 350, 350);
+  store.addRouteWaypoint("End", 600, 350);
+
+  store.addFurniture("chair");
+  const chair = useSafeSpaceStore.getState().furniture[0];
+  store.moveFurniture(chair.id, 350, 330);
+
+  const optResult = store.runOptimization();
+  assert.equal(optResult.status, "improved");
+  const cand = optResult.candidates[0];
+
+  const applyRes = store.applyLayoutCandidate(cand.id);
+  assert.equal(applyRes.success, true);
+  assert.ok(useSafeSpaceStore.getState().baselineFurnitureSnapshot !== null);
+
+  const acceptedFurniture = [...useSafeSpaceStore.getState().furniture];
+
+  // Mock localStorage.setItem failure on revert
+  const originalSetItem = globalThis.localStorage.setItem;
+  globalThis.localStorage.setItem = () => {
+    throw new Error("Disk quota exhausted");
+  };
+
+  try {
+    const revRes = store.revertLayoutCandidate();
+    assert.equal(revRes.success, false);
+    assert.ok(revRes.error);
+    assert.equal(useSafeSpaceStore.getState().storageStatus, "error");
+    // State rolled back: accepted furniture remains in place
+    assert.deepEqual(useSafeSpaceStore.getState().furniture, acceptedFurniture);
+    // Snapshot preserved so user can retry
+    assert.ok(useSafeSpaceStore.getState().baselineFurnitureSnapshot !== null);
+  } finally {
+    globalThis.localStorage.setItem = originalSetItem;
+  }
+
+  store.resetToDemo();
 });
