@@ -628,7 +628,7 @@ export const useSafeSpaceStore = create<SafeSpaceState>((set, get) => ({
 
     const idx = routeWaypoints.length;
     const newWp: RouteWaypoint = {
-      id: `pt-${Date.now()}`,
+      id: `pt-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
       name: name || (idx === 0 ? "Start Approach" : idx === 1 ? "Destination" : `Checkpoint ${idx + 1}`),
       x: posX!,
       y: posY!,

@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useMemo, useEffect } from "react";
+import React, { useState, useMemo, useEffect, useRef } from "react";
 import { useSafeSpaceStore, computeStoreRoute } from "@/store/safespace-store";
 import { evaluateSpatialScene } from "@/lib/spatial";
 import { Floorplan2D } from "@/components/spatial/Floorplan2D";
@@ -38,12 +38,21 @@ export function Stage5Improve() {
     selectCandidate,
     setReportModalOpen,
     setStage,
-    getSpatialFindings,
   } = useSafeSpaceStore();
 
   const isUserAssessment = assessmentType === "user";
   const [viewMode, setViewMode] = useState<"side-by-side" | "before" | "proposed">("side-by-side");
   const [actionFeedback, setActionFeedback] = useState<{ type: "success" | "error"; message: string } | null>(null);
+  const feedbackTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // Clean up feedback timer on unmount
+  useEffect(() => {
+    return () => {
+      if (feedbackTimeoutRef.current) {
+        clearTimeout(feedbackTimeoutRef.current);
+      }
+    };
+  }, []);
 
   // Two coherent modes: Proposal mode vs Applied-layout review mode
   const isAppliedReviewMode = baselineFurnitureSnapshot !== null;
@@ -55,10 +64,32 @@ export function Stage5Improve() {
     }
   }, [isAppliedReviewMode, activeOptimizationResult, runOptimization]);
 
-  // Current canonical spatial findings
+  // Current canonical spatial findings: derived reactively from complete scene snapshot
   const currentFindings = useMemo(() => {
-    return getSpatialFindings();
-  }, [getSpatialFindings]);
+    return evaluateSpatialScene({
+      assessmentType,
+      assessmentMetadata,
+      canonicalBoundary,
+      rooms,
+      furniture,
+      profile: activeProfile,
+      routeWaypoints,
+      routeResult,
+      doors,
+      walls,
+    });
+  }, [
+    assessmentType,
+    assessmentMetadata,
+    canonicalBoundary,
+    rooms,
+    furniture,
+    activeProfile,
+    routeWaypoints,
+    routeResult,
+    doors,
+    walls,
+  ]);
 
   // In Proposal Mode: candidates from active optimizer result
   const optResult = !isAppliedReviewMode ? activeOptimizationResult : null;
@@ -134,24 +165,26 @@ export function Stage5Improve() {
   ]);
 
   const handleApply = (candId: string) => {
+    if (feedbackTimeoutRef.current) clearTimeout(feedbackTimeoutRef.current);
     const res = applyLayoutCandidate(candId);
     if (res.success) {
       setActionFeedback({ type: "success", message: "Layout applied and persisted to workspace (Draft)." });
-      setTimeout(() => setActionFeedback(null), 3500);
+      feedbackTimeoutRef.current = setTimeout(() => setActionFeedback(null), 3500);
     } else {
       setActionFeedback({ type: "error", message: res.error || "Failed to apply layout." });
-      setTimeout(() => setActionFeedback(null), 4500);
+      feedbackTimeoutRef.current = setTimeout(() => setActionFeedback(null), 4500);
     }
   };
 
   const handleRevert = () => {
+    if (feedbackTimeoutRef.current) clearTimeout(feedbackTimeoutRef.current);
     const res = revertLayoutCandidate();
     if (res.success) {
       setActionFeedback({ type: "success", message: "Reverted back to original baseline layout." });
-      setTimeout(() => setActionFeedback(null), 3500);
+      feedbackTimeoutRef.current = setTimeout(() => setActionFeedback(null), 3500);
     } else {
       setActionFeedback({ type: "error", message: res.error || "Failed to revert layout." });
-      setTimeout(() => setActionFeedback(null), 4500);
+      feedbackTimeoutRef.current = setTimeout(() => setActionFeedback(null), 4500);
     }
   };
 
@@ -606,6 +639,27 @@ export function Stage5Improve() {
                   Displacement: <strong>{activeCandidate.totalDisplacementCm} cm</strong>
                 </span>
               </div>
+              <button
+                onClick={() => setStage("analysis")}
+                className="px-2.5 py-1 text-xs font-medium text-slate-600 hover:text-slate-900 border border-slate-200 rounded hover:bg-slate-50 transition cursor-pointer flex items-center gap-1"
+              >
+                <ChevronLeft className="w-3 h-3" />
+                <span>Back to Findings</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : !isAppliedReviewMode ? (
+        <div className="bg-white border-t border-slate-200 px-4 py-2.5 shrink-0 select-none max-h-40 overflow-y-auto overflow-x-hidden">
+          <div className="flex flex-col md:flex-row md:items-center justify-between gap-3 min-w-0">
+            <div className="min-w-0 flex-1 text-xs text-slate-500">
+              {optResult?.status === "already_optimal"
+                ? "Walking route has adequate clearance (0 actionable deficits). No fixture modifications needed."
+                : optResult?.status === "infeasible"
+                ? "No alternatives found within bounded search scope. Manual adjustments may be required."
+                : "No alternative proposal active."}
+            </div>
+            <div className="flex items-center gap-2 shrink-0">
               <button
                 onClick={() => setStage("analysis")}
                 className="px-2.5 py-1 text-xs font-medium text-slate-600 hover:text-slate-900 border border-slate-200 rounded hover:bg-slate-50 transition cursor-pointer flex items-center gap-1"

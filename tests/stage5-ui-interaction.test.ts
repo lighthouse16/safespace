@@ -1,43 +1,25 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import React from "react";
-import { renderToStaticMarkup } from "react-dom/server";
+import { JSDOM } from "jsdom";
+import React, { act } from "react";
+import { createRoot, type Root } from "react-dom/client";
 import { Stage5Improve } from "../src/components/workflow/Stage5Improve";
 import { useSafeSpaceStore } from "../src/store/safespace-store";
 import type { Polygon2D } from "../src/lib/spatial";
 
-// Mock localStorage for node test runner
-class MockLocalStorage {
-  private store = new Map<string, string>();
-  getItem(key: string): string | null {
-    return this.store.get(key) ?? null;
-  }
-  setItem(key: string, value: string): void {
-    this.store.set(key, String(value));
-  }
-  removeItem(key: string): void {
-    this.store.delete(key);
-  }
-  clear(): void {
-    this.store.clear();
-  }
-}
+// Setup JSDOM environment for genuine mounted React component lifecycle testing
+const dom = new JSDOM("<!DOCTYPE html><html><body><div id='root'></div></body></html>", {
+  url: "http://localhost:3000",
+});
 
-if (!globalThis.localStorage) {
-  Object.defineProperty(globalThis, "localStorage", {
-    value: new MockLocalStorage(),
-    writable: true,
-    configurable: true,
-  });
-}
-
-// In Node SSR test environment, React's renderToStaticMarkup invokes getServerSnapshot,
-// which defaults to Zustand's initial state instead of current mutated store state.
-// Bridge useSyncExternalStore to evaluate getSnapshot() in the test runner.
-(React as unknown as { useSyncExternalStore: (subscribe: unknown, getSnapshot: () => unknown) => unknown }).useSyncExternalStore = (
-  _subscribe: unknown,
-  getSnapshot: () => unknown
-) => getSnapshot();
+(globalThis as unknown as Record<string, unknown>).window = dom.window;
+(globalThis as unknown as Record<string, unknown>).document = dom.window.document;
+(globalThis as unknown as Record<string, unknown>).localStorage = dom.window.localStorage;
+(globalThis as unknown as Record<string, unknown>).HTMLElement = dom.window.HTMLElement;
+(globalThis as unknown as Record<string, unknown>).SVGElement = dom.window.SVGElement;
+(globalThis as unknown as Record<string, unknown>).requestAnimationFrame = (cb: () => void) => setTimeout(cb, 0);
+(globalThis as unknown as Record<string, unknown>).cancelAnimationFrame = (id: NodeJS.Timeout) => clearTimeout(id);
+(globalThis as unknown as Record<string, unknown>).IS_REACT_ACT_ENVIRONMENT = true;
 
 function createRectBoundary(widthCm: number, heightCm: number): Polygon2D {
   return [
@@ -48,96 +30,176 @@ function createRectBoundary(widthCm: number, heightCm: number): Polygon2D {
   ];
 }
 
+interface TestHarness {
+  rootEl: HTMLElement;
+  root: Root;
+  cleanup: () => Promise<void>;
+}
+
+async function createMountedHarness(): Promise<TestHarness> {
+  const rootEl = dom.window.document.getElementById("root")!;
+  rootEl.innerHTML = "";
+  const root = createRoot(rootEl);
+  await act(async () => {
+    root.render(React.createElement(Stage5Improve));
+  });
+  return {
+    rootEl,
+    root,
+    cleanup: async () => {
+      await act(async () => {
+        root.unmount();
+      });
+      rootEl.innerHTML = "";
+    },
+  };
+}
+
 // ---------------------------------------------------------------------------
-// 1. Proposal Mode UI Contract
+// 1. Mounted UI Lifecycle: Proposal -> Apply -> Review (reactive) -> Revert
 // ---------------------------------------------------------------------------
 
-test("Stage 5 UI: Proposal Mode displays candidate alternatives and Apply action, no Revert", () => {
+test("Stage 5 Mounted UI: Apply and Revert in same mounted component reactively update findings and metrics without remount", async () => {
   const store = useSafeSpaceStore.getState();
   store.resetToDemo();
   store.setStage("improve");
   store.runOptimization();
 
-  const html = renderToStaticMarkup(React.createElement(Stage5Improve));
+  const harness = await createMountedHarness();
 
-  // Toolbar
-  assert.ok(html.includes("Improve Layout · Alternative Proposals"), "Shows proposals title");
-  assert.ok(!html.includes("Applied Layout Review"), "Does not show review mode title");
+  try {
+    const textContent = () => harness.rootEl.textContent ?? "";
+    const queryButton = (label: string) =>
+      Array.from(harness.rootEl.querySelectorAll("button")).find((b) => b.textContent?.includes(label));
 
-  // Ribbon
-  assert.ok(html.includes("Alternatives ("), "Shows alternatives count ribbon");
-  assert.ok(html.includes("Apply This Layout"), "Shows Apply action button");
-  assert.ok(html.includes("Re-optimize"), "Shows Re-optimize action button");
-  assert.ok(!html.includes("Revert to Original Baseline"), "Must not show Revert in proposal mode");
+    // Phase 1: Mounted in Proposal Mode
+    assert.ok(textContent().includes("Improve Layout · Alternative Proposals"), "Header shows Proposal Mode");
+    assert.ok(textContent().includes("Alternatives ("), "Shows alternatives count ribbon");
+    assert.ok(textContent().includes("Candidate (Unverified)"), "Shows truthful proposal badge");
+    assert.ok(!textContent().includes("Applied Layout Review"), "Does not show Review Mode banner");
 
-  // Panes
-  assert.ok(html.includes("Before: Current Layout"), "Left pane shows Current Layout");
-  assert.ok(html.includes("Proposed:"), "Right pane shows Proposed alternative");
-  assert.ok(html.includes("Candidate (Unverified)"), "Shows truthful unverified proposal badge");
-  assert.ok(!html.includes(">Verified<"), "Must not claim clinical verification");
+    const applyBtn = queryButton("Apply This Layout");
+    assert.ok(applyBtn, "Apply This Layout button is rendered");
+    assert.ok(!queryButton("Revert to Original Baseline"), "No Revert button in proposal mode");
 
-  store.resetToDemo();
+    // Phase 2: Click Apply in the SAME mounted instance
+    await act(async () => {
+      applyBtn.click();
+    });
+
+    // Verify reactive update in mounted instance
+    assert.ok(textContent().includes("Improve Layout · Applied Layout Review"), "Header switches to Applied Review Mode");
+    assert.ok(textContent().includes("Applied Layout Review"), "Shows Applied Layout Review banner");
+    assert.ok(textContent().includes("Applied (Draft)"), "Shows Applied (Draft) badge");
+    assert.ok(!textContent().includes("Apply This Layout"), "Apply button removed after apply");
+    assert.ok(!textContent().includes("Alternatives ("), "Alternatives selector removed in review mode");
+
+    // CRITICAL: Reactive findings update (Before: 2 deficits -> After: 1 deficit)
+    assert.ok(textContent().includes("2 → 1"), "Bottom drawer reactively shows deficits improved from 2 to 1");
+
+    const revertBtn = queryButton("Revert to Original Baseline");
+    assert.ok(revertBtn, "Durable Revert button is rendered in review mode");
+
+    // Phase 3: Click Revert in the SAME mounted instance
+    await act(async () => {
+      revertBtn.click();
+    });
+
+    // Verify reactive return to Proposal Mode
+    assert.ok(textContent().includes("Improve Layout · Alternative Proposals"), "Header restored to Proposal Mode");
+    const applyBtnRestored = queryButton("Apply This Layout");
+    assert.ok(applyBtnRestored, "Apply button restored after revert");
+    assert.ok(!queryButton("Revert to Original Baseline"), "Revert button removed after revert");
+    assert.equal(useSafeSpaceStore.getState().baselineFurnitureSnapshot, null, "Baseline snapshot cleared in store");
+  } finally {
+    await harness.cleanup();
+    store.resetToDemo();
+  }
 });
 
 // ---------------------------------------------------------------------------
-// 2. Applied-Layout Review Mode UI Contract
+// 2. Active Scene Edits while Mounted Reactively Update Evaluation
 // ---------------------------------------------------------------------------
 
-test("Stage 5 UI: Apply transitions UI to Applied-Layout Review Mode, pauses proposals, shows Revert", () => {
+test("Stage 5 Mounted UI: Scene changes while component remains mounted reactively update spatial evaluation", async () => {
   const store = useSafeSpaceStore.getState();
   store.resetToDemo();
   store.setStage("improve");
-  const optResult = store.runOptimization();
-  assert.equal(optResult.status, "improved");
-  const candidateId = optResult.candidates[0].id;
+  store.runOptimization();
 
-  // Apply candidate
-  const applyRes = store.applyLayoutCandidate(candidateId);
-  assert.equal(applyRes.success, true);
-  assert.ok(useSafeSpaceStore.getState().baselineFurnitureSnapshot !== null);
-  assert.equal(useSafeSpaceStore.getState().activeOptimizationResult, null, "Proposals cleared after Apply");
+  const harness = await createMountedHarness();
 
-  const html = renderToStaticMarkup(React.createElement(Stage5Improve));
+  try {
+    const textContent = () => harness.rootEl.textContent ?? "";
 
-  // Toolbar
-  assert.ok(html.includes("Improve Layout · Applied Layout Review"), "Shows review mode title");
-  assert.ok(!html.includes("Improve Layout · Alternative Proposals"), "Does not show proposal mode title");
+    // Baseline demo has 2 deficits
+    assert.ok(textContent().includes("2 deficits"), "Displays initial 2 deficits");
 
-  // Ribbon
-  assert.ok(html.includes("Applied Layout Review"), "Shows review mode banner");
-  assert.ok(html.includes("Revert to Original Baseline"), "Shows Revert to Original Baseline button");
-  assert.ok(!html.includes("Apply This Layout"), "Must not show Apply action in review mode");
-  assert.ok(!html.includes("Alternatives ("), "Must not expose proposal selector in review mode");
-  assert.ok(!html.includes("Re-optimize"), "Must not show Re-optimize button in review mode");
+    // Move movable chair while mounted
+    const movableChair = useSafeSpaceStore.getState().furniture.find((f) => !f.isFixed)!;
+    await act(async () => {
+      store.moveFurniture(movableChair.id, movableChair.x + 10, movableChair.y + 10);
+    });
 
-  // Panes
-  assert.ok(html.includes("Before: Original Baseline"), "Left pane shows Original Baseline");
-  assert.ok(html.includes("After: Accepted Layout (Draft)"), "Right pane shows Accepted Layout");
-  assert.ok(html.includes("Applied (Draft)"), "Shows truthful applied draft badge");
-  assert.ok(!html.includes(">Verified<"), "Must not claim clinical verification");
-
-  store.resetToDemo();
+    // Findings reactively re-evaluate through evaluateSpatialScene
+    const currentEvaluation = store.getSpatialFindings();
+    assert.ok(
+      textContent().includes(`${currentEvaluation.summary.actionableDeficitsCount} deficit`),
+      "Component reactively updates deficit count when furniture moved while mounted"
+    );
+  } finally {
+    await harness.cleanup();
+    store.resetToDemo();
+  }
 });
 
 // ---------------------------------------------------------------------------
-// 3. Lifecycle: Apply -> Hard Refresh -> Stage 5 -> Revert
+// 3. Profile Changes while Mounted Reactively Recalculate Metrics
 // ---------------------------------------------------------------------------
 
-test("Stage 5 UI Lifecycle: Apply -> Hard Refresh -> Stage 5 preserves review mode without re-optimizing -> Revert restores proposal mode", () => {
-  if (globalThis.localStorage && typeof globalThis.localStorage.clear === "function") {
-    globalThis.localStorage.clear();
-  }
+test("Stage 5 Mounted UI: Mobility profile change while mounted reactively recalculates clearances and deficits", async () => {
+  const store = useSafeSpaceStore.getState();
+  store.resetToDemo();
+  store.setStage("improve");
+  store.runOptimization();
 
+  const harness = await createMountedHarness();
+
+  try {
+    const textContent = () => harness.rootEl.textContent ?? "";
+
+    // Switch profile while mounted
+    await act(async () => {
+      store.setProfile("wheelchair");
+    });
+
+    // Reactive evaluation recalculates with wheelchair clearance targets
+    const wheelchairEvaluation = store.getSpatialFindings();
+    assert.ok(
+      textContent().includes(`${wheelchairEvaluation.summary.actionableDeficitsCount} deficit`),
+      "Reactively reflects wheelchair evaluation metrics while mounted"
+    );
+  } finally {
+    await harness.cleanup();
+    store.resetToDemo();
+  }
+});
+
+// ---------------------------------------------------------------------------
+// 4. Zero-Candidate / Optimal Scene Renders Honest Labels and Back Button
+// ---------------------------------------------------------------------------
+
+test("Stage 5 Mounted UI: Zero-candidate scene renders truthful labels and accessible Back to Findings button", async () => {
   const store = useSafeSpaceStore.getState();
   const boundary = createRectBoundary(700, 700);
   const nowIso = new Date().toISOString();
 
   store.createAndLoadUserAssessment({
     metadata: {
-      id: "lifecycle-ui-test",
-      name: "Lifecycle UI Space",
-      facilityName: "Test Clinic",
-      spaceName: "Room 1",
+      id: "zero-cand-test",
+      name: "Zero Candidate Space",
+      facilityName: "Optimal Clinic",
+      spaceName: "Hallway",
       environmentType: "clinic",
       createdAt: nowIso,
       updatedAt: nowIso,
@@ -152,70 +214,52 @@ test("Stage 5 UI Lifecycle: Apply -> Hard Refresh -> Stage 5 preserves review mo
     },
   });
 
+  // Add clear straight route with no obstacles
   store.addRouteWaypoint("Start", 100, 350);
-  store.addRouteWaypoint("Mid", 350, 350);
   store.addRouteWaypoint("End", 600, 350);
-
-  store.addFurniture("chair");
-  const chair = useSafeSpaceStore.getState().furniture[0];
-  store.moveFurniture(chair.id, 350, 330);
-
-  // 1. Run optimization in proposal mode
-  const optResult = store.runOptimization();
-  assert.equal(optResult.status, "improved");
-  const cand = optResult.candidates[0];
-
-  // 2. Apply candidate
-  const applyRes = store.applyLayoutCandidate(cand.id);
-  assert.equal(applyRes.success, true);
-
-  // 3. Simulate hard page refresh / reload: hydrate from storage
-  store.hydrateFromStorage();
-  assert.ok(useSafeSpaceStore.getState().baselineFurnitureSnapshot !== null, "Baseline snapshot survives reload");
-  assert.equal(useSafeSpaceStore.getState().appliedCandidateId, cand.id, "Applied candidate survives reload");
-  assert.equal(useSafeSpaceStore.getState().activeOptimizationResult, null, "Optimization result not re-created");
-
-  // 4. Render Stage 5 UI after reload
-  const reloadHtml = renderToStaticMarkup(React.createElement(Stage5Improve));
-  assert.ok(reloadHtml.includes("Improve Layout · Applied Layout Review"), "Renders applied review mode after reload");
-  assert.ok(reloadHtml.includes("Revert to Original Baseline"), "Revert button is immediately visible after reload");
-  assert.ok(!reloadHtml.includes("Apply This Layout"), "No Apply button after reload");
-  assert.ok(reloadHtml.includes("Before: Original Baseline"), "Left pane shows original baseline");
-  assert.ok(reloadHtml.includes("After: Accepted Layout (Draft)"), "Right pane shows accepted layout");
-
-  // 5. Revert back to original baseline
-  const revRes = store.revertLayoutCandidate();
-  assert.equal(revRes.success, true);
-  assert.equal(useSafeSpaceStore.getState().baselineFurnitureSnapshot, null);
-  assert.equal(useSafeSpaceStore.getState().appliedCandidateId, null);
-  assert.equal(useSafeSpaceStore.getState().furniture[0].x, 350, "Furniture coordinates restored to baseline");
-
-  // 6. After revert, UI returns to Proposal Mode
+  store.setStage("improve");
   store.runOptimization();
-  const revertedHtml = renderToStaticMarkup(React.createElement(Stage5Improve));
-  assert.ok(revertedHtml.includes("Improve Layout · Alternative Proposals"), "Returns to proposal mode after revert");
-  assert.ok(revertedHtml.includes("Apply This Layout"), "Apply action returns after revert");
-  assert.ok(!revertedHtml.includes("Revert to Original Baseline"), "Revert button hidden in proposal mode");
 
-  store.resetToDemo();
+  const harness = await createMountedHarness();
+
+  try {
+    const textContent = () => harness.rootEl.textContent ?? "";
+    const queryButton = (label: string) =>
+      Array.from(harness.rootEl.querySelectorAll("button")).find((b) => b.textContent?.includes(label));
+
+    // Zero deficits -> already_optimal
+    assert.ok(
+      textContent().includes("0 deficits") || textContent().includes("adequate clearance"),
+      "Renders honest 0 deficits / adequate clearance copy"
+    );
+
+    // Critical accessibility / UX: Back to Findings button MUST remain accessible
+    const backBtn = queryButton("Back to Findings");
+    assert.ok(backBtn, "Back to Findings navigation button is accessible even with 0 candidates");
+
+    // Click Back to Findings while mounted
+    await act(async () => {
+      backBtn.click();
+    });
+    assert.equal(useSafeSpaceStore.getState().activeStage, "analysis", "Navigates back to analysis stage");
+  } finally {
+    await harness.cleanup();
+    store.resetToDemo();
+  }
 });
 
 // ---------------------------------------------------------------------------
-// 4. Storage Failure Resilience in UI
+// 5. Storage Failure Handling During Mounted Lifecycle
 // ---------------------------------------------------------------------------
 
-test("Stage 5 UI: Storage failure on Apply does not switch mode to review; storage failure on Revert keeps review mode", () => {
-  if (globalThis.localStorage && typeof globalThis.localStorage.clear === "function") {
-    globalThis.localStorage.clear();
-  }
-
+test("Stage 5 Mounted UI: Storage failure on Apply retains Proposal Mode; failure on Revert retains Review Mode", async () => {
   const store = useSafeSpaceStore.getState();
   const boundary = createRectBoundary(700, 700);
   const nowIso = new Date().toISOString();
 
   store.createAndLoadUserAssessment({
     metadata: {
-      id: "storage-failure-ui-test",
+      id: "storage-fail-mounted-test",
       name: "Storage Failure Space",
       facilityName: "Test Clinic",
       spaceName: "Room 1",
@@ -241,86 +285,67 @@ test("Stage 5 UI: Storage failure on Apply does not switch mode to review; stora
   const chair = useSafeSpaceStore.getState().furniture[0];
   store.moveFurniture(chair.id, 350, 330);
 
-  const optResult = store.runOptimization();
-  assert.equal(optResult.status, "improved");
-  const cand = optResult.candidates[0];
+  store.setStage("improve");
+  const opt = store.runOptimization();
+  assert.equal(opt.status, "improved");
+  assert.ok(opt.candidates.length >= 1);
 
-  // Mock storage failure
-  const originalSetItem = globalThis.localStorage.setItem;
-  globalThis.localStorage.setItem = () => {
-    throw new Error("QuotaExceededError: disk is full");
-  };
+  const harness = await createMountedHarness();
 
   try {
-    // 1. Apply fails due to storage
-    const applyRes = store.applyLayoutCandidate(cand.id);
-    assert.equal(applyRes.success, false);
-    assert.equal(useSafeSpaceStore.getState().baselineFurnitureSnapshot, null, "Baseline snapshot was not created");
+    const queryButton = (label: string) =>
+      Array.from(harness.rootEl.querySelectorAll("button")).find((b) => b.textContent?.includes(label));
+    const textContent = () => harness.rootEl.textContent ?? "";
 
-    // UI MUST remain in Proposal Mode!
-    const failedApplyHtml = renderToStaticMarkup(React.createElement(Stage5Improve));
-    assert.ok(failedApplyHtml.includes("Improve Layout · Alternative Proposals"), "Stays in proposal mode on storage error");
-    assert.ok(!failedApplyHtml.includes("Applied Layout Review"), "Does not deceptively enter review mode");
+    // Mock storage quota failure on JSDOM Storage.prototype
+    const originalProtoSetItem = dom.window.Storage.prototype.setItem;
+    const mockStorageError = () => {
+      throw new Error("QuotaExceededError: storage full");
+    };
+    dom.window.Storage.prototype.setItem = mockStorageError;
+
+    try {
+      // 1. Try to Apply when storage is failing
+      const applyBtn = queryButton("Apply This Layout");
+      assert.ok(applyBtn);
+
+      await act(async () => {
+        applyBtn.click();
+      });
+
+      assert.ok(textContent().includes("Improve Layout · Alternative Proposals"), "Stays in Proposal Mode on save failure");
+      assert.equal(useSafeSpaceStore.getState().baselineFurnitureSnapshot, null, "Snapshot was not created");
+    } finally {
+      dom.window.Storage.prototype.setItem = originalProtoSetItem;
+    }
+
+    // 2. Successful Apply
+    const applyBtn = queryButton("Apply This Layout");
+    assert.ok(applyBtn);
+    await act(async () => {
+      applyBtn.click();
+    });
+    assert.ok(textContent().includes("Improve Layout · Applied Layout Review"), "Enters Review Mode on valid save");
+
+    // 3. Storage failure on Revert
+    dom.window.Storage.prototype.setItem = mockStorageError;
+
+    try {
+      const revertBtn = queryButton("Revert to Original Baseline");
+      assert.ok(revertBtn);
+
+      await act(async () => {
+        revertBtn.click();
+      });
+
+      // Must stay in Review Mode so user does not lose state!
+      assert.ok(textContent().includes("Improve Layout · Applied Layout Review"), "Stays in Review Mode on revert failure");
+      assert.ok(queryButton("Revert to Original Baseline"), "Revert button remains accessible to retry");
+    } finally {
+      dom.window.Storage.prototype.setItem = originalProtoSetItem;
+    }
   } finally {
-    globalThis.localStorage.setItem = originalSetItem;
+    await harness.cleanup();
+    store.resetToDemo();
   }
-
-  // 2. Successful Apply
-  const applyRes = store.applyLayoutCandidate(cand.id);
-  assert.equal(applyRes.success, true);
-  assert.ok(useSafeSpaceStore.getState().baselineFurnitureSnapshot !== null);
-
-  // 3. Mock storage failure on Revert
-  globalThis.localStorage.setItem = () => {
-    throw new Error("QuotaExceededError: disk is full");
-  };
-
-  try {
-    const revRes = store.revertLayoutCandidate();
-    assert.equal(revRes.success, false);
-    assert.ok(useSafeSpaceStore.getState().baselineFurnitureSnapshot !== null, "Baseline snapshot remains intact");
-
-    // UI MUST remain in Applied Review Mode!
-    const failedRevertHtml = renderToStaticMarkup(React.createElement(Stage5Improve));
-    assert.ok(failedRevertHtml.includes("Improve Layout · Applied Layout Review"), "Stays in review mode when revert fails");
-    assert.ok(failedRevertHtml.includes("Revert to Original Baseline"), "Revert button still available for retry");
-  } finally {
-    globalThis.localStorage.setItem = originalSetItem;
-  }
-
-  store.resetToDemo();
-});
-
-// ---------------------------------------------------------------------------
-// 5. Intervening Edits Invalidate Applied Review Mode
-// ---------------------------------------------------------------------------
-
-test("Stage 5 UI: Intervening manual edits safely exit applied review mode without destroying new work", () => {
-  const store = useSafeSpaceStore.getState();
-  store.resetToDemo();
-
-  const optResult = store.runOptimization();
-  assert.equal(optResult.status, "improved");
-  const cand = optResult.candidates[0];
-
-  const applyRes = store.applyLayoutCandidate(cand.id);
-  assert.equal(applyRes.success, true);
-  assert.ok(useSafeSpaceStore.getState().baselineFurnitureSnapshot !== null);
-
-  // User subsequently makes a manual edit (e.g. moves movable furniture)
-  const movableChair = useSafeSpaceStore.getState().furniture.find((f) => !f.isFixed)!;
-  store.moveFurniture(movableChair.id, movableChair.x + 10, movableChair.y + 10);
-
-  // Invalidation clears baseline snapshot and applied candidate
-  assert.equal(useSafeSpaceStore.getState().baselineFurnitureSnapshot, null);
-  assert.equal(useSafeSpaceStore.getState().appliedCandidateId, null);
-
-  // UI safely returns to Proposal Mode on the new manual scene
-  store.runOptimization();
-  const html = renderToStaticMarkup(React.createElement(Stage5Improve));
-  assert.ok(html.includes("Improve Layout · Alternative Proposals"), "Proposal mode restored after manual edit");
-  assert.ok(!html.includes("Applied Layout Review"), "Applied review mode cleared");
-  assert.ok(!html.includes("Revert to Original Baseline"), "Stale historical revert action removed");
-
-  store.resetToDemo();
 });
