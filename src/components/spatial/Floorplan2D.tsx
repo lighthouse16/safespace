@@ -41,8 +41,10 @@ export function Floorplan2D({
     routeWaypoints,
     selectedFurnitureId,
     selectedHazardId,
+    selectedFindingId,
     selectFurniture,
     selectHazard,
+    selectFinding,
     moveFurniture,
     rotateFurniture,
     deleteFurniture,
@@ -65,12 +67,19 @@ export function Floorplan2D({
     routeResult,
     activeProfile,
     canonicalBoundary,
+    getSpatialFindings,
   } = useSafeSpaceStore();
 
   const isBefore = isBeforeCondition || overrideStage === "before";
   const stage = isBefore ? "before" : (overrideStage || activeStage);
   const furniture = customFurniture || storeFurniture;
   const handleMove = onCustomMove || moveFurniture;
+
+  const spatialEvaluation = getSpatialFindings();
+  const spatialFindingsWithLocation = useMemo(
+    () => spatialEvaluation.findings.filter((f) => Boolean(f.location)),
+    [spatialEvaluation]
+  );
 
   const userBounds = useMemo(() => {
     if (!canonicalBoundary || canonicalBoundary.length < 3) return null;
@@ -485,25 +494,42 @@ export function Floorplan2D({
         {/* 3. Heatmap Layer */}
         {(stage === "analysis" || stage === "improve" || stage === "before") && layerToggles.heatmap && (
           <g id="heatmap-layer" className="pointer-events-none transition-opacity duration-300">
-            {hazards.map((h) => {
-              const isResolved =
-                !isBefore &&
-                stage === "improve" &&
-                (h.id === "hz-01" || h.id === "hz-02" || h.id === "hz-03" || h.id === "hz-06");
-              if (isResolved) return null;
+            {stage === "analysis" ? (
+              spatialFindingsWithLocation.map((f) => {
+                const isHigh = f.severity === "critical" || f.severity === "high";
+                const r = isHigh ? 55 : 35;
+                const fillGrad = isHigh ? "url(#heat-high)" : "url(#heat-med)";
+                return (
+                  <circle
+                    key={`heat-${f.id}`}
+                    cx={f.location!.x}
+                    cy={f.location!.y}
+                    r={r}
+                    fill={fillGrad}
+                  />
+                );
+              })
+            ) : (
+              hazards.map((h) => {
+                const isResolved =
+                  !isBefore &&
+                  stage === "improve" &&
+                  (h.id === "hz-01" || h.id === "hz-02" || h.id === "hz-03" || h.id === "hz-06");
+                if (isResolved) return null;
 
-              const r = h.severity === "high" ? 65 : 45;
-              const fillGrad = h.severity === "high" ? "url(#heat-high)" : "url(#heat-med)";
-              return (
-                <circle
-                  key={`heat-${h.id}`}
-                  cx={h.position.x}
-                  cy={h.position.y}
-                  r={r}
-                  fill={fillGrad}
-                />
-              );
-            })}
+                const r = h.severity === "high" ? 65 : 45;
+                const fillGrad = h.severity === "high" ? "url(#heat-high)" : "url(#heat-med)";
+                return (
+                  <circle
+                    key={`heat-${h.id}`}
+                    cx={h.position.x}
+                    cy={h.position.y}
+                    r={r}
+                    fill={fillGrad}
+                  />
+                );
+              })
+            )}
           </g>
         )}
 
@@ -559,18 +585,6 @@ export function Floorplan2D({
                     </text>
                   </g>
                 )}
-              {/* Pinch warning circle only in Before or un-improved stages for demo clinic */}
-              {isBefore && !canonicalBoundary && (
-                <circle
-                  cx={235}
-                  cy={220}
-                  r="35"
-                  fill="none"
-                  stroke="#dc2626"
-                  strokeWidth="2"
-                  strokeDasharray="4,4"
-                />
-              )}
             </g>
           )}
 
@@ -938,49 +952,95 @@ export function Floorplan2D({
         {/* 11. Numbered Hazard Markers (Stage 4, and Stage 5 when enabled) */}
         {(stage === "analysis" || stage === "improve" || stage === "before") && layerToggles.hazards && (
           <g id="hazard-markers-layer">
-            {hazards.map((h, idx) => {
-              const isResolved =
-                !isBefore &&
-                stage === "improve" &&
-                (h.id === "hz-01" || h.id === "hz-02" || h.id === "hz-03" || h.id === "hz-06");
+            {stage === "analysis" ? (
+              spatialFindingsWithLocation.map((f, idx) => {
+                const isSelected = selectedFindingId === f.id || selectedHazardId === f.id;
+                const num = idx + 1;
+                const isHigh = f.severity === "critical" || f.severity === "high";
+                const markerColor =
+                  f.classification === "actionable-deficit"
+                    ? "#dc2626"
+                    : f.classification === "advisory-observation"
+                    ? "#2563eb"
+                    : "#d97706";
 
-              const isSelected = selectedHazardId === h.id;
-              const num = idx + 1;
-              const isHigh = h.severity === "high";
-
-              return (
-                <g
-                  key={h.id}
-                  transform={`translate(${h.position.x}, ${h.position.y})`}
-                  className="cursor-pointer transition-transform hover:scale-110"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    selectHazard(h.id);
-                  }}
-                  opacity={isResolved ? 0.35 : 1}
-                >
-                  {isHigh && !isResolved && (
-                    <circle r="14" fill="#dc2626" opacity="0.2" className="animate-ping" />
-                  )}
-                  <circle
-                    r={isSelected ? 10 : 8}
-                    fill={isResolved ? "#16a34a" : isHigh ? "#dc2626" : "#d97706"}
-                    stroke="#ffffff"
-                    strokeWidth="1.5"
-                  />
-                  <text
-                    textAnchor="middle"
-                    dy="3"
-                    fill="#ffffff"
-                    fontSize="9"
-                    fontWeight="bold"
-                    fontFamily="var(--font-inter), Inter, sans-serif"
+                return (
+                  <g
+                    key={f.id}
+                    transform={`translate(${f.location!.x}, ${f.location!.y})`}
+                    className="cursor-pointer transition-transform hover:scale-110"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      selectFinding(f.id);
+                    }}
                   >
-                    {isResolved ? "✓" : num}
-                  </text>
-                </g>
-              );
-            })}
+                    {isHigh && (
+                      <circle r="14" fill="#dc2626" opacity="0.2" className="animate-ping" />
+                    )}
+                    <circle
+                      r={isSelected ? 11 : 8.5}
+                      fill={markerColor}
+                      stroke="#ffffff"
+                      strokeWidth={isSelected ? "2.5" : "1.5"}
+                    />
+                    <text
+                      textAnchor="middle"
+                      dy="3"
+                      fill="#ffffff"
+                      fontSize="9"
+                      fontWeight="bold"
+                      fontFamily="var(--font-inter), Inter, sans-serif"
+                    >
+                      {num}
+                    </text>
+                  </g>
+                );
+              })
+            ) : (
+              hazards.map((h, idx) => {
+                const isResolved =
+                  !isBefore &&
+                  stage === "improve" &&
+                  (h.id === "hz-01" || h.id === "hz-02" || h.id === "hz-03" || h.id === "hz-06");
+
+                const isSelected = selectedHazardId === h.id;
+                const num = idx + 1;
+                const isHigh = h.severity === "high";
+
+                return (
+                  <g
+                    key={h.id}
+                    transform={`translate(${h.position.x}, ${h.position.y})`}
+                    className="cursor-pointer transition-transform hover:scale-110"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      selectHazard(h.id);
+                    }}
+                    opacity={isResolved ? 0.35 : 1}
+                  >
+                    {isHigh && !isResolved && (
+                      <circle r="14" fill="#dc2626" opacity="0.2" className="animate-ping" />
+                    )}
+                    <circle
+                      r={isSelected ? 10 : 8}
+                      fill={isResolved ? "#16a34a" : isHigh ? "#dc2626" : "#d97706"}
+                      stroke="#ffffff"
+                      strokeWidth="1.5"
+                    />
+                    <text
+                      textAnchor="middle"
+                      dy="3"
+                      fill="#ffffff"
+                      fontSize="9"
+                      fontWeight="bold"
+                      fontFamily="var(--font-inter), Inter, sans-serif"
+                    >
+                      {isResolved ? "✓" : num}
+                    </text>
+                  </g>
+                );
+              })
+            )}
           </g>
         )}
 

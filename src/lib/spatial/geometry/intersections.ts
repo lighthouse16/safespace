@@ -150,3 +150,91 @@ export function polygonIntersectsPolygon(
 
   return false;
 }
+
+/**
+ * Evaluates whether a 2D footprint is completely contained within a walkable room boundary.
+ * Correctly detects when rotated footprint edges exit and re-enter concave polygon notches (L/U shapes)
+ * even when all footprint vertices remain inside.
+ */
+export function isFootprintContainedInBoundary(
+  footprint: Polygon2D,
+  roomBoundary: Polygon2D
+): boolean {
+  if (footprint.length < 3 || roomBoundary.length < 3) return false;
+
+  // 1. All vertices of footprint must be inside or on boundary of room
+  for (const v of footprint) {
+    if (!isPointInPolygon(v, roomBoundary, true)) {
+      return false;
+    }
+  }
+
+  // 2. Footprint centroid check
+  let sumX = 0;
+  let sumY = 0;
+  for (const v of footprint) {
+    sumX += v.x;
+    sumY += v.y;
+  }
+  const centroid: Point2D = { x: sumX / footprint.length, y: sumY / footprint.length };
+  if (!isPointInPolygon(centroid, roomBoundary, true)) {
+    return false;
+  }
+
+  // 3. Check each footprint edge for crossings into exterior concavities
+  const roomEdges = polygonEdges(roomBoundary);
+  for (let i = 0; i < footprint.length; i++) {
+    const p1 = footprint[i];
+    const p2 = footprint[(i + 1) % footprint.length];
+    const edgeSeg: Segment2D = { start: p1, end: p2 };
+
+    const dx = p2.x - p1.x;
+    const dy = p2.y - p1.y;
+    const lenSq = dx * dx + dy * dy;
+    if (lenSq < 1e-9) continue;
+
+    const tValues: number[] = [0, 1];
+
+    for (const bEdge of roomEdges) {
+      const pt = segmentIntersectionPoint(edgeSeg, bEdge);
+      if (pt) {
+        const t = ((pt.x - p1.x) * dx + (pt.y - p1.y) * dy) / lenSq;
+        if (t > 1e-6 && t < 1 - 1e-6) {
+          tValues.push(t);
+        }
+      }
+    }
+
+    tValues.sort((a, b) => a - b);
+
+    // Remove near-duplicate t values
+    const uniqueT: number[] = [];
+    for (const t of tValues) {
+      if (uniqueT.length === 0 || t - uniqueT[uniqueT.length - 1] > 1e-5) {
+        uniqueT.push(t);
+      }
+    }
+
+    // For each subsegment, test midpoint
+    for (let j = 0; j < uniqueT.length - 1; j++) {
+      const midT = (uniqueT[j] + uniqueT[j + 1]) / 2;
+      const midPoint: Point2D = {
+        x: p1.x + midT * dx,
+        y: p1.y + midT * dy,
+      };
+
+      if (!isPointInPolygon(midPoint, roomBoundary, true)) {
+        return false;
+      }
+    }
+  }
+
+  // 4. Check if any room boundary vertex is strictly inside the footprint (swallowing a notch corner)
+  for (const bv of roomBoundary) {
+    if (isPointInPolygon(bv, footprint, false)) {
+      return false;
+    }
+  }
+
+  return true;
+}
