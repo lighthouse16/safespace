@@ -1,0 +1,1034 @@
+import test from "node:test";
+import assert from "node:assert/strict";
+import {
+  convertPixelPointToCm,
+  convertCmPointToPixels,
+  convertPixelPolygonToCm,
+  convertCmPolygonToPixels,
+  computePolygonShoelaceAreaCm2,
+  computePolygonBoundsCm,
+  findInteriorProvisionalPoint,
+  isPointInPolygon,
+  isSimplePolygon,
+  validateIntakeBoundary,
+  INTAKE_ORIGIN_POLICY,
+  resolveCanonicalRoom,
+  DEMO_CLINIC_ENVELOPE,
+  type Point2D,
+  type Polygon2D,
+} from "../src/lib/spatial";
+import {
+  savePersistedAssessment,
+  loadPersistedAssessment,
+  clearPersistedAssessment,
+  validatePersistedPayload,
+  saveActiveWorkspace,
+  loadActiveWorkspace,
+  SAFESPACE_STORAGE_VERSION,
+  SAFESPACE_STORAGE_KEY,
+  SAFESPACE_ACTIVE_WORKSPACE_KEY,
+  type PersistedAssessmentState,
+} from "../src/lib/storage/persistence";
+import { useSafeSpaceStore } from "../src/store/safespace-store";
+import { MOBILITY_PROFILES } from "../src/lib/spatial-model";
+
+// Mock localStorage for Node test environment
+class MockLocalStorage {
+  private store = new Map<string, string>();
+
+  getItem(key: string): string | null {
+    return this.store.get(key) ?? null;
+  }
+
+  setItem(key: string, value: string): void {
+    this.store.set(key, String(value));
+  }
+
+  removeItem(key: string): void {
+    this.store.delete(key);
+  }
+
+  clear(): void {
+    this.store.clear();
+  }
+}
+
+const globalMockStorage = new MockLocalStorage();
+Object.defineProperty(globalThis, "localStorage", {
+  value: globalMockStorage,
+  writable: true,
+  configurable: true,
+});
+
+// 1. Scale Conversion and Geometry Tests
+test("pixel-to-cm conversion: 800 px line to 400 cm yields exact 2 px/cm scale", () => {
+  const pixelsPerCm = 2.0; // 800 px / 400 cm = 2.0 px/cm
+  const originPx = { x: 0, y: 0 };
+
+  const ptPx: Point2D = { x: 800, y: 600 };
+  const ptCm = convertPixelPointToCm(ptPx, pixelsPerCm, originPx);
+
+  assert.equal(ptCm.x, 400);
+  assert.equal(ptCm.y, 300);
+
+  // Round-trip back to pixels
+  const roundTripPx = convertCmPointToPixels(ptCm, pixelsPerCm, originPx);
+  assert.equal(roundTripPx.x, 800);
+  assert.equal(roundTripPx.y, 600);
+});
+
+test("pixel-to-cm polygon conversion preserves exact vertex ordering and coordinates", () => {
+  const pixelsPerCm = 2.5; // 2.5 px per cm
+  const polyPx: Polygon2D = [
+    { x: 50, y: 50 },
+    { x: 550, y: 50 },
+    { x: 550, y: 450 },
+    { x: 50, y: 450 },
+  ];
+
+  const polyCm = convertPixelPolygonToCm(polyPx, pixelsPerCm);
+  assert.equal(polyCm.length, 4);
+  assert.deepEqual(polyCm, [
+    { x: 20, y: 20 },
+    { x: 220, y: 20 },
+    { x: 220, y: 180 },
+    { x: 20, y: 180 },
+  ]);
+
+  const roundTripPx = convertCmPolygonToPixels(polyCm, pixelsPerCm);
+  assert.deepEqual(roundTripPx, polyPx);
+
+  const bounds = computePolygonBoundsCm(polyCm);
+  assert.equal(bounds.minX, 20);
+  assert.equal(bounds.minY, 20);
+  assert.equal(bounds.maxX, 220);
+  assert.equal(bounds.maxY, 180);
+  assert.equal(bounds.widthCm, 200);
+  assert.equal(bounds.heightCm, 160);
+
+  const area = computePolygonShoelaceAreaCm2(polyCm);
+  assert.equal(area, 200 * 160); // 32,000 cm² (3.2 m²)
+});
+
+test("concave L-shaped polygon conversion preserves concave geometry and passes simple polygon check", () => {
+  // L-shaped concave room
+  const lShapePx: Polygon2D = [
+    { x: 100, y: 100 },
+    { x: 400, y: 100 },
+    { x: 400, y: 250 },
+    { x: 250, y: 250 },
+    { x: 250, y: 400 },
+    { x: 100, y: 400 },
+  ];
+
+  const pixelsPerCm = 1.0;
+  const validation = validateIntakeBoundary(lShapePx, true, pixelsPerCm);
+  assert.equal(validation.isValid, true);
+  assert.equal(isSimplePolygon(lShapePx), true);
+
+  const polyCm = validation.polygonCm!;
+  assert.equal(polyCm.length, 6);
+  assert.equal(polyCm[3].x, 250);
+  assert.equal(polyCm[3].y, 250);
+
+  // Shoelace area of L-shape: 300x150 + 150x150 = 45000 + 22500 = 67500 cm²
+  const expectedArea = 300 * 150 + 150 * 150;
+  assert.equal(computePolygonShoelaceAreaCm2(polyCm), expectedArea);
+});
+
+test("self-intersecting bowtie polygon fails simple polygon check and intake validation", () => {
+  // Bowtie (figure-8 / self-intersecting polygon)
+  const bowtiePx: Polygon2D = [
+    { x: 100, y: 100 },
+    { x: 300, y: 300 },
+    { x: 100, y: 300 },
+    { x: 300, y: 100 },
+  ];
+
+  assert.equal(isSimplePolygon(bowtiePx), false);
+
+  const validation = validateIntakeBoundary(bowtiePx, true, 2.0);
+  assert.equal(validation.isValid, false);
+  assert.match(validation.error || "", /self-intersects/i);
+});
+
+test("invalid calibration scale or unclosed boundary fails intake validation", () => {
+  const squarePx: Polygon2D = [
+    { x: 0, y: 0 },
+    { x: 200, y: 0 },
+    { x: 200, y: 200 },
+    { x: 0, y: 200 },
+  ];
+
+  // Zero scale
+  assert.equal(validateIntakeBoundary(squarePx, true, 0).isValid, false);
+  // Negative scale
+  assert.equal(validateIntakeBoundary(squarePx, true, -1.5).isValid, false);
+  // Infinite scale
+  assert.equal(validateIntakeBoundary(squarePx, true, Infinity).isValid, false);
+  // Null scale
+  assert.equal(validateIntakeBoundary(squarePx, true, null).isValid, false);
+  // Unclosed loop
+  assert.equal(validateIntakeBoundary(squarePx, false, 2.0).isValid, false);
+  // Fewer than 3 vertices
+  assert.equal(validateIntakeBoundary([{ x: 0, y: 0 }, { x: 10, y: 10 }], true, 2.0).isValid, false);
+});
+
+// 2. Spatial Engine Adapter & Canonical Room Override Tests
+test("resolveCanonicalRoom with boundary override creates user CanonicalRoom without DEMO_CLINIC_ENVELOPE", () => {
+  const userPolyCm: Polygon2D = [
+    { x: 50, y: 50 },
+    { x: 350, y: 50 },
+    { x: 350, y: 300 },
+    { x: 50, y: 300 },
+  ];
+
+  const canonical = resolveCanonicalRoom(userPolyCm, null, "canonical-user-room");
+  assert.equal(canonical.id, "canonical-user-room");
+  assert.equal(canonical.boundary.length, 4);
+  const userBounds = computePolygonBoundsCm(canonical.boundary);
+  assert.equal(userBounds.widthCm, 300);
+  assert.equal(userBounds.heightCm, 250);
+
+  // DEMO_CLINIC_ENVELOPE interior is 720x520 — verify user room is completely distinct
+  const demoBounds = computePolygonBoundsCm(DEMO_CLINIC_ENVELOPE);
+  assert.notEqual(userBounds.widthCm, demoBounds.widthCm);
+  assert.notEqual(userBounds.heightCm, demoBounds.heightCm);
+});
+
+test("resolveCanonicalRoom without override falls back to legacy rooms or demo envelope", () => {
+  const fallback = resolveCanonicalRoom(null, null);
+  const fallbackBounds = computePolygonBoundsCm(fallback.boundary);
+  const demoBounds = computePolygonBoundsCm(DEMO_CLINIC_ENVELOPE);
+  assert.equal(fallbackBounds.widthCm, demoBounds.widthCm);
+  assert.equal(fallbackBounds.heightCm, demoBounds.heightCm);
+});
+
+// 3. User Assessment Store & Routing Tests
+test("createAndLoadUserAssessment initializes honest 0 furniture, 0 doors, 0 hazards, and 0 route", () => {
+  const store = useSafeSpaceStore.getState();
+
+  const userBoundaryCm: Polygon2D = [
+    { x: 100, y: 100 },
+    { x: 500, y: 100 },
+    { x: 500, y: 400 },
+    { x: 100, y: 400 },
+  ];
+
+  store.createAndLoadUserAssessment({
+    metadata: {
+      id: "test-assessment-01",
+      name: "St. Jude Clinic",
+      facilityName: "St. Jude Rehabilitation",
+      spaceName: "Consultation Suite",
+      environmentType: "clinic",
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    },
+    boundaryCm: userBoundaryCm,
+    calibration: {
+      pixelsPerCm: 2.0,
+      realLength: 400,
+      unit: "cm",
+      pixelDistance: 800,
+      originPolicy: INTAKE_ORIGIN_POLICY,
+    },
+  });
+
+  const state = useSafeSpaceStore.getState();
+  assert.equal(state.assessmentType, "user");
+  assert.equal(state.assessmentId, "test-assessment-01");
+  assert.equal(state.canonicalBoundary?.length, 4);
+  assert.equal(state.furniture.length, 0);
+  assert.equal(state.doors.length, 0);
+  assert.equal(state.walls.length, 0);
+  assert.equal(state.hazards.length, 0);
+  assert.equal(state.routeWaypoints.length, 0);
+  assert.equal(state.routeResult, null);
+
+  // Live metrics must report 0 hazards and low/pending risk
+  const metrics = state.getLiveMetrics();
+  assert.equal(metrics.activeHazardsCount, 0);
+  assert.equal(metrics.highPriorityHazardsCount, 0);
+  assert.equal(metrics.riskIndex, null);
+  assert.equal(metrics.riskLevel, "Pending Review");
+});
+
+test("route generation: 0 or 1 waypoint produces null route; 2 waypoints computes valid path", () => {
+  const store = useSafeSpaceStore.getState();
+
+  // Reset to empty user assessment
+  const userBoundaryCm: Polygon2D = [
+    { x: 50, y: 50 },
+    { x: 450, y: 50 },
+    { x: 450, y: 350 },
+    { x: 50, y: 350 },
+  ];
+
+  store.createAndLoadUserAssessment({
+    metadata: {
+      id: "test-assessment-02",
+      name: "Residential Bedroom",
+      facilityName: "Home Suite",
+      spaceName: "Master Bedroom",
+      environmentType: "residential",
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    },
+    boundaryCm: userBoundaryCm,
+    calibration: {
+      pixelsPerCm: 2.0,
+      realLength: 400,
+      unit: "cm",
+      pixelDistance: 800,
+      originPolicy: INTAKE_ORIGIN_POLICY,
+    },
+  });
+
+  // 0 waypoints: routeResult is null
+  assert.equal(useSafeSpaceStore.getState().routeResult, null);
+
+  // Add 1st waypoint: routeResult remains null
+  store.addRouteWaypoint("Start Door", 100, 200);
+  assert.equal(useSafeSpaceStore.getState().routeWaypoints.length, 1);
+  assert.equal(useSafeSpaceStore.getState().routeResult, null);
+
+  // Add 2nd waypoint: route calculation executes deterministically
+  store.addRouteWaypoint("Destination Bed", 400, 200);
+  const state = useSafeSpaceStore.getState();
+  assert.equal(state.routeWaypoints.length, 2);
+  assert.notEqual(state.routeResult, null);
+  assert.equal(state.routeResult?.status, "success");
+  assert.equal(state.routeResult!.path.length >= 2, true);
+
+  // Route length should approximate straight-line 300 cm distance
+  assert.equal(state.routeResult!.pathLengthCm >= 300, true);
+  assert.equal(state.routeResult!.minimumClearanceCm > 0, true);
+
+  // Verify all path points lie inside user boundary bounds
+  const bounds = computePolygonBoundsCm(userBoundaryCm);
+  for (const pt of state.routeResult!.path) {
+    assert.equal(pt.x >= bounds.minX - 5 && pt.x <= bounds.maxX + 5, true);
+    assert.equal(pt.y >= bounds.minY - 5 && pt.y <= bounds.maxY + 5, true);
+  }
+});
+
+// 4. Persistence Round-Trip & Defensive Recovery Tests
+test("persistence: save, load, and clear round-trip using mock localStorage", () => {
+  const originalLocalStorage = globalThis.localStorage;
+  const mockStorage = new MockLocalStorage();
+  Object.defineProperty(globalThis, "localStorage", {
+    value: mockStorage,
+    writable: true,
+    configurable: true,
+  });
+
+  try {
+    const payload: PersistedAssessmentState = {
+      schemaVersion: SAFESPACE_STORAGE_VERSION,
+      assessmentType: "user",
+      metadata: {
+        id: "persist-test-1",
+        name: "Geriatric Assessment Suite",
+        facilityName: "Metropolitan Care",
+        spaceName: "Consultation Room 1",
+        environmentType: "hospital",
+        createdAt: "2026-10-09T08:00:00.000Z",
+        updatedAt: "2026-10-09T08:30:00.000Z",
+      },
+      canonicalBoundary: [
+        { x: 20, y: 20 },
+        { x: 300, y: 20 },
+        { x: 300, y: 250 },
+        { x: 20, y: 250 },
+      ],
+      calibration: {
+        pixelsPerCm: 1.8,
+        realLength: 500,
+        unit: "cm",
+        pixelDistance: 900,
+        originPolicy: INTAKE_ORIGIN_POLICY,
+      },
+      activeProfileId: MOBILITY_PROFILES[0].id,
+      routeWaypoints: [
+        { id: "wp-1", name: "Entry", x: 60, y: 100, isMandatory: true },
+        { id: "wp-2", name: "Exam Table", x: 250, y: 100, isMandatory: true },
+      ],
+      furniture: [],
+    };
+
+    assert.equal(validatePersistedPayload(payload).isValid, true);
+    const saveSuccess = savePersistedAssessment(payload);
+    assert.equal(saveSuccess.success, true);
+
+    const loadResult = loadPersistedAssessment();
+    assert.equal(loadResult.success, true);
+    if (loadResult.success) {
+      assert.equal(loadResult.data.schemaVersion, SAFESPACE_STORAGE_VERSION);
+      assert.equal(loadResult.data.assessmentType, "user");
+      assert.equal(loadResult.data.metadata?.facilityName, "Metropolitan Care");
+      assert.equal(loadResult.data.canonicalBoundary?.length, 4);
+      assert.equal(loadResult.data.routeWaypoints.length, 2);
+    }
+
+    // Verify clear
+    clearPersistedAssessment();
+    assert.equal(mockStorage.getItem(SAFESPACE_STORAGE_KEY), null);
+    assert.equal(loadPersistedAssessment().success, false);
+  } finally {
+    Object.defineProperty(globalThis, "localStorage", {
+      value: originalLocalStorage,
+      writable: true,
+      configurable: true,
+    });
+  }
+});
+
+test("persistence: corrupt JSON payload or schema mismatch fails safely with isCorrupted flag", () => {
+  const originalLocalStorage = globalThis.localStorage;
+  const mockStorage = new MockLocalStorage();
+  Object.defineProperty(globalThis, "localStorage", {
+    value: mockStorage,
+    writable: true,
+    configurable: true,
+  });
+
+  try {
+    // 1. Corrupt JSON syntax
+    mockStorage.setItem(SAFESPACE_STORAGE_KEY, "this-is-not-valid-json{{{");
+    const corruptJson = loadPersistedAssessment();
+    assert.equal(corruptJson.success, false);
+    assert.equal(corruptJson.isCorrupted, true);
+
+    // 2. Missing schemaVersion
+    mockStorage.setItem(SAFESPACE_STORAGE_KEY, JSON.stringify({ assessmentType: "user" }));
+    const missingVersion = loadPersistedAssessment();
+    assert.equal(missingVersion.success, false);
+    assert.equal(missingVersion.isCorrupted, true);
+
+    // 3. Invalid schema version
+    mockStorage.setItem(SAFESPACE_STORAGE_KEY, JSON.stringify({ schemaVersion: 999, assessmentType: "user" }));
+    const invalidVersion = loadPersistedAssessment();
+    assert.equal(invalidVersion.success, false);
+    assert.equal(invalidVersion.isCorrupted, true);
+  } finally {
+    Object.defineProperty(globalThis, "localStorage", {
+      value: originalLocalStorage,
+      writable: true,
+      configurable: true,
+    });
+  }
+});
+
+// 5. Strict Demo Clinic vs User Assessment Isolation Tests
+test("demo clinic isolation: resetToDemo loads Queen Care Clinic without pollution from user session", () => {
+  const store = useSafeSpaceStore.getState();
+
+  // Reset to demo clinic
+  store.resetToDemo();
+  const demoState = useSafeSpaceStore.getState();
+
+  assert.equal(demoState.assessmentType, "demo");
+  assert.equal(demoState.assessmentId, "demo-queen-care");
+  assert.equal(demoState.canonicalBoundary, null); // Demo clinic has no user polygon override
+  assert.equal(demoState.rooms.length > 0, true);
+  assert.equal(demoState.furniture.length > 0, true);
+  assert.equal(demoState.walls.length > 0, true);
+  assert.equal(demoState.doors.length > 0, true);
+  assert.equal(demoState.hazards.length, 7);
+  assert.equal(demoState.routeWaypoints.length, 8);
+
+  const demoMetrics = demoState.getLiveMetrics();
+  assert.equal(demoMetrics.riskIndex, 68);
+  assert.equal(demoMetrics.minClearanceCm, 54);
+  assert.equal(demoMetrics.activeHazardsCount, 7);
+});
+
+// 6. Hardening Regression Tests for Reviewer Blockers A-F
+
+test("Blocker A: storage failure, quota, or SecurityError halts user assessment creation truthfully", () => {
+  const store = useSafeSpaceStore.getState();
+  store.resetToDemo();
+
+  // Create a storage that throws on setItem (simulating QuotaExceeded or SecurityError)
+  const throwingStorage = {
+    getItem: () => null,
+    setItem: () => {
+      throw new Error("QuotaExceededError: The quota has been exceeded");
+    },
+    removeItem: () => {},
+    clear: () => {},
+  };
+
+  const originalStorage = globalThis.localStorage;
+  Object.defineProperty(globalThis, "localStorage", {
+    value: throwingStorage,
+    writable: true,
+    configurable: true,
+  });
+
+  try {
+    const validBoundary: Polygon2D = [
+      { x: 0, y: 0 },
+      { x: 300, y: 0 },
+      { x: 300, y: 300 },
+      { x: 0, y: 300 },
+    ];
+
+    const result = store.createAndLoadUserAssessment({
+      metadata: {
+        id: "fail-test",
+        name: "Fail Space",
+        facilityName: "Clinic",
+        spaceName: "Room",
+        environmentType: "clinic",
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+      },
+      boundaryCm: validBoundary,
+      calibration: {
+        pixelsPerCm: 1.5,
+        realLength: 300,
+        unit: "cm",
+        pixelDistance: 450,
+        originPolicy: INTAKE_ORIGIN_POLICY,
+      },
+    });
+
+    // Must return success: false and record error
+    assert.equal(result.success, false);
+    assert.equal(typeof result.error, "string");
+
+    // Store state must NOT be in user assessment mode
+    const state = useSafeSpaceStore.getState();
+    assert.equal(state.assessmentType, "demo");
+    assert.equal(state.storageStatus, "error");
+    assert.equal(typeof state.storageError, "string");
+  } finally {
+    Object.defineProperty(globalThis, "localStorage", {
+      value: originalStorage,
+      writable: true,
+      configurable: true,
+    });
+  }
+});
+
+test("Blocker B: mobility profile custom dimensions persist via activeProfileSnapshot and restore on reload", () => {
+  const store = useSafeSpaceStore.getState();
+  globalMockStorage.clear();
+
+  const boundary: Polygon2D = [
+    { x: 0, y: 0 },
+    { x: 400, y: 0 },
+    { x: 400, y: 400 },
+    { x: 0, y: 400 },
+  ];
+
+  // 1. Create user assessment
+  const createRes = store.createAndLoadUserAssessment({
+    metadata: {
+      id: "profile-test-suite",
+      name: "Profile Durability Space",
+      facilityName: "Oak Ridge",
+      spaceName: "Suite 1",
+      environmentType: "clinic",
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    },
+    boundaryCm: boundary,
+    calibration: {
+      pixelsPerCm: 2.0,
+      realLength: 400,
+      unit: "cm",
+      pixelDistance: 800,
+      originPolicy: INTAKE_ORIGIN_POLICY,
+    },
+  });
+  assert.equal(createRes.success, true);
+
+  // Initial profile reset to walker
+  assert.equal(useSafeSpaceStore.getState().activeProfile.id, "walker");
+
+  // 2. Custom edit mobility profile values
+  store.updateProfile({
+    minClearanceCm: 115,
+    turningSpaceCm: 165,
+  });
+
+  // Verify updated in memory
+  const memoryProfile = useSafeSpaceStore.getState().activeProfile;
+  assert.equal(memoryProfile.minClearanceCm, 115);
+  assert.equal(memoryProfile.turningSpaceCm, 165);
+
+  // 3. Verify snapshot persisted into storage
+  const loaded = loadPersistedAssessment();
+  assert.equal(loaded.success, true);
+  if (loaded.success) {
+    assert.equal(loaded.data.activeProfileSnapshot?.minClearanceCm, 115);
+    assert.equal(loaded.data.activeProfileSnapshot?.turningSpaceCm, 165);
+  }
+
+  // 4. Simulate reload: reset store to demo, then hydrate from storage
+  store.resetToDemo();
+  assert.equal(useSafeSpaceStore.getState().assessmentType, "demo");
+
+  store.hydrateFromStorage();
+  const restoredState = useSafeSpaceStore.getState();
+  assert.equal(restoredState.assessmentType, "user");
+  assert.equal(restoredState.activeProfile.minClearanceCm, 115);
+  assert.equal(restoredState.activeProfile.turningSpaceCm, 165);
+});
+
+test("Blocker C: corrupted, self-intersecting, and invalid boundary payloads fail safely with isCorrupted: true", () => {
+  // Bowtie polygon (self-intersecting)
+  const bowtie: Polygon2D = [
+    { x: 0, y: 0 },
+    { x: 200, y: 200 },
+    { x: 200, y: 0 },
+    { x: 0, y: 200 },
+  ];
+
+  const invalidPayload = {
+    schemaVersion: SAFESPACE_STORAGE_VERSION,
+    assessmentType: "user",
+    metadata: {
+      id: "bowtie-test",
+      name: "Bowtie Room",
+      facilityName: "Test",
+      spaceName: "Room",
+      environmentType: "clinic",
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    },
+    canonicalBoundary: bowtie,
+    calibration: {
+      pixelsPerCm: 1.0,
+      realLength: 200,
+      unit: "cm",
+      pixelDistance: 200,
+      originPolicy: INTAKE_ORIGIN_POLICY,
+    },
+    activeProfileId: "walker",
+    routeWaypoints: [],
+    furniture: [],
+  };
+
+  const validation = validatePersistedPayload(invalidPayload);
+  assert.equal(validation.isValid, false);
+  assert.match(validation.error || "", /self-intersecting/i);
+
+  // Write bowtie directly to storage to simulate storage corruption
+  globalMockStorage.setItem(SAFESPACE_STORAGE_KEY, JSON.stringify(invalidPayload));
+  const loadRes = loadPersistedAssessment();
+  assert.equal(loadRes.success, false);
+  assert.equal(loadRes.isCorrupted, true);
+
+  // hydrateFromStorage does not corrupt store into invalid scene
+  const store = useSafeSpaceStore.getState();
+  store.resetToDemo();
+  store.hydrateFromStorage();
+  assert.equal(useSafeSpaceStore.getState().assessmentType, "demo");
+  assert.equal(useSafeSpaceStore.getState().storageStatus, "error");
+});
+
+test("Blocker D: active workspace selection persists across reload without deleting stored user assessment", () => {
+  const store = useSafeSpaceStore.getState();
+  globalMockStorage.clear();
+
+  const boundary: Polygon2D = [
+    { x: 0, y: 0 },
+    { x: 250, y: 0 },
+    { x: 250, y: 250 },
+    { x: 0, y: 250 },
+  ];
+
+  // Create user assessment
+  store.createAndLoadUserAssessment({
+    metadata: {
+      id: "active-workspace-test",
+      name: "Workspace Selection Room",
+      facilityName: "St. Jude",
+      spaceName: "Room 101",
+      environmentType: "clinic",
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    },
+    boundaryCm: boundary,
+    calibration: {
+      pixelsPerCm: 1.0,
+      realLength: 250,
+      unit: "cm",
+      pixelDistance: 250,
+      originPolicy: INTAKE_ORIGIN_POLICY,
+    },
+  });
+
+  // Active workspace should be user
+  assert.equal(loadActiveWorkspace(), "user");
+  assert.equal(globalMockStorage.getItem(SAFESPACE_ACTIVE_WORKSPACE_KEY), "user");
+  assert.equal(useSafeSpaceStore.getState().assessmentType, "user");
+
+  // User explicitly switches to Demo
+  store.resetToDemo();
+  assert.equal(loadActiveWorkspace(), "demo");
+  assert.equal(globalMockStorage.getItem(SAFESPACE_ACTIVE_WORKSPACE_KEY), "demo");
+  assert.equal(useSafeSpaceStore.getState().assessmentType, "demo");
+
+  // Stored user assessment must NOT be wiped
+  const preserved = loadPersistedAssessment();
+  assert.equal(preserved.success, true);
+  if (preserved.success) {
+    assert.equal(preserved.data.metadata?.id, "active-workspace-test");
+  }
+
+  // Reload simulation: if active is demo, stays demo
+  assert.equal(loadActiveWorkspace(), "demo");
+
+  // Switching active to user explicitly restores user workspace
+  saveActiveWorkspace("user");
+  assert.equal(loadActiveWorkspace(), "user");
+  store.hydrateFromStorage();
+  assert.equal(useSafeSpaceStore.getState().assessmentType, "user");
+});
+
+test("Blocker E: live metrics for user assessment returns riskIndex: null and riskLevel: 'Pending Review'", () => {
+  const store = useSafeSpaceStore.getState();
+  const boundary: Polygon2D = [
+    { x: 0, y: 0 },
+    { x: 300, y: 0 },
+    { x: 300, y: 300 },
+    { x: 0, y: 300 },
+  ];
+
+  store.createAndLoadUserAssessment({
+    metadata: {
+      id: "metric-honesty-test",
+      name: "Honest Metric Space",
+      facilityName: "Care Center",
+      spaceName: "Assessment Bay",
+      environmentType: "clinic",
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    },
+    boundaryCm: boundary,
+    calibration: {
+      pixelsPerCm: 1.0,
+      realLength: 300,
+      unit: "cm",
+      pixelDistance: 300,
+      originPolicy: INTAKE_ORIGIN_POLICY,
+    },
+  });
+
+  const metrics = store.getLiveMetrics();
+  assert.equal(metrics.riskIndex, null);
+  assert.equal(metrics.riskLevel, "Pending Review");
+  assert.equal(metrics.activeHazardsCount, 0);
+  assert.equal(metrics.highPriorityHazardsCount, 0);
+});
+
+test("Blocker F: concave L-shaped rooms place waypoints strictly inside polygon, never in void cutout", () => {
+  // L-shaped polygon: [0, 200] x [0, 300] with cutout [100, 200] x [100, 300]
+  const lShape: Polygon2D = [
+    { x: 0, y: 0 },
+    { x: 200, y: 0 },
+    { x: 200, y: 100 },
+    { x: 100, y: 100 },
+    { x: 100, y: 300 },
+    { x: 0, y: 300 },
+  ];
+
+  // 1. Verify findInteriorProvisionalPoint returns strictly interior points
+  const startPt = findInteriorProvisionalPoint(lShape, "start");
+  assert.ok(startPt);
+  assert.equal(isPointInPolygon(startPt, lShape, false), true);
+  // Must NOT be in the cutout void [100..200, 100..300]
+  assert.equal(startPt.x >= 100 && startPt.y >= 100, false);
+
+  const endPt = findInteriorProvisionalPoint(lShape, "end", [startPt]);
+  assert.ok(endPt);
+  assert.equal(isPointInPolygon(endPt, lShape, false), true);
+  assert.equal(endPt.x >= 100 && endPt.y >= 100, false);
+
+  const intermediatePt = findInteriorProvisionalPoint(lShape, "intermediate", [startPt, endPt]);
+  assert.ok(intermediatePt);
+  assert.equal(isPointInPolygon(intermediatePt, lShape, false), true);
+  assert.equal(intermediatePt.x >= 100 && intermediatePt.y >= 100, false);
+
+  // 2. Verify store.addRouteWaypoint placing default coordinates in an L-shaped room
+  const store = useSafeSpaceStore.getState();
+  store.createAndLoadUserAssessment({
+    metadata: {
+      id: "l-shape-test",
+      name: "Concave L-Room",
+      facilityName: "Test Facility",
+      spaceName: "L-Suite",
+      environmentType: "clinic",
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    },
+    boundaryCm: lShape,
+    calibration: {
+      pixelsPerCm: 1.0,
+      realLength: 200,
+      unit: "cm",
+      pixelDistance: 200,
+      originPolicy: INTAKE_ORIGIN_POLICY,
+    },
+  });
+
+  // Add 1st waypoint with default coordinates
+  store.addRouteWaypoint();
+  const wp1 = useSafeSpaceStore.getState().routeWaypoints[0];
+  assert.equal(isPointInPolygon({ x: wp1.x, y: wp1.y }, lShape, false), true);
+  assert.equal(wp1.x >= 100 && wp1.y >= 100, false);
+
+  // Add 2nd waypoint with default coordinates
+  store.addRouteWaypoint();
+  const wp2 = useSafeSpaceStore.getState().routeWaypoints[1];
+  assert.equal(isPointInPolygon({ x: wp2.x, y: wp2.y }, lShape, false), true);
+  assert.equal(wp2.x >= 100 && wp2.y >= 100, false);
+
+  // Add 3rd waypoint (intermediate checkpoint) with default coordinates
+  store.addRouteWaypoint();
+  const wp3 = useSafeSpaceStore.getState().routeWaypoints[1];
+  assert.equal(isPointInPolygon({ x: wp3.x, y: wp3.y }, lShape, false), true);
+  assert.equal(wp3.x >= 100 && wp3.y >= 100, false);
+});
+
+test("Correctness: active workspace key write failure preserves assessment data and reports error truthfully", () => {
+  const store = useSafeSpaceStore.getState();
+  globalMockStorage.clear();
+
+  const boundary: Polygon2D = [
+    { x: 0, y: 0 },
+    { x: 200, y: 0 },
+    { x: 200, y: 200 },
+    { x: 0, y: 200 },
+  ];
+
+  const originalSetItem = globalMockStorage.setItem.bind(globalMockStorage);
+  // Intercept writes to SAFESPACE_ACTIVE_WORKSPACE_KEY to simulate quota/storage error
+  globalMockStorage.setItem = (key: string, value: string) => {
+    if (key === SAFESPACE_ACTIVE_WORKSPACE_KEY) {
+      throw new Error("QuotaExceededError on workspace key");
+    }
+    originalSetItem(key, value);
+  };
+
+  try {
+    const res = store.createAndLoadUserAssessment({
+      metadata: {
+        id: "active-fail-test",
+        name: "Failure Room",
+        facilityName: "Clinic",
+        spaceName: "Room 1",
+        environmentType: "clinic",
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+      },
+      boundaryCm: boundary,
+      calibration: {
+        pixelsPerCm: 1.0,
+        realLength: 200,
+        unit: "cm",
+        pixelDistance: 200,
+        originPolicy: INTAKE_ORIGIN_POLICY,
+      },
+    });
+
+    // 1. Must report failure, not success
+    assert.equal(res.success, false);
+    assert.match(res.error || "", /failed to persist active workspace selection/i);
+    assert.equal(useSafeSpaceStore.getState().storageStatus, "error");
+
+    // 2. Saved assessment payload in SAFESPACE_STORAGE_KEY must NOT be wiped
+    const persisted = loadPersistedAssessment();
+    assert.equal(persisted.success, true);
+    if (persisted.success) {
+      assert.equal(persisted.data.metadata?.id, "active-fail-test");
+    }
+
+    // 3. resetToDemo with failed active key write sets error status and preserves assessment data
+    store.resetToDemo();
+    assert.equal(useSafeSpaceStore.getState().storageStatus, "error");
+    const preservedAfterDemo = loadPersistedAssessment();
+    assert.equal(preservedAfterDemo.success, true);
+    if (preservedAfterDemo.success) {
+      assert.equal(preservedAfterDemo.data.metadata?.id, "active-fail-test");
+    }
+  } finally {
+    globalMockStorage.setItem = originalSetItem;
+  }
+});
+
+test("Correctness: strict validation of furniture fields, calibration consistency, and metadata at save and load boundaries", () => {
+  globalMockStorage.clear();
+
+  const validBasePayload: PersistedAssessmentState = {
+    schemaVersion: SAFESPACE_STORAGE_VERSION,
+    assessmentType: "user",
+    metadata: {
+      id: "strict-val-test",
+      name: "Strict Room",
+      facilityName: "Care Center",
+      spaceName: "Suite A",
+      environmentType: "clinic",
+      createdAt: "2026-10-09T08:00:00.000Z",
+      updatedAt: "2026-10-09T08:30:00.000Z",
+    },
+    canonicalBoundary: [
+      { x: 0, y: 0 },
+      { x: 300, y: 0 },
+      { x: 300, y: 300 },
+      { x: 0, y: 300 },
+    ],
+    calibration: {
+      pixelsPerCm: 2.0,
+      realLength: 100,
+      unit: "cm",
+      pixelDistance: 200,
+      originPolicy: INTAKE_ORIGIN_POLICY,
+    },
+    activeProfileId: "walker",
+    routeWaypoints: [],
+    furniture: [
+      {
+        id: "chair-01",
+        name: "Rest Chair",
+        category: "chair",
+        roomId: "room-main",
+        x: 50,
+        y: 50,
+        width: 60,
+        depth: 60,
+        height: 85,
+        rotation: 0,
+        isFixed: false,
+        isStableSupport: false,
+        isConfirmed: true,
+        detectionConfidence: 0.95,
+      },
+    ],
+  };
+
+  // 1. Valid payload passes both validation and save
+  const validCheck = validatePersistedPayload(validBasePayload);
+  assert.equal(validCheck.isValid, true);
+  const saveOk = savePersistedAssessment(validBasePayload);
+  assert.equal(saveOk.success, true);
+
+  // 2. Invalid furniture: height <= 0 fails validation and save
+  const badHeightPayload = {
+    ...validBasePayload,
+    furniture: [{ ...validBasePayload.furniture[0], height: 0 }],
+  };
+  assert.equal(validatePersistedPayload(badHeightPayload).isValid, false);
+  assert.equal(savePersistedAssessment(badHeightPayload as unknown as PersistedAssessmentState).success, false);
+
+  // 3. Invalid furniture: non-finite rotation fails validation and save
+  const badRotationPayload = {
+    ...validBasePayload,
+    furniture: [{ ...validBasePayload.furniture[0], rotation: NaN }],
+  };
+  assert.equal(validatePersistedPayload(badRotationPayload).isValid, false);
+  assert.equal(savePersistedAssessment(badRotationPayload as unknown as PersistedAssessmentState).success, false);
+
+  // 4. Invalid furniture: non-boolean isFixed fails validation and save
+  const badIsFixedPayload = {
+    ...validBasePayload,
+    furniture: [{ ...validBasePayload.furniture[0], isFixed: "true" as unknown as boolean }],
+  };
+  assert.equal(validatePersistedPayload(badIsFixedPayload).isValid, false);
+  assert.equal(savePersistedAssessment(badIsFixedPayload as unknown as PersistedAssessmentState).success, false);
+
+  // 5. Invalid furniture: empty category or roomId fails validation and save
+  const badCategoryPayload = {
+    ...validBasePayload,
+    furniture: [{ ...validBasePayload.furniture[0], category: "  " as unknown as "chair" }],
+  };
+  assert.equal(validatePersistedPayload(badCategoryPayload).isValid, false);
+  assert.equal(savePersistedAssessment(badCategoryPayload as unknown as PersistedAssessmentState).success, false);
+
+  // 6. Invalid furniture: detectionConfidence outside [0, 1] fails validation and save
+  const badConfPayload = {
+    ...validBasePayload,
+    furniture: [{ ...validBasePayload.furniture[0], detectionConfidence: 1.5 }],
+  };
+  assert.equal(validatePersistedPayload(badConfPayload).isValid, false);
+  assert.equal(savePersistedAssessment(badConfPayload as unknown as PersistedAssessmentState).success, false);
+
+  // 7. Calibration inconsistency: pixelsPerCm does not match pixelDistance / realLength
+  const badCalibMathPayload = {
+    ...validBasePayload,
+    calibration: {
+      pixelsPerCm: 5.0, // Expected: 200 / 100 = 2.0
+      realLength: 100,
+      unit: "cm" as const,
+      pixelDistance: 200,
+      originPolicy: INTAKE_ORIGIN_POLICY,
+    },
+  };
+  assert.equal(validatePersistedPayload(badCalibMathPayload).isValid, false);
+  assert.equal(savePersistedAssessment(badCalibMathPayload as unknown as PersistedAssessmentState).success, false);
+
+  // 8. Calibration origin policy mismatch
+  const badOriginPayload = {
+    ...validBasePayload,
+    calibration: {
+      ...validBasePayload.calibration!,
+      originPolicy: "center-0-0",
+    },
+  };
+  assert.equal(validatePersistedPayload(badOriginPayload).isValid, false);
+  assert.equal(savePersistedAssessment(badOriginPayload as unknown as PersistedAssessmentState).success, false);
+
+  // 9. Malformed metadata dates
+  const badDatePayload = {
+    ...validBasePayload,
+    metadata: {
+      ...validBasePayload.metadata!,
+      createdAt: "not-a-valid-date",
+    },
+  };
+  assert.equal(validatePersistedPayload(badDatePayload).isValid, false);
+  assert.equal(savePersistedAssessment(badDatePayload as unknown as PersistedAssessmentState).success, false);
+
+  // 10. Load boundary also rejects corrupted saved payload
+  globalMockStorage.setItem(SAFESPACE_STORAGE_KEY, JSON.stringify(badHeightPayload));
+  const loadCorrupted = loadPersistedAssessment();
+  assert.equal(loadCorrupted.success, false);
+  assert.equal(loadCorrupted.isCorrupted, true);
+});
+
+test("Correctness: interior checkpoint fallback returns null and addRouteWaypoint safely handles unavailable interior point", () => {
+  // 1. Degenerate polygon (< 3 vertices) returns null
+  assert.equal(findInteriorProvisionalPoint([]), null);
+  assert.equal(findInteriorProvisionalPoint([{ x: 0, y: 0 }, { x: 10, y: 10 }]), null);
+
+  // 2. Collinear points or zero-width strip with no interior candidate returns null (never polygon[0] or 200,250)
+  const thinPolygon: Polygon2D = [
+    { x: 0, y: 0 },
+    { x: 200, y: 0 },
+    { x: 200, y: 0.1 },
+    { x: 0, y: 0.1 },
+  ];
+  const nullInterior = findInteriorProvisionalPoint(thinPolygon);
+  assert.equal(nullInterior, null);
+
+  // 3. store.addRouteWaypoint in a room with unavailable interior point skips adding waypoint safely
+  const store = useSafeSpaceStore.getState();
+  store.resetToDemo();
+
+  // Create user assessment with thin boundary (no valid interior point)
+  useSafeSpaceStore.setState({
+    canonicalBoundary: thinPolygon,
+    routeWaypoints: [],
+  });
+
+  // Attempting to add route waypoint with default coordinates
+  store.addRouteWaypoint();
+
+  // Waypoints count must remain 0 - no bogus waypoint added, no crash
+  assert.equal(useSafeSpaceStore.getState().routeWaypoints.length, 0);
+});

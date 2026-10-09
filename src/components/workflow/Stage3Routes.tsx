@@ -18,6 +18,8 @@ import {
 
 export function Stage3Routes() {
   const {
+    assessmentType,
+    assessmentMetadata,
     routeWaypoints,
     selectedWaypointId,
     selectWaypoint,
@@ -65,8 +67,14 @@ export function Stage3Routes() {
                 <span className="text-[10px] font-semibold text-slate-500 uppercase tracking-wide">
                   Active Profile
                 </span>
-                <span className="text-[9px] font-medium text-amber-800 bg-amber-50 border border-amber-200 px-1.5 py-0.5 rounded">
-                  Demo Fixture · Unverified
+                <span className={`text-[9px] font-medium px-1.5 py-0.5 rounded border ${
+                  assessmentType === "user"
+                    ? "text-emerald-800 bg-emerald-50 border-emerald-200"
+                    : "text-amber-800 bg-amber-50 border-amber-200"
+                }`}>
+                  {assessmentType === "user"
+                    ? `${assessmentMetadata?.spaceName || "User Assessment"} · Calibrated`
+                    : "Demo Fixture · Unverified"}
                 </span>
               </div>
               <select
@@ -96,7 +104,11 @@ export function Stage3Routes() {
                   {displayLengthM}{isSuccess ? " m" : ""}
                 </span>
                 <span className="text-[10px] text-slate-400 block">
-                  {isSuccess ? `${routeResult.path.length} waypoints` : "No traversable path"}
+                  {isSuccess
+                    ? `${routeResult.path.length} waypoints`
+                    : routeWaypoints.length < 2
+                    ? "Need ≥2 checkpoints"
+                    : "No traversable path"}
                 </span>
               </div>
 
@@ -122,7 +134,20 @@ export function Stage3Routes() {
             </div>
 
             {/* Dynamic Status Banner */}
-            {routeResult?.status === "clearance-insufficient" ? (
+            {routeWaypoints.length < 2 ? (
+              <div
+                className="p-2.5 bg-slate-50 border border-slate-200 rounded-lg text-xs text-slate-700 flex items-start gap-1.5"
+                role="status"
+              >
+                <AlertTriangle className="w-4 h-4 shrink-0 text-slate-400 mt-0.5" />
+                <div className="leading-snug space-y-1">
+                  <span className="font-semibold text-slate-800 block">Route Not Configured</span>
+                  <p className="text-[11px] text-slate-600 leading-tight">
+                    Add at least 2 checkpoints (start and destination) to compute walking clearance.
+                  </p>
+                </div>
+              </div>
+            ) : routeResult?.status === "clearance-insufficient" ? (
               <div
                 className="p-2.5 bg-red-50 border border-red-200 rounded-lg text-xs text-red-900 flex items-start gap-1.5"
                 role="alert"

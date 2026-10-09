@@ -883,8 +883,8 @@ export function calculateLiveMetrics(
   activeAlternativeId: string | null = null,
   route: RouteWaypoint[] = INITIAL_ROUTE
 ): {
-  riskIndex: number;
-  riskLevel: "Low" | "Moderate" | "High";
+  riskIndex: number | null;
+  riskLevel: "Low" | "Moderate" | "High" | "Pending Review";
   minClearanceCm: number;
   routeLengthM: number;
   constraintWarning: string | null;
