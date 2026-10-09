@@ -525,19 +525,18 @@ export const useSafeSpaceStore = create<SafeSpaceState>((set, get) => ({
 
     if (posX === undefined || posY === undefined) {
       if (canonicalBoundary && canonicalBoundary.length >= 3) {
-        if (routeWaypoints.length === 0) {
-          const pt = findInteriorProvisionalPoint(canonicalBoundary, "start");
-          posX = pt.x;
-          posY = pt.y;
-        } else if (routeWaypoints.length === 1) {
-          const pt = findInteriorProvisionalPoint(canonicalBoundary, "end", routeWaypoints);
-          posX = pt.x;
-          posY = pt.y;
-        } else {
-          const pt = findInteriorProvisionalPoint(canonicalBoundary, "intermediate", routeWaypoints);
-          posX = pt.x;
-          posY = pt.y;
+        const pt =
+          routeWaypoints.length === 0
+            ? findInteriorProvisionalPoint(canonicalBoundary, "start")
+            : routeWaypoints.length === 1
+            ? findInteriorProvisionalPoint(canonicalBoundary, "end", routeWaypoints)
+            : findInteriorProvisionalPoint(canonicalBoundary, "intermediate", routeWaypoints);
+
+        if (!pt) {
+          return;
         }
+        posX = pt.x;
+        posY = pt.y;
       } else {
         if (routeWaypoints.length >= 2) {
           const p1 = routeWaypoints[routeWaypoints.length - 2];
@@ -688,7 +687,7 @@ export const useSafeSpaceStore = create<SafeSpaceState>((set, get) => ({
   },
 
   resetToDemo: () => {
-    saveActiveWorkspace("demo");
+    const savedWs = saveActiveWorkspace("demo");
     const defaultProfile = { ...MOBILITY_PROFILES[0] };
     const defaultFurniture = cloneFurniture(INITIAL_FURNITURE);
     const initialProposed = generateProposedFurniture(INITIAL_FURNITURE, "balanced");
@@ -724,8 +723,8 @@ export const useSafeSpaceStore = create<SafeSpaceState>((set, get) => ({
       approvalStatus: "draft",
       viewMode: "2d",
       routeResult: initialRouteResult,
-      storageStatus: "idle",
-      storageError: null,
+      storageStatus: savedWs ? "idle" : "error",
+      storageError: savedWs ? null : "Failed to persist active workspace selection.",
     });
   },
 
@@ -777,7 +776,15 @@ export const useSafeSpaceStore = create<SafeSpaceState>((set, get) => ({
       return { success: false, error: saveRes.error };
     }
 
-    saveActiveWorkspace("user");
+    const savedWs = saveActiveWorkspace("user");
+    if (!savedWs) {
+      const err = "Assessment saved, but failed to persist active workspace selection.";
+      set({
+        storageStatus: "error",
+        storageError: err,
+      });
+      return { success: false, error: err };
+    }
 
     set({
       assessmentType: "user",

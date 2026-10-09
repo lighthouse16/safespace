@@ -236,15 +236,21 @@ export function validatePersistedPayload(val: unknown): {
     if (typeof m.id !== "string" || !m.id.trim() || typeof m.name !== "string" || !m.name.trim()) {
       return { isValid: false, error: "metadata must include non-empty string id and name" };
     }
+    if (typeof m.createdAt !== "string" || isNaN(Date.parse(m.createdAt))) {
+      return { isValid: false, error: "metadata.createdAt must be a valid ISO date string" };
+    }
+    if (typeof m.updatedAt !== "string" || isNaN(Date.parse(m.updatedAt))) {
+      return { isValid: false, error: "metadata.updatedAt must be a valid ISO date string" };
+    }
     metadata = {
       id: m.id.trim(),
       name: m.name.trim(),
       facilityName: typeof m.facilityName === "string" ? m.facilityName.trim() : "",
       spaceName: typeof m.spaceName === "string" ? m.spaceName.trim() : "",
-      environmentType: typeof m.environmentType === "string" ? m.environmentType : "residence",
+      environmentType: typeof m.environmentType === "string" && m.environmentType.trim() ? m.environmentType : "residence",
       notes: typeof m.notes === "string" ? m.notes.trim() : undefined,
-      createdAt: typeof m.createdAt === "string" ? m.createdAt : new Date().toISOString(),
-      updatedAt: typeof m.updatedAt === "string" ? m.updatedAt : new Date().toISOString(),
+      createdAt: m.createdAt,
+      updatedAt: m.updatedAt,
     };
   }
 
@@ -284,13 +290,26 @@ export function validatePersistedPayload(val: unknown): {
     if (c.unit !== "cm" && c.unit !== "m") {
       return { isValid: false, error: "calibration.unit must be 'cm' or 'm'" };
     }
+    if (typeof c.originPolicy !== "string" || c.originPolicy !== "canvas-origin-0-0") {
+      return { isValid: false, error: "calibration.originPolicy must be 'canvas-origin-0-0'" };
+    }
+
+    const realLengthCm = c.realLength * (c.unit === "m" ? 100 : 1);
+    const expectedPixelsPerCm = c.pixelDistance / realLengthCm;
+    const ratioDiff = Math.abs(c.pixelsPerCm - expectedPixelsPerCm) / expectedPixelsPerCm;
+    if (ratioDiff > 0.02) {
+      return {
+        isValid: false,
+        error: `calibration.pixelsPerCm (${c.pixelsPerCm}) is inconsistent with pixelDistance (${c.pixelDistance}) and realLength (${c.realLength} ${c.unit})`,
+      };
+    }
 
     calibration = {
       pixelsPerCm: c.pixelsPerCm,
       realLength: c.realLength,
       unit: c.unit,
       pixelDistance: c.pixelDistance,
-      originPolicy: typeof c.originPolicy === "string" ? c.originPolicy : "canvas-origin-0-0",
+      originPolicy: "canvas-origin-0-0",
     };
   }
 
@@ -338,8 +357,13 @@ export function validatePersistedPayload(val: unknown): {
       typeof f !== "object" ||
       f === null ||
       typeof f.id !== "string" ||
-      !f.id ||
+      !f.id.trim() ||
       typeof f.name !== "string" ||
+      !f.name.trim() ||
+      typeof f.category !== "string" ||
+      !f.category.trim() ||
+      typeof f.roomId !== "string" ||
+      !f.roomId.trim() ||
       typeof f.x !== "number" ||
       typeof f.y !== "number" ||
       !Number.isFinite(f.x) ||
@@ -349,9 +373,24 @@ export function validatePersistedPayload(val: unknown): {
       f.width <= 0 ||
       typeof f.depth !== "number" ||
       !Number.isFinite(f.depth) ||
-      f.depth <= 0
+      f.depth <= 0 ||
+      typeof f.height !== "number" ||
+      !Number.isFinite(f.height) ||
+      f.height <= 0 ||
+      typeof f.rotation !== "number" ||
+      !Number.isFinite(f.rotation) ||
+      typeof f.isFixed !== "boolean"
     ) {
       return { isValid: false, error: `Invalid furniture item at index ${i}` };
+    }
+    if (
+      f.detectionConfidence !== undefined &&
+      (typeof f.detectionConfidence !== "number" ||
+        !Number.isFinite(f.detectionConfidence) ||
+        f.detectionConfidence < 0 ||
+        f.detectionConfidence > 1)
+    ) {
+      return { isValid: false, error: `Invalid detectionConfidence at furniture index ${i}` };
     }
     furniture.push(f as SpatialFurniture);
   }
@@ -380,6 +419,11 @@ export function savePersistedAssessment(state: PersistedAssessmentState): Storag
   const storage = getLocalStorage();
   if (!storage || !isStorageAvailable()) {
     return { success: false, error: "Browser storage is not available on this device" };
+  }
+
+  const validation = validatePersistedPayload(state);
+  if (!validation.isValid) {
+    return { success: false, error: validation.error || "Schema validation failed" };
   }
 
   try {

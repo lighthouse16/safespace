@@ -740,15 +740,18 @@ test("Blocker F: concave L-shaped rooms place waypoints strictly inside polygon,
 
   // 1. Verify findInteriorProvisionalPoint returns strictly interior points
   const startPt = findInteriorProvisionalPoint(lShape, "start");
+  assert.ok(startPt);
   assert.equal(isPointInPolygon(startPt, lShape, false), true);
   // Must NOT be in the cutout void [100..200, 100..300]
   assert.equal(startPt.x >= 100 && startPt.y >= 100, false);
 
   const endPt = findInteriorProvisionalPoint(lShape, "end", [startPt]);
+  assert.ok(endPt);
   assert.equal(isPointInPolygon(endPt, lShape, false), true);
   assert.equal(endPt.x >= 100 && endPt.y >= 100, false);
 
   const intermediatePt = findInteriorProvisionalPoint(lShape, "intermediate", [startPt, endPt]);
+  assert.ok(intermediatePt);
   assert.equal(isPointInPolygon(intermediatePt, lShape, false), true);
   assert.equal(intermediatePt.x >= 100 && intermediatePt.y >= 100, false);
 
@@ -791,4 +794,241 @@ test("Blocker F: concave L-shaped rooms place waypoints strictly inside polygon,
   const wp3 = useSafeSpaceStore.getState().routeWaypoints[1];
   assert.equal(isPointInPolygon({ x: wp3.x, y: wp3.y }, lShape, false), true);
   assert.equal(wp3.x >= 100 && wp3.y >= 100, false);
+});
+
+test("Correctness: active workspace key write failure preserves assessment data and reports error truthfully", () => {
+  const store = useSafeSpaceStore.getState();
+  globalMockStorage.clear();
+
+  const boundary: Polygon2D = [
+    { x: 0, y: 0 },
+    { x: 200, y: 0 },
+    { x: 200, y: 200 },
+    { x: 0, y: 200 },
+  ];
+
+  const originalSetItem = globalMockStorage.setItem.bind(globalMockStorage);
+  // Intercept writes to SAFESPACE_ACTIVE_WORKSPACE_KEY to simulate quota/storage error
+  globalMockStorage.setItem = (key: string, value: string) => {
+    if (key === SAFESPACE_ACTIVE_WORKSPACE_KEY) {
+      throw new Error("QuotaExceededError on workspace key");
+    }
+    originalSetItem(key, value);
+  };
+
+  try {
+    const res = store.createAndLoadUserAssessment({
+      metadata: {
+        id: "active-fail-test",
+        name: "Failure Room",
+        facilityName: "Clinic",
+        spaceName: "Room 1",
+        environmentType: "clinic",
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+      },
+      boundaryCm: boundary,
+      calibration: {
+        pixelsPerCm: 1.0,
+        realLength: 200,
+        unit: "cm",
+        pixelDistance: 200,
+        originPolicy: INTAKE_ORIGIN_POLICY,
+      },
+    });
+
+    // 1. Must report failure, not success
+    assert.equal(res.success, false);
+    assert.match(res.error || "", /failed to persist active workspace selection/i);
+    assert.equal(useSafeSpaceStore.getState().storageStatus, "error");
+
+    // 2. Saved assessment payload in SAFESPACE_STORAGE_KEY must NOT be wiped
+    const persisted = loadPersistedAssessment();
+    assert.equal(persisted.success, true);
+    if (persisted.success) {
+      assert.equal(persisted.data.metadata?.id, "active-fail-test");
+    }
+
+    // 3. resetToDemo with failed active key write sets error status and preserves assessment data
+    store.resetToDemo();
+    assert.equal(useSafeSpaceStore.getState().storageStatus, "error");
+    const preservedAfterDemo = loadPersistedAssessment();
+    assert.equal(preservedAfterDemo.success, true);
+    if (preservedAfterDemo.success) {
+      assert.equal(preservedAfterDemo.data.metadata?.id, "active-fail-test");
+    }
+  } finally {
+    globalMockStorage.setItem = originalSetItem;
+  }
+});
+
+test("Correctness: strict validation of furniture fields, calibration consistency, and metadata at save and load boundaries", () => {
+  globalMockStorage.clear();
+
+  const validBasePayload: PersistedAssessmentState = {
+    schemaVersion: SAFESPACE_STORAGE_VERSION,
+    assessmentType: "user",
+    metadata: {
+      id: "strict-val-test",
+      name: "Strict Room",
+      facilityName: "Care Center",
+      spaceName: "Suite A",
+      environmentType: "clinic",
+      createdAt: "2026-10-09T08:00:00.000Z",
+      updatedAt: "2026-10-09T08:30:00.000Z",
+    },
+    canonicalBoundary: [
+      { x: 0, y: 0 },
+      { x: 300, y: 0 },
+      { x: 300, y: 300 },
+      { x: 0, y: 300 },
+    ],
+    calibration: {
+      pixelsPerCm: 2.0,
+      realLength: 100,
+      unit: "cm",
+      pixelDistance: 200,
+      originPolicy: INTAKE_ORIGIN_POLICY,
+    },
+    activeProfileId: "walker",
+    routeWaypoints: [],
+    furniture: [
+      {
+        id: "chair-01",
+        name: "Rest Chair",
+        category: "chair",
+        roomId: "room-main",
+        x: 50,
+        y: 50,
+        width: 60,
+        depth: 60,
+        height: 85,
+        rotation: 0,
+        isFixed: false,
+        isStableSupport: false,
+        isConfirmed: true,
+        detectionConfidence: 0.95,
+      },
+    ],
+  };
+
+  // 1. Valid payload passes both validation and save
+  const validCheck = validatePersistedPayload(validBasePayload);
+  assert.equal(validCheck.isValid, true);
+  const saveOk = savePersistedAssessment(validBasePayload);
+  assert.equal(saveOk.success, true);
+
+  // 2. Invalid furniture: height <= 0 fails validation and save
+  const badHeightPayload = {
+    ...validBasePayload,
+    furniture: [{ ...validBasePayload.furniture[0], height: 0 }],
+  };
+  assert.equal(validatePersistedPayload(badHeightPayload).isValid, false);
+  assert.equal(savePersistedAssessment(badHeightPayload as unknown as PersistedAssessmentState).success, false);
+
+  // 3. Invalid furniture: non-finite rotation fails validation and save
+  const badRotationPayload = {
+    ...validBasePayload,
+    furniture: [{ ...validBasePayload.furniture[0], rotation: NaN }],
+  };
+  assert.equal(validatePersistedPayload(badRotationPayload).isValid, false);
+  assert.equal(savePersistedAssessment(badRotationPayload as unknown as PersistedAssessmentState).success, false);
+
+  // 4. Invalid furniture: non-boolean isFixed fails validation and save
+  const badIsFixedPayload = {
+    ...validBasePayload,
+    furniture: [{ ...validBasePayload.furniture[0], isFixed: "true" as unknown as boolean }],
+  };
+  assert.equal(validatePersistedPayload(badIsFixedPayload).isValid, false);
+  assert.equal(savePersistedAssessment(badIsFixedPayload as unknown as PersistedAssessmentState).success, false);
+
+  // 5. Invalid furniture: empty category or roomId fails validation and save
+  const badCategoryPayload = {
+    ...validBasePayload,
+    furniture: [{ ...validBasePayload.furniture[0], category: "  " as unknown as "chair" }],
+  };
+  assert.equal(validatePersistedPayload(badCategoryPayload).isValid, false);
+  assert.equal(savePersistedAssessment(badCategoryPayload as unknown as PersistedAssessmentState).success, false);
+
+  // 6. Invalid furniture: detectionConfidence outside [0, 1] fails validation and save
+  const badConfPayload = {
+    ...validBasePayload,
+    furniture: [{ ...validBasePayload.furniture[0], detectionConfidence: 1.5 }],
+  };
+  assert.equal(validatePersistedPayload(badConfPayload).isValid, false);
+  assert.equal(savePersistedAssessment(badConfPayload as unknown as PersistedAssessmentState).success, false);
+
+  // 7. Calibration inconsistency: pixelsPerCm does not match pixelDistance / realLength
+  const badCalibMathPayload = {
+    ...validBasePayload,
+    calibration: {
+      pixelsPerCm: 5.0, // Expected: 200 / 100 = 2.0
+      realLength: 100,
+      unit: "cm" as const,
+      pixelDistance: 200,
+      originPolicy: INTAKE_ORIGIN_POLICY,
+    },
+  };
+  assert.equal(validatePersistedPayload(badCalibMathPayload).isValid, false);
+  assert.equal(savePersistedAssessment(badCalibMathPayload as unknown as PersistedAssessmentState).success, false);
+
+  // 8. Calibration origin policy mismatch
+  const badOriginPayload = {
+    ...validBasePayload,
+    calibration: {
+      ...validBasePayload.calibration!,
+      originPolicy: "center-0-0",
+    },
+  };
+  assert.equal(validatePersistedPayload(badOriginPayload).isValid, false);
+  assert.equal(savePersistedAssessment(badOriginPayload as unknown as PersistedAssessmentState).success, false);
+
+  // 9. Malformed metadata dates
+  const badDatePayload = {
+    ...validBasePayload,
+    metadata: {
+      ...validBasePayload.metadata!,
+      createdAt: "not-a-valid-date",
+    },
+  };
+  assert.equal(validatePersistedPayload(badDatePayload).isValid, false);
+  assert.equal(savePersistedAssessment(badDatePayload as unknown as PersistedAssessmentState).success, false);
+
+  // 10. Load boundary also rejects corrupted saved payload
+  globalMockStorage.setItem(SAFESPACE_STORAGE_KEY, JSON.stringify(badHeightPayload));
+  const loadCorrupted = loadPersistedAssessment();
+  assert.equal(loadCorrupted.success, false);
+  assert.equal(loadCorrupted.isCorrupted, true);
+});
+
+test("Correctness: interior checkpoint fallback returns null and addRouteWaypoint safely handles unavailable interior point", () => {
+  // 1. Degenerate polygon (< 3 vertices) returns null
+  assert.equal(findInteriorProvisionalPoint([]), null);
+  assert.equal(findInteriorProvisionalPoint([{ x: 0, y: 0 }, { x: 10, y: 10 }]), null);
+
+  // 2. Collinear points or zero-width strip with no interior candidate returns null (never polygon[0] or 200,250)
+  const thinPolygon: Polygon2D = [
+    { x: 0, y: 0 },
+    { x: 200, y: 0 },
+    { x: 200, y: 0.1 },
+    { x: 0, y: 0.1 },
+  ];
+  const nullInterior = findInteriorProvisionalPoint(thinPolygon);
+  assert.equal(nullInterior, null);
+
+  // 3. store.addRouteWaypoint in a room with unavailable interior point skips adding waypoint safely
+  const store = useSafeSpaceStore.getState();
+  store.resetToDemo();
+
+  // Create user assessment with thin boundary (no valid interior point)
+  useSafeSpaceStore.setState({
+    canonicalBoundary: thinPolygon,
+    routeWaypoints: [],
+  });
+
+  // Attempting to add route waypoint with default coordinates
+  store.addRouteWaypoint();
+
+  // Waypoints count must remain 0 - no bogus waypoint added, no crash
+  assert.equal(useSafeSpaceStore.getState().routeWaypoints.length, 0);
 });

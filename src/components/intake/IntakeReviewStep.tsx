@@ -78,10 +78,11 @@ export function IntakeReviewStep({
 
     try {
       setIsSubmitting(true);
+      const realLengthCm = calibration.realLength! * (calibration.unit === "m" ? 100 : 1);
       const pixelDist =
         calibration.p1 && calibration.p2
           ? computePixelDistance(calibration.p1, calibration.p2)
-          : 0;
+          : calibration.pixelsPerCm! * realLengthCm;
 
       const res = createAndLoadUserAssessment({
         metadata: {

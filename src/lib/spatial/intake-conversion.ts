@@ -276,9 +276,9 @@ export function findInteriorProvisionalPoint(
   polygon: Polygon2D,
   phase: "start" | "end" | "intermediate" = "start",
   referencePoints?: readonly Point2D[]
-): Point2D {
+): Point2D | null {
   if (!polygon || polygon.length < 3) {
-    return { x: 200, y: 250 };
+    return null;
   }
 
   const bounds = computePolygonBoundsCm(polygon);
@@ -313,7 +313,7 @@ export function findInteriorProvisionalPoint(
     if (isPointInPolygon(centroid, polygon, false)) {
       return centroid;
     }
-    return { x: Math.round(polygon[0].x), y: Math.round(polygon[0].y) };
+    return null;
   }
 
   const maxDist = Math.max(...candidates.map((c) => c.dist));

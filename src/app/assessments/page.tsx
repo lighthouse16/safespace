@@ -16,6 +16,7 @@ export default function AssessmentsPage() {
   const [savedAssessment, setSavedAssessment] = useState<PersistedAssessmentState | null>(null);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [deleteError, setDeleteError] = useState<string | null>(null);
+  const [openError, setOpenError] = useState<string | null>(null);
 
   useEffect(() => {
     const timer = setTimeout(() => {
@@ -29,8 +30,14 @@ export default function AssessmentsPage() {
     return () => clearTimeout(timer);
   }, []);
 
-  const handleOpenUserAssessment = () => {
-    saveActiveWorkspace("user");
+  const handleOpenUserAssessment = (e: React.MouseEvent) => {
+    setOpenError(null);
+    const ok = saveActiveWorkspace("user");
+    if (!ok) {
+      e.preventDefault();
+      setOpenError("Failed to persist active workspace selection to browser storage.");
+      return;
+    }
     hydrateFromStorage();
   };
 
@@ -146,6 +153,12 @@ export default function AssessmentsPage() {
                 </div>
               </div>
             </div>
+
+            {openError && (
+              <div role="alert" className="p-3 rounded-lg bg-red-50 border border-red-200 text-xs text-red-700">
+                {openError}
+              </div>
+            )}
 
             {/* Delete Confirmation Modal */}
             {showDeleteConfirm && (
