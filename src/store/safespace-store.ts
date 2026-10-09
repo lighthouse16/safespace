@@ -754,7 +754,22 @@ export const useSafeSpaceStore = create<SafeSpaceState>((set, get) => ({
   },
   runOptimization: () => {
     const state = get();
-    // P1 F: Optimize against active furniture (if candidate was applied, active furniture IS the applied state)
+    // Do not generate or overwrite optimization while in applied-layout review mode
+    if (state.baselineFurnitureSnapshot !== null) {
+      return state.activeOptimizationResult ?? {
+        status: "unconfigured" as const,
+        candidates: [],
+        message: "Applied layout review mode active. Revert to original baseline before generating new proposals.",
+        baselineEvaluation: state.getSpatialFindings(),
+        baselineRouteResult: state.routeResult,
+        movableFurnitureCount: state.furniture.filter((f) => !f.isFixed).length,
+        unmovableFurnitureCount: state.furniture.filter((f) => f.isFixed).length,
+        computeBudget: { maxEvaluations: 0, evaluatedCount: 0, prunedCount: 0, budgetExhausted: false },
+        sceneFingerprint: getStoreSceneFingerprint(state),
+      };
+    }
+
+    // P1 F: Optimize against active furniture
     const targetFurniture = state.furniture;
     const result = optimizeLayout({
       furniture: targetFurniture,
@@ -844,11 +859,12 @@ export const useSafeSpaceStore = create<SafeSpaceState>((set, get) => ({
     set({
       baselineFurnitureSnapshot: baseline,
       furniture: updatedFurniture,
-      proposedFurniture: cloneFurniture(candidate.furniture),
+      proposedFurniture: cloneFurniture(updatedFurniture),
       routeResult: updatedRoute,
       appliedCandidateId: candidate.id,
       appliedSceneFingerprint: appliedFingerprint,
-      selectedCandidateId: candidate.id,
+      activeOptimizationResult: null,
+      selectedCandidateId: null,
       storageStatus: state.assessmentType === "user" ? "saved" : "idle",
       storageError: null,
     });
@@ -905,6 +921,7 @@ export const useSafeSpaceStore = create<SafeSpaceState>((set, get) => ({
       furniture: revertedFurniture,
       proposedFurniture: revertedFurniture,
       routeResult: revertedRoute,
+      activeOptimizationResult: null,
       selectedCandidateId: null,
       appliedCandidateId: null,
       appliedSceneFingerprint: null,
