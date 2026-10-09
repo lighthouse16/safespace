@@ -28,9 +28,10 @@ export type CandidateStrategy =
   | "minimal_displacement";
 
 export interface LayoutCandidateMetrics {
-  clearanceGainCm: number;
+  clearanceGainCm: number | null;
+  becameFeasible: boolean;
   actionableDeficitsDelta: number;
-  pathLengthDeltaCm: number;
+  pathLengthDeltaCm: number | null;
   routeFeasibility: SpatialEvaluationSummary["routeFeasibility"];
   minimumClearanceCm: number | null;
   actionableDeficitsCount: number;
@@ -56,6 +57,13 @@ export type OptimizationStatus =
   | "infeasible"
   | "unconfigured";
 
+export interface OptimizationComputeBudget {
+  maxEvaluations: number;
+  evaluatedCount: number;
+  prunedCount: number;
+  budgetExhausted: boolean;
+}
+
 export interface OptimizationResult {
   status: OptimizationStatus;
   candidates: LayoutCandidate[];
@@ -64,6 +72,8 @@ export interface OptimizationResult {
   message: string;
   movableFurnitureCount: number;
   unmovableFurnitureCount: number;
+  sceneFingerprint: string;
+  computeBudget: OptimizationComputeBudget;
 }
 
 export interface OptimizationInput {
@@ -76,4 +86,5 @@ export interface OptimizationInput {
   boundary?: Polygon2D | null;
   assessmentType?: "demo" | "user";
   maxCandidates?: number;
+  maxEvaluations?: number;
 }

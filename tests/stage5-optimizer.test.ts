@@ -106,7 +106,10 @@ test("Stage 5 Optimizer: rectangular room with movable obstacle generates verifi
 
   // Verified candidate must have fewer or equal deficits and valid route
   assert.ok(top.metrics.actionableDeficitsDelta <= 0);
-  assert.ok(top.metrics.routeFeasibility === "adequate" || top.metrics.clearanceGainCm > 0);
+  assert.ok(
+    top.metrics.routeFeasibility === "adequate" ||
+      (top.metrics.clearanceGainCm !== null && top.metrics.clearanceGainCm > 0)
+  );
   assert.ok(!top.moves.some((m) => m.distanceCm <= 0));
 });
 
@@ -170,7 +173,7 @@ test("Stage 5 Optimizer: empty room with adequate route returns already_optimal 
 
   assert.equal(result.status, "already_optimal");
   assert.equal(result.candidates.length, 0);
-  assert.match(result.message, /meets safety/i);
+  assert.match(result.message, /satisfies.*target/i);
 });
 
 // ---------------------------------------------------------------------------
@@ -333,7 +336,9 @@ test("Stage 5 Store: applying a layout candidate persists changes and allows cle
   // Apply candidate
   const applyRes = store.applyLayoutCandidate(candidateToApply.id);
   assert.equal(applyRes.success, true);
-  assert.equal(useSafeSpaceStore.getState().approvalStatus, "approved");
+  // P0 B: User accepted layout must not imply clinical OT sign-off
+  assert.equal(useSafeSpaceStore.getState().approvalStatus, "draft");
+  assert.equal(useSafeSpaceStore.getState().appliedCandidateId, candidateToApply.id);
 
   const updatedDoctorChairPos = useSafeSpaceStore.getState().furniture.find((f) => f.id === "chair-doctor");
   assert.notEqual(updatedDoctorChairPos?.x, 630, "Doctor chair must have new position after applying candidate");
@@ -342,6 +347,7 @@ test("Stage 5 Store: applying a layout candidate persists changes and allows cle
   // Revert back to baseline
   store.revertLayoutCandidate();
   assert.equal(useSafeSpaceStore.getState().approvalStatus, "draft");
+  assert.equal(useSafeSpaceStore.getState().appliedCandidateId, null);
   assert.equal(useSafeSpaceStore.getState().baselineFurnitureSnapshot, null);
 
   const revertedChairPos = useSafeSpaceStore.getState().furniture.find((f) => f.id === "chair-doctor");
@@ -410,4 +416,321 @@ test("Stage 5 Store: user assessment layout candidate application triggers durab
   );
 
   store.resetToDemo();
+});
+
+// ---------------------------------------------------------------------------
+// 7. Gate 3 Review Hardening: P0 A - Candidate Preview Isolation & Cache Invalidation
+// ---------------------------------------------------------------------------
+
+test("Stage 5 Review Hardening: candidate preview isolates routeResult and Stage 4 findings", () => {
+  const store = useSafeSpaceStore.getState();
+  store.resetToDemo();
+
+  const optResult = store.runOptimization();
+  assert.equal(optResult.status, "improved");
+  assert.ok(optResult.candidates.length >= 1);
+
+  const baselineRouteBefore = useSafeSpaceStore.getState().routeResult;
+  const baselineEvalBefore = store.getSpatialFindings();
+
+  // Preview candidate 0
+  const candidate = optResult.candidates[0];
+  store.selectCandidate(candidate.id);
+
+  assert.equal(useSafeSpaceStore.getState().selectedCandidateId, candidate.id);
+  // Canonical routeResult must remain strictly baseline!
+  assert.deepEqual(useSafeSpaceStore.getState().routeResult, baselineRouteBefore);
+  // getSpatialFindings must evaluate canonical furniture and canonical routeResult!
+  const evalAfterPreview = store.getSpatialFindings();
+  assert.equal(
+    evalAfterPreview.summary.actionableDeficitsCount,
+    baselineEvalBefore.summary.actionableDeficitsCount
+  );
+
+  // Deselect candidate
+  store.selectCandidate(null);
+  assert.equal(useSafeSpaceStore.getState().selectedCandidateId, null);
+
+  store.resetToDemo();
+});
+
+test("Stage 5 Review Hardening: scene and profile mutations invalidate optimization cache", () => {
+  const store = useSafeSpaceStore.getState();
+  store.resetToDemo();
+
+  const optResult = store.runOptimization();
+  assert.equal(optResult.status, "improved");
+  assert.ok(useSafeSpaceStore.getState().activeOptimizationResult !== null);
+
+  // Changing mobility profile invalidates optimization cache
+  store.setProfile("cane");
+  assert.equal(useSafeSpaceStore.getState().activeOptimizationResult, null);
+  assert.equal(useSafeSpaceStore.getState().selectedCandidateId, null);
+
+  // Attempting to apply stale candidate from old optResult must be rejected
+  const applyRes = store.applyLayoutCandidate(optResult.candidates[0].id);
+  assert.equal(applyRes.success, false);
+  assert.match(applyRes.error || "", /No active optimization result/i);
+
+  store.resetToDemo();
+});
+
+// ---------------------------------------------------------------------------
+// 8. Gate 3 Review Hardening: P0 B - Storage Failure & Reload Revert Durability
+// ---------------------------------------------------------------------------
+
+test("Stage 5 Review Hardening: storage failure on Apply and Revert prevents deceptive success", () => {
+  const store = useSafeSpaceStore.getState();
+  const boundary = createRectBoundary(700, 700);
+  const nowIso = new Date().toISOString();
+
+  store.createAndLoadUserAssessment({
+    metadata: {
+      id: "storage-fail-test",
+      name: "Storage Failure Space",
+      facilityName: "Test Clinic",
+      spaceName: "Room 1",
+      environmentType: "clinic",
+      createdAt: nowIso,
+      updatedAt: nowIso,
+    },
+    boundaryCm: boundary,
+    calibration: {
+      pixelsPerCm: 1.0,
+      realLength: 100,
+      unit: "cm",
+      pixelDistance: 100,
+      originPolicy: "canvas-origin-0-0",
+    },
+  });
+
+  store.addRouteWaypoint("Start", 100, 350);
+  store.addRouteWaypoint("Mid", 350, 350);
+  store.addRouteWaypoint("End", 600, 350);
+
+  store.addFurniture("chair");
+  const addedChair = useSafeSpaceStore.getState().furniture[0];
+  store.moveFurniture(addedChair.id, 350, 330);
+
+  const optResult = store.runOptimization();
+  assert.equal(optResult.status, "improved");
+  const candidateId = optResult.candidates[0].id;
+
+  // Mock localStorage.setItem failure
+  const originalSetItem = globalThis.localStorage.setItem;
+  globalThis.localStorage.setItem = () => {
+    throw new Error("QuotaExceededError: storage is full");
+  };
+
+  try {
+    const applyRes = store.applyLayoutCandidate(candidateId);
+    assert.equal(applyRes.success, false);
+    assert.ok(applyRes.error);
+    assert.equal(useSafeSpaceStore.getState().storageStatus, "error");
+    // Furniture was not committed
+    assert.equal(useSafeSpaceStore.getState().furniture[0].x, 350);
+    assert.equal(useSafeSpaceStore.getState().furniture[0].y, 330);
+  } finally {
+    globalThis.localStorage.setItem = originalSetItem;
+  }
+
+  store.resetToDemo();
+});
+
+test("Stage 5 Review Hardening: reload restores accepted layout and baseline for durable revert", () => {
+  if (globalThis.localStorage && typeof globalThis.localStorage.clear === "function") {
+    globalThis.localStorage.clear();
+  }
+
+  const store = useSafeSpaceStore.getState();
+  const boundary = createRectBoundary(700, 700);
+  const nowIso = new Date().toISOString();
+
+  store.createAndLoadUserAssessment({
+    metadata: {
+      id: "durable-revert-test",
+      name: "Durable Space",
+      facilityName: "Test Clinic",
+      spaceName: "Consult 1",
+      environmentType: "clinic",
+      createdAt: nowIso,
+      updatedAt: nowIso,
+    },
+    boundaryCm: boundary,
+    calibration: {
+      pixelsPerCm: 1.0,
+      realLength: 100,
+      unit: "cm",
+      pixelDistance: 100,
+      originPolicy: "canvas-origin-0-0",
+    },
+  });
+
+  store.addRouteWaypoint("Start", 100, 350);
+  store.addRouteWaypoint("Mid", 350, 350);
+  store.addRouteWaypoint("End", 600, 350);
+
+  store.addFurniture("chair");
+  const chair = useSafeSpaceStore.getState().furniture[0];
+  store.moveFurniture(chair.id, 350, 330);
+
+  const optResult = store.runOptimization();
+  assert.equal(optResult.status, "improved");
+  const cand = optResult.candidates[0];
+
+  // Apply candidate
+  const applyRes = store.applyLayoutCandidate(cand.id);
+  assert.equal(applyRes.success, true);
+  assert.equal(useSafeSpaceStore.getState().appliedCandidateId, cand.id);
+  assert.equal(useSafeSpaceStore.getState().approvalStatus, "draft");
+
+  const acceptedX = useSafeSpaceStore.getState().furniture[0].x;
+  const acceptedY = useSafeSpaceStore.getState().furniture[0].y;
+  assert.ok(acceptedX !== 350 || acceptedY !== 330);
+
+  // Simulate hard browser reload by hydrating from storage
+  store.hydrateFromStorage();
+
+  assert.equal(useSafeSpaceStore.getState().appliedCandidateId, cand.id);
+  assert.ok(useSafeSpaceStore.getState().baselineFurnitureSnapshot !== null);
+  assert.equal(useSafeSpaceStore.getState().furniture[0].x, acceptedX);
+  assert.equal(useSafeSpaceStore.getState().furniture[0].y, acceptedY);
+  assert.equal(useSafeSpaceStore.getState().approvalStatus, "draft");
+
+  // Revert back to baseline after reload
+  const revRes = store.revertLayoutCandidate();
+  assert.equal(revRes.success, true);
+  assert.equal(useSafeSpaceStore.getState().appliedCandidateId, null);
+  assert.equal(useSafeSpaceStore.getState().baselineFurnitureSnapshot, null);
+  assert.equal(useSafeSpaceStore.getState().furniture[0].x, 350);
+  assert.equal(useSafeSpaceStore.getState().furniture[0].y, 330);
+
+  store.resetToDemo();
+});
+
+// ---------------------------------------------------------------------------
+// 9. Gate 3 Review Hardening: P0 C - Null Metric Preservation & New Deficit Rejection
+// ---------------------------------------------------------------------------
+
+test("Stage 5 Review Hardening: null baseline clearance yields clearanceGainCm null", () => {
+  const boundary = createRectBoundary(600, 600);
+  // Movable chair directly on top of waypoint -> baseline has route clearance failure (null clearance)
+  const blockingChair: SpatialFurniture = {
+    id: "chair-tight",
+    name: "Tight Chair",
+    category: "chair",
+    roomId: "room-1",
+    x: 300,
+    y: 275,
+    width: 60,
+    depth: 60,
+    height: 80,
+    rotation: 0,
+    isFixed: false,
+    isStableSupport: false,
+    isConfirmed: true,
+  };
+
+  const waypoints = [
+    { id: "w1", name: "Start", x: 100, y: 300 },
+    { id: "w2", name: "Mid", x: 300, y: 300 },
+    { id: "w3", name: "End", x: 500, y: 300 },
+  ];
+
+  const result = optimizeLayout({
+    furniture: [blockingChair],
+    waypoints,
+    profile: defaultProfile,
+    boundary,
+    assessmentType: "user",
+  });
+
+  assert.equal(result.status, "improved");
+  assert.equal(result.baselineEvaluation.summary.minimumClearanceCm, null);
+
+  for (const cand of result.candidates) {
+    // When baseline clearance is null, clearanceGainCm must remain null (no fabricated gain!)
+    assert.equal(cand.metrics.clearanceGainCm, null);
+    // Improvement must be marked via becameFeasible
+    assert.equal(cand.metrics.becameFeasible, true);
+  }
+});
+
+test("Stage 5 Review Hardening: candidate introducing new collision is rejected", () => {
+  const boundary = createRectBoundary(600, 600);
+  // chair-1 blocks route at (300, 300)
+  const chair1: SpatialFurniture = {
+    id: "chair-1",
+    name: "Chair 1",
+    category: "chair",
+    roomId: "room-1",
+    x: 300,
+    y: 275,
+    width: 60,
+    depth: 60,
+    height: 80,
+    rotation: 0,
+    isFixed: false,
+    isStableSupport: false,
+    isConfirmed: true,
+  };
+  // fixed table sitting at (300, 345) where dy: 70 would shift chair-1
+  const tableFixed: SpatialFurniture = {
+    id: "table-fixed",
+    name: "Fixed Wall Table",
+    category: "table",
+    roomId: "room-1",
+    x: 300,
+    y: 350,
+    width: 60,
+    depth: 60,
+    height: 75,
+    rotation: 0,
+    isFixed: true,
+    isStableSupport: false,
+    isConfirmed: true,
+  };
+
+  const waypoints = [
+    { id: "w1", name: "Start", x: 100, y: 300 },
+    { id: "w2", name: "Mid", x: 300, y: 300 },
+    { id: "w3", name: "End", x: 500, y: 300 },
+  ];
+
+  const result = optimizeLayout({
+    furniture: [chair1, tableFixed],
+    waypoints,
+    profile: defaultProfile,
+    boundary,
+    assessmentType: "user",
+  });
+
+  if (result.status === "improved") {
+    // No accepted candidate can collide with table-fixed
+    for (const cand of result.candidates) {
+      const collisions = cand.evaluation.findings.filter((f) => f.kind === "obstacle-collision");
+      assert.equal(collisions.length, 0, "No candidate may introduce an obstacle collision");
+    }
+  }
+});
+
+// ---------------------------------------------------------------------------
+// 10. Gate 3 Review Hardening: P1 E - Deterministic Hard Compute Budget
+// ---------------------------------------------------------------------------
+
+test("Stage 5 Review Hardening: evaluation count respects maxEvaluations cap deterministically", () => {
+  const result = optimizeLayout({
+    furniture: INITIAL_FURNITURE,
+    rooms: INITIAL_ROOMS,
+    walls: INITIAL_WALLS,
+    doors: INITIAL_DOORS,
+    waypoints: INITIAL_ROUTE,
+    profile: MOBILITY_PROFILES[0],
+    assessmentType: "demo",
+    maxEvaluations: 20,
+  });
+
+  assert.ok(result.computeBudget.evaluatedCount <= 20);
+  assert.equal(result.computeBudget.maxEvaluations, 20);
+  assert.ok(typeof result.computeBudget.prunedCount === "number");
 });

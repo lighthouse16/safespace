@@ -31,7 +31,6 @@ export function Floorplan2D({
   readOnly = false,
   overrideStage,
   isBeforeCondition = false,
-  showDiffGhost = false,
   showChangedOnly = false,
   className = "",
 }: Floorplan2DProps) {
@@ -41,7 +40,6 @@ export function Floorplan2D({
     walls,
     doors,
     furniture: storeFurniture,
-    hazards,
     routeWaypoints,
     selectedFurnitureId,
     selectedHazardId,
@@ -499,42 +497,20 @@ export function Floorplan2D({
         {/* 3. Heatmap Layer */}
         {(stage === "analysis" || stage === "improve" || stage === "before") && layerToggles.heatmap && (
           <g id="heatmap-layer" className="pointer-events-none transition-opacity duration-300">
-            {stage === "analysis" ? (
-              spatialFindingsWithLocation.map((f) => {
-                const isHigh = f.severity === "critical" || f.severity === "high";
-                const r = isHigh ? 55 : 35;
-                const fillGrad = isHigh ? "url(#heat-high)" : "url(#heat-med)";
-                return (
-                  <circle
-                    key={`heat-${f.id}`}
-                    cx={f.location!.x}
-                    cy={f.location!.y}
-                    r={r}
-                    fill={fillGrad}
-                  />
-                );
-              })
-            ) : (
-              hazards.map((h) => {
-                const isResolved =
-                  !isBefore &&
-                  stage === "improve" &&
-                  (h.id === "hz-01" || h.id === "hz-02" || h.id === "hz-03" || h.id === "hz-06");
-                if (isResolved) return null;
-
-                const r = h.severity === "high" ? 65 : 45;
-                const fillGrad = h.severity === "high" ? "url(#heat-high)" : "url(#heat-med)";
-                return (
-                  <circle
-                    key={`heat-${h.id}`}
-                    cx={h.position.x}
-                    cy={h.position.y}
-                    r={r}
-                    fill={fillGrad}
-                  />
-                );
-              })
-            )}
+            {spatialFindingsWithLocation.map((f) => {
+              const isHigh = f.severity === "critical" || f.severity === "high";
+              const r = isHigh ? 55 : 35;
+              const fillGrad = isHigh ? "url(#heat-high)" : "url(#heat-med)";
+              return (
+                <circle
+                  key={`heat-${f.id}`}
+                  cx={f.location!.x}
+                  cy={f.location!.y}
+                  r={r}
+                  fill={fillGrad}
+                />
+              );
+            })}
           </g>
         )}
 
@@ -792,78 +768,6 @@ export function Floorplan2D({
           })}
         </g>
 
-        {/* 8. Handrail & Improved Fixtures (ONLY WHEN NOT BEFORE AND DEMO CLINIC!) */}
-        {!isBefore && (stage === "improve" || showDiffGhost) && !canonicalBoundary && (
-          <g id="improvements-fixtures">
-            {/* Wall Handrail */}
-            <line
-              x1="260"
-              y1="408"
-              x2="500"
-              y2="408"
-              stroke="#0f766e"
-              strokeWidth="4.5"
-              strokeLinecap="round"
-            />
-            <text x="310" y="420" fill="#0f766e" fontSize="9" fontWeight="600" fontFamily="var(--font-inter), Inter, sans-serif">
-              Wall handrail (2.4 m)
-            </text>
-            {/* Upgraded Luminaire */}
-            <circle cx="520" cy="390" r="24" fill="#fef08a" opacity="0.35" />
-            <circle cx="520" cy="390" r="3" fill="#ca8a04" />
-          </g>
-        )}
-
-        {/* 9. Ghost Changes & Movement Trajectories (Stage 5 After view) */}
-        {!isBefore && (showDiffGhost || stage === "improve") && !canonicalBoundary && (
-          <g id="ghost-diff-layer" className="pointer-events-none">
-            {/* Ghost of Chair C-04 at old position (230, 205) */}
-            <g transform="translate(230, 205)">
-              <rect
-                width="55"
-                height="55"
-                rx="4"
-                fill="none"
-                stroke="#dc2626"
-                strokeWidth="1.5"
-                strokeDasharray="3,3"
-                opacity="0.7"
-              />
-              <text x="27" y="32" textAnchor="middle" fill="#dc2626" fontSize="8" fontWeight="600">
-                Old C-04
-              </text>
-            </g>
-            {/* Movement Arrow from old (257, 232) to new (127, 177) */}
-            <path
-              d="M 230 220 Q 180 180 135 165"
-              fill="none"
-              stroke="#0f766e"
-              strokeWidth="2"
-              strokeDasharray="4,2"
-              markerEnd="url(#move-arrow)"
-            />
-            <text x="180" y="195" fill="#0f766e" fontSize="9" fontWeight="bold" fontFamily="var(--font-inter), Inter, sans-serif">
-              Moved 70 cm
-            </text>
-
-            {/* Ghost of Mat removed */}
-            <g transform="translate(65, 235)">
-              <rect
-                width="75"
-                height="50"
-                fill="none"
-                stroke="#dc2626"
-                strokeWidth="1"
-                strokeDasharray="2,2"
-                opacity="0.5"
-              />
-              <text x="37" y="28" textAnchor="middle" fill="#dc2626" fontSize="8" fontWeight="600">
-                Mat Removed
-              </text>
-            </g>
-          </g>
-        )}
-
         {/* 10. Furniture Objects */}
         <g id="furniture-layer">
           {furniture.map((item) => {
@@ -954,127 +858,88 @@ export function Floorplan2D({
           })}
         </g>
 
-        {/* 11. Numbered Hazard Markers (Stage 4, and Stage 5 when enabled) */}
+        {/* 11. Numbered Spatial Finding Markers (Stage 4 Analysis and Stage 5 Improve/Before) */}
         {(stage === "analysis" || stage === "improve" || stage === "before") && layerToggles.hazards && (
           <g id="hazard-markers-layer">
-            {stage === "analysis" ? (
-              spatialFindingsWithLocation.map((f, idx) => {
-                const isSelected = selectedFindingId === f.id || selectedHazardId === f.id;
-                const num = idx + 1;
-                const isHigh = f.severity === "critical" || f.severity === "high";
-                const markerColor =
-                  f.classification === "actionable-deficit"
-                    ? "#dc2626"
-                    : f.classification === "advisory-observation"
-                    ? "#2563eb"
-                    : "#d97706";
+            {spatialFindingsWithLocation.map((f, idx) => {
+              const isSelected = selectedFindingId === f.id || selectedHazardId === f.id;
+              const num = idx + 1;
+              const isHigh = f.severity === "critical" || f.severity === "high";
+              const markerColor =
+                f.classification === "actionable-deficit"
+                  ? "#dc2626"
+                  : f.classification === "advisory-observation"
+                  ? "#2563eb"
+                  : "#d97706";
 
-                return (
-                  <g
-                    key={f.id}
-                    transform={`translate(${f.location!.x}, ${f.location!.y})`}
-                    className="cursor-pointer transition-transform hover:scale-110"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      selectFinding(f.id);
-                    }}
+              return (
+                <g
+                  key={f.id}
+                  transform={`translate(${f.location!.x}, ${f.location!.y})`}
+                  className="cursor-pointer transition-transform hover:scale-110"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    selectFinding(f.id);
+                  }}
+                >
+                  {isHigh && (
+                    <circle r="14" fill="#dc2626" opacity="0.2" className="animate-ping" />
+                  )}
+                  <circle
+                    r={isSelected ? 11 : 8.5}
+                    fill={markerColor}
+                    stroke="#ffffff"
+                    strokeWidth={isSelected ? "2.5" : "1.5"}
+                  />
+                  <text
+                    textAnchor="middle"
+                    dy="3"
+                    fill="#ffffff"
+                    fontSize="9"
+                    fontWeight="bold"
+                    fontFamily="var(--font-inter), Inter, sans-serif"
                   >
-                    {isHigh && (
-                      <circle r="14" fill="#dc2626" opacity="0.2" className="animate-ping" />
-                    )}
-                    <circle
-                      r={isSelected ? 11 : 8.5}
-                      fill={markerColor}
-                      stroke="#ffffff"
-                      strokeWidth={isSelected ? "2.5" : "1.5"}
-                    />
-                    <text
-                      textAnchor="middle"
-                      dy="3"
-                      fill="#ffffff"
-                      fontSize="9"
-                      fontWeight="bold"
-                      fontFamily="var(--font-inter), Inter, sans-serif"
-                    >
-                      {num}
-                    </text>
-                  </g>
-                );
-              })
-            ) : (
-              hazards.map((h, idx) => {
-                const isResolved =
-                  !isBefore &&
-                  stage === "improve" &&
-                  (h.id === "hz-01" || h.id === "hz-02" || h.id === "hz-03" || h.id === "hz-06");
-
-                const isSelected = selectedHazardId === h.id;
-                const num = idx + 1;
-                const isHigh = h.severity === "high";
-
-                return (
-                  <g
-                    key={h.id}
-                    transform={`translate(${h.position.x}, ${h.position.y})`}
-                    className="cursor-pointer transition-transform hover:scale-110"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      selectHazard(h.id);
-                    }}
-                    opacity={isResolved ? 0.35 : 1}
-                  >
-                    {isHigh && !isResolved && (
-                      <circle r="14" fill="#dc2626" opacity="0.2" className="animate-ping" />
-                    )}
-                    <circle
-                      r={isSelected ? 10 : 8}
-                      fill={isResolved ? "#16a34a" : isHigh ? "#dc2626" : "#d97706"}
-                      stroke="#ffffff"
-                      strokeWidth="1.5"
-                    />
-                    <text
-                      textAnchor="middle"
-                      dy="3"
-                      fill="#ffffff"
-                      fontSize="9"
-                      fontWeight="bold"
-                      fontFamily="var(--font-inter), Inter, sans-serif"
-                    >
-                      {isResolved ? "✓" : num}
-                    </text>
-                  </g>
-                );
-              })
-            )}
+                    {num}
+                  </text>
+                </g>
+              );
+            })}
           </g>
         )}
 
-        {/* 12. Clearance Annotations (STRICT STATE ISOLATION: 54cm ONLY in Before, 96cm ONLY in Improved!) */}
-        {showDimensions && layerToggles.dimensions && (
+        {/* 12. Dynamic Clearance Bottleneck Annotations (computed strictly from route bottlenecks) */}
+        {showDimensions && layerToggles.dimensions && routeResult?.status === "success" && routeResult.bottlenecks && (
           <g id="dimensions-layer" className="pointer-events-none">
-            {/* Before clearance: exactly 54 cm */}
-            {isBefore && (
-              <g transform="translate(195, 205)">
-                <line x1="0" y1="0" x2="32" y2="0" stroke="#dc2626" strokeWidth="1.5" />
-                <line x1="0" y1="-3" x2="0" y2="3" stroke="#dc2626" strokeWidth="1" />
-                <line x1="32" y1="-3" x2="32" y2="3" stroke="#dc2626" strokeWidth="1" />
-                <text x="16" y="-5" textAnchor="middle" fill="#dc2626" fontSize="9" fontWeight="bold">
-                  54 cm
-                </text>
-              </g>
-            )}
-
-            {/* After clearance: 96 cm Clear */}
-            {!isBefore && stage === "improve" && (
-              <g transform="translate(200, 205)">
-                <line x1="0" y1="0" x2="56" y2="0" stroke="#16a34a" strokeWidth="1.5" />
-                <line x1="0" y1="-3" x2="0" y2="3" stroke="#16a34a" strokeWidth="1" />
-                <line x1="56" y1="-3" x2="56" y2="3" stroke="#16a34a" strokeWidth="1" />
-                <text x="28" y="-5" textAnchor="middle" fill="#16a34a" fontSize="9" fontWeight="bold">
-                  96 cm (Clear)
-                </text>
-              </g>
-            )}
+            {routeResult.bottlenecks.map((b, idx) => {
+              const reqRadius = (activeProfile?.minClearanceCm || 90) / 2;
+              const isDeficit = b.clearanceCm < reqRadius;
+              const clrColor = isDeficit ? "#dc2626" : "#16a34a";
+              return (
+                <g key={`btnk-dim-${idx}`} transform={`translate(${b.position.x}, ${b.position.y})`}>
+                  <rect
+                    x="-28"
+                    y="-18"
+                    width="56"
+                    height="16"
+                    rx="3"
+                    fill="#ffffff"
+                    stroke={clrColor}
+                    strokeWidth="1"
+                    opacity="0.9"
+                  />
+                  <text
+                    x="0"
+                    y="-6"
+                    textAnchor="middle"
+                    fill={clrColor}
+                    fontSize="9"
+                    fontWeight="bold"
+                  >
+                    {Math.round(b.clearanceCm)} cm
+                  </text>
+                </g>
+              );
+            })}
           </g>
         )}
       </svg>

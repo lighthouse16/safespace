@@ -34,6 +34,7 @@ import {
   type RouteResult,
   optimizeLayout,
   type OptimizationResult,
+  computeSceneFingerprint,
 } from "@/lib/spatial";
 import {
   SAFESPACE_STORAGE_VERSION,
@@ -167,11 +168,12 @@ export interface SafeSpaceState {
   // Gate 3 Layout Optimization
   activeOptimizationResult: OptimizationResult | null;
   selectedCandidateId: string | null;
+  appliedCandidateId: string | null;
   baselineFurnitureSnapshot: SpatialFurniture[] | null;
   selectCandidate: (candidateId: string | null) => void;
   runOptimization: () => OptimizationResult;
   applyLayoutCandidate: (candidateId: string) => { success: boolean; error?: string };
-  revertLayoutCandidate: () => void;
+  revertLayoutCandidate: () => { success: boolean; error?: string };
 
   // Computed helper
   getSpatialFindings: () => SpatialEvaluationResult;
@@ -258,7 +260,7 @@ function computeStoreRoute(
 function persistUserMutation(
   get: () => SafeSpaceState,
   set: (partial: Partial<SafeSpaceState>) => void
-) {
+): { success: boolean; error?: string } {
   const state = get();
   if (state.assessmentType === "user") {
     const saveRes = savePersistedAssessment({
@@ -271,13 +273,18 @@ function persistUserMutation(
       activeProfileSnapshot: state.activeProfile,
       routeWaypoints: state.routeWaypoints,
       furniture: state.furniture,
+      appliedLayoutBaseline: state.baselineFurnitureSnapshot,
+      appliedCandidateId: state.appliedCandidateId,
     });
     if (saveRes.success) {
       set({ storageStatus: "saved", storageError: null });
+      return { success: true };
     } else {
       set({ storageStatus: "error", storageError: saveRes.error });
+      return { success: false, error: saveRes.error };
     }
   }
+  return { success: true };
 }
 
 export const useSafeSpaceStore = create<SafeSpaceState>((set, get) => ({
@@ -357,6 +364,8 @@ export const useSafeSpaceStore = create<SafeSpaceState>((set, get) => ({
       history: newHistory,
       future: [],
       routeResult: newRouteResult,
+      activeOptimizationResult: null,
+      selectedCandidateId: null,
     });
     persistUserMutation(get, set);
   },
@@ -375,6 +384,8 @@ export const useSafeSpaceStore = create<SafeSpaceState>((set, get) => ({
       history: newHistory,
       future: [],
       routeResult: newRouteResult,
+      activeOptimizationResult: null,
+      selectedCandidateId: null,
     });
     persistUserMutation(get, set);
   },
@@ -407,6 +418,8 @@ export const useSafeSpaceStore = create<SafeSpaceState>((set, get) => ({
       history: newHistory,
       future: [],
       routeResult: newRouteResult,
+      activeOptimizationResult: null,
+      selectedCandidateId: null,
     });
     persistUserMutation(get, set);
   },
@@ -454,6 +467,8 @@ export const useSafeSpaceStore = create<SafeSpaceState>((set, get) => ({
       history: newHistory,
       future: [],
       routeResult: newRouteResult,
+      activeOptimizationResult: null,
+      selectedCandidateId: null,
     });
     persistUserMutation(get, set);
   },
@@ -468,6 +483,8 @@ export const useSafeSpaceStore = create<SafeSpaceState>((set, get) => ({
       history: history.slice(0, -1),
       future: [cloneFurniture(furniture), ...future],
       routeResult: newRouteResult,
+      activeOptimizationResult: null,
+      selectedCandidateId: null,
     });
     persistUserMutation(get, set);
   },
@@ -482,6 +499,8 @@ export const useSafeSpaceStore = create<SafeSpaceState>((set, get) => ({
       history: [...history, cloneFurniture(furniture)],
       future: future.slice(1),
       routeResult: newRouteResult,
+      activeOptimizationResult: null,
+      selectedCandidateId: null,
     });
     persistUserMutation(get, set);
   },
@@ -491,16 +510,16 @@ export const useSafeSpaceStore = create<SafeSpaceState>((set, get) => ({
   activeProfile: MOBILITY_PROFILES[0],
   setProfile: (id) => {
     const found = MOBILITY_PROFILES.find((p) => p.id === id) || MOBILITY_PROFILES[0];
-    const { activeStage, proposedFurniture, furniture, rooms, routeWaypoints, walls, doors, canonicalBoundary } = get();
-    const activeFurn = activeStage === "improve" ? proposedFurniture : furniture;
+    const { furniture, rooms, routeWaypoints, walls, doors, canonicalBoundary } = get();
+    const activeFurn = furniture;
     const newRouteResult = computeStoreRoute(activeFurn, rooms, found, routeWaypoints, walls, doors, canonicalBoundary);
-    set({ activeProfileId: found.id, activeProfile: { ...found }, routeResult: newRouteResult });
+    set({ activeProfileId: found.id, activeProfile: { ...found }, routeResult: newRouteResult, activeOptimizationResult: null, selectedCandidateId: null });
     persistUserMutation(get, set);
   },
   updateProfile: (updates) => {
     const updatedProfile = { ...get().activeProfile, ...updates };
-    const { activeStage, proposedFurniture, furniture, rooms, routeWaypoints, walls, doors, canonicalBoundary } = get();
-    const activeFurn = activeStage === "improve" ? proposedFurniture : furniture;
+    const { furniture, rooms, routeWaypoints, walls, doors, canonicalBoundary } = get();
+    const activeFurn = furniture;
     const newRouteResult = computeStoreRoute(activeFurn, rooms, updatedProfile, routeWaypoints, walls, doors, canonicalBoundary);
     set({
       activeProfile: updatedProfile,
@@ -513,9 +532,9 @@ export const useSafeSpaceStore = create<SafeSpaceState>((set, get) => ({
   selectedWaypointId: null,
   selectWaypoint: (id) => set({ selectedWaypointId: id }),
   moveRouteWaypoint: (id, x, y) => {
-    const { routeWaypoints, activeStage, proposedFurniture, furniture, rooms, activeProfile, walls, doors, canonicalBoundary } = get();
+    const { routeWaypoints, furniture, rooms, activeProfile, walls, doors, canonicalBoundary } = get();
     const updated = routeWaypoints.map((pt) => (pt.id === id ? { ...pt, x, y } : pt));
-    const activeFurn = activeStage === "improve" ? proposedFurniture : furniture;
+    const activeFurn = furniture;
     const newRouteResult = computeStoreRoute(activeFurn, rooms, activeProfile, updated, walls, doors, canonicalBoundary);
     set({
       routeWaypoints: updated,
@@ -524,9 +543,9 @@ export const useSafeSpaceStore = create<SafeSpaceState>((set, get) => ({
     persistUserMutation(get, set);
   },
   removeRouteWaypoint: (id) => {
-    const { routeWaypoints, activeStage, proposedFurniture, furniture, rooms, activeProfile, walls, doors, canonicalBoundary } = get();
+    const { routeWaypoints, furniture, rooms, activeProfile, walls, doors, canonicalBoundary } = get();
     const updated = routeWaypoints.filter((pt) => pt.id !== id);
-    const activeFurn = activeStage === "improve" ? proposedFurniture : furniture;
+    const activeFurn = furniture;
     const newRouteResult = computeStoreRoute(activeFurn, rooms, activeProfile, updated, walls, doors, canonicalBoundary);
     set({
       routeWaypoints: updated,
@@ -536,8 +555,8 @@ export const useSafeSpaceStore = create<SafeSpaceState>((set, get) => ({
     persistUserMutation(get, set);
   },
   addRouteWaypoint: (name, x, y) => {
-    const { routeWaypoints, activeStage, proposedFurniture, furniture, rooms, activeProfile, walls, doors, canonicalBoundary } = get();
-    const activeFurn = activeStage === "improve" ? proposedFurniture : furniture;
+    const { routeWaypoints, furniture, rooms, activeProfile, walls, doors, canonicalBoundary } = get();
+    const activeFurn = furniture;
 
     let posX = x;
     let posY = y;
@@ -601,8 +620,8 @@ export const useSafeSpaceStore = create<SafeSpaceState>((set, get) => ({
     persistUserMutation(get, set);
   },
   recalculateRoute: () => {
-    const { activeStage, proposedFurniture, furniture, rooms, activeProfile, walls, doors, canonicalBoundary, routeWaypoints } = get();
-    const activeFurn = activeStage === "improve" ? proposedFurniture : furniture;
+    const { furniture, rooms, activeProfile, walls, doors, canonicalBoundary, routeWaypoints } = get();
+    const activeFurn = furniture;
     const newRouteResult = computeStoreRoute(activeFurn, rooms, activeProfile, routeWaypoints, walls, doors, canonicalBoundary);
     set({
       selectedWaypointId: null,
@@ -671,16 +690,23 @@ export const useSafeSpaceStore = create<SafeSpaceState>((set, get) => ({
   // Gate 3 Layout Optimization
   activeOptimizationResult: null,
   selectedCandidateId: null,
+  appliedCandidateId: null,
   baselineFurnitureSnapshot: null,
   selectCandidate: (candidateId) => {
-    const { activeOptimizationResult, runOptimization, furniture, baselineFurnitureSnapshot } = get();
-    const result = activeOptimizationResult || runOptimization();
-    const candidate = result.candidates.find((c) => c.id === candidateId);
+    const { activeOptimizationResult, baselineFurnitureSnapshot, furniture } = get();
+    if (!candidateId || !activeOptimizationResult) {
+      set({
+        selectedCandidateId: null,
+        proposedFurniture: cloneFurniture(baselineFurnitureSnapshot || furniture),
+      });
+      return;
+    }
+    const candidate = activeOptimizationResult.candidates.find((c) => c.id === candidateId);
     if (candidate) {
+      // P0 A: Candidate preview MUST NOT mutate canonical routeResult or furniture
       set({
         selectedCandidateId: candidate.id,
         proposedFurniture: cloneFurniture(candidate.furniture),
-        routeResult: candidate.routeResult,
       });
     } else {
       set({
@@ -691,7 +717,8 @@ export const useSafeSpaceStore = create<SafeSpaceState>((set, get) => ({
   },
   runOptimization: () => {
     const state = get();
-    const targetFurniture = state.baselineFurnitureSnapshot || state.furniture;
+    // P1 F: Optimize against active furniture (if candidate was applied, active furniture IS the applied state)
+    const targetFurniture = state.furniture;
     const result = optimizeLayout({
       furniture: targetFurniture,
       rooms: state.rooms,
@@ -712,27 +739,85 @@ export const useSafeSpaceStore = create<SafeSpaceState>((set, get) => ({
   },
   applyLayoutCandidate: (candidateId) => {
     const state = get();
-    const result = state.activeOptimizationResult || state.runOptimization();
+    const result = state.activeOptimizationResult;
+    if (!result) {
+      return { success: false, error: "No active optimization result found" };
+    }
+
+    // P0 A: Reject stale candidate if scene or profile changed
+    const currentFingerprint = computeSceneFingerprint({
+      furniture: state.furniture,
+      waypoints: state.routeWaypoints,
+      boundary: state.canonicalBoundary,
+      profileId: state.activeProfile.id,
+      minClearanceCm: state.activeProfile.minClearanceCm,
+    });
+    if (result.sceneFingerprint !== currentFingerprint) {
+      return { success: false, error: "Scene or profile has changed. Please re-run optimization." };
+    }
+
     const candidate = result.candidates.find((c) => c.id === candidateId);
     if (!candidate) {
       return { success: false, error: "Candidate layout not found" };
     }
+
     const baseline = state.baselineFurnitureSnapshot || cloneFurniture(state.furniture);
     const updatedFurniture = cloneFurniture(candidate.furniture);
+    const updatedRoute = computeStoreRoute(
+      updatedFurniture,
+      state.rooms,
+      state.activeProfile,
+      state.routeWaypoints,
+      state.walls,
+      state.doors,
+      state.canonicalBoundary
+    );
+
+    // P0 B: Commit durable user assessment first with error handling
+    if (state.assessmentType === "user") {
+      const saveRes = savePersistedAssessment({
+        schemaVersion: SAFESPACE_STORAGE_VERSION,
+        assessmentType: "user",
+        metadata: state.assessmentMetadata,
+        canonicalBoundary: state.canonicalBoundary,
+        calibration: state.calibrationProvenance,
+        activeProfileId: state.activeProfile.id,
+        activeProfileSnapshot: state.activeProfile,
+        routeWaypoints: state.routeWaypoints,
+        furniture: updatedFurniture,
+        appliedLayoutBaseline: baseline,
+        appliedCandidateId: candidate.id,
+      });
+
+      if (!saveRes.success) {
+        set({
+          storageStatus: "error",
+          storageError: saveRes.error,
+        });
+        return { success: false, error: saveRes.error || "Storage quota exceeded or storage failure." };
+      }
+    }
+
+    // Update in-memory state; keep approvalStatus unchanged (do not claim professional OT sign-off)
     set({
       baselineFurnitureSnapshot: baseline,
       furniture: updatedFurniture,
       proposedFurniture: cloneFurniture(candidate.furniture),
-      routeResult: candidate.routeResult,
+      routeResult: updatedRoute,
+      appliedCandidateId: candidate.id,
       selectedCandidateId: candidate.id,
-      approvalStatus: "approved",
+      storageStatus: state.assessmentType === "user" ? "saved" : "idle",
+      storageError: null,
     });
-    persistUserMutation(get, set);
+
     return { success: true };
   },
   revertLayoutCandidate: () => {
     const state = get();
-    if (!state.baselineFurnitureSnapshot) return;
+    if (!state.baselineFurnitureSnapshot) {
+      return { success: false, error: "No baseline snapshot to revert to." };
+    }
+
     const revertedFurniture = cloneFurniture(state.baselineFurnitureSnapshot);
     const revertedRoute = computeStoreRoute(
       revertedFurniture,
@@ -743,15 +828,43 @@ export const useSafeSpaceStore = create<SafeSpaceState>((set, get) => ({
       state.doors,
       state.canonicalBoundary
     );
+
+    if (state.assessmentType === "user") {
+      const saveRes = savePersistedAssessment({
+        schemaVersion: SAFESPACE_STORAGE_VERSION,
+        assessmentType: "user",
+        metadata: state.assessmentMetadata,
+        canonicalBoundary: state.canonicalBoundary,
+        calibration: state.calibrationProvenance,
+        activeProfileId: state.activeProfile.id,
+        activeProfileSnapshot: state.activeProfile,
+        routeWaypoints: state.routeWaypoints,
+        furniture: revertedFurniture,
+        appliedLayoutBaseline: null,
+        appliedCandidateId: null,
+      });
+
+      if (!saveRes.success) {
+        set({
+          storageStatus: "error",
+          storageError: saveRes.error,
+        });
+        return { success: false, error: saveRes.error || "Failed to persist reverted baseline." };
+      }
+    }
+
     set({
       furniture: revertedFurniture,
       proposedFurniture: revertedFurniture,
       routeResult: revertedRoute,
       selectedCandidateId: null,
-      approvalStatus: "draft",
+      appliedCandidateId: null,
       baselineFurnitureSnapshot: null,
+      storageStatus: state.assessmentType === "user" ? "saved" : "idle",
+      storageError: null,
     });
-    persistUserMutation(get, set);
+
+    return { success: true };
   },
 
   getSpatialFindings: () => {
@@ -776,7 +889,6 @@ export const useSafeSpaceStore = create<SafeSpaceState>((set, get) => ({
       assessmentType,
       activeStage,
       furniture,
-      proposedFurniture,
       selectedAlternativeId,
       routeWaypoints,
     } = get();
@@ -801,7 +913,7 @@ export const useSafeSpaceStore = create<SafeSpaceState>((set, get) => ({
       };
     }
 
-    const activeFurn = activeStage === "improve" ? proposedFurniture : furniture;
+    const activeFurn = furniture;
     const alt = activeStage === "improve" ? selectedAlternativeId : null;
     return calculateLiveMetrics(activeFurn, alt, routeWaypoints);
   },
@@ -845,6 +957,7 @@ export const useSafeSpaceStore = create<SafeSpaceState>((set, get) => ({
       routeResult: initialRouteResult,
       activeOptimizationResult: null,
       selectedCandidateId: null,
+      appliedCandidateId: null,
       baselineFurnitureSnapshot: null,
       storageStatus: savedWs ? "idle" : "error",
       storageError: savedWs ? null : "Failed to persist active workspace selection.",
@@ -935,6 +1048,7 @@ export const useSafeSpaceStore = create<SafeSpaceState>((set, get) => ({
       viewMode: "2d",
       activeOptimizationResult: null,
       selectedCandidateId: null,
+      appliedCandidateId: null,
       baselineFurnitureSnapshot: null,
       storageStatus: "saved",
       storageError: null,
@@ -1016,6 +1130,8 @@ export const useSafeSpaceStore = create<SafeSpaceState>((set, get) => ({
         doors: [],
         hazards: [],
         routeResult,
+        baselineFurnitureSnapshot: data.appliedLayoutBaseline || null,
+        appliedCandidateId: data.appliedCandidateId || null,
         storageStatus: "saved",
         storageError: null,
       });

@@ -37,6 +37,8 @@ export type PersistedAssessmentState = {
   activeProfileSnapshot?: MobilityProfileData | null;
   routeWaypoints: RouteWaypoint[];
   furniture: SpatialFurniture[];
+  appliedLayoutBaseline?: SpatialFurniture[] | null;
+  appliedCandidateId?: string | null;
 };
 
 export type StorageLoadResult =
@@ -395,6 +397,47 @@ export function validatePersistedPayload(val: unknown): {
     furniture.push(f as SpatialFurniture);
   }
 
+  let appliedLayoutBaseline: SpatialFurniture[] | null = null;
+  if (obj.appliedLayoutBaseline !== undefined && obj.appliedLayoutBaseline !== null) {
+    if (!Array.isArray(obj.appliedLayoutBaseline)) {
+      return { isValid: false, error: "appliedLayoutBaseline must be an array or null" };
+    }
+    const baselineItems: SpatialFurniture[] = [];
+    for (let i = 0; i < obj.appliedLayoutBaseline.length; i++) {
+      const f = obj.appliedLayoutBaseline[i] as Record<string, unknown>;
+      if (!f || typeof f !== "object") {
+        return { isValid: false, error: `Invalid baseline furniture item at index ${i}` };
+      }
+      if (typeof f.id !== "string" || !f.id.trim() || typeof f.name !== "string" || !f.name.trim()) {
+        return { isValid: false, error: `Invalid baseline furniture id or name at index ${i}` };
+      }
+      if (
+        typeof f.x !== "number" ||
+        !Number.isFinite(f.x) ||
+        typeof f.y !== "number" ||
+        !Number.isFinite(f.y) ||
+        typeof f.width !== "number" ||
+        !Number.isFinite(f.width) ||
+        f.width <= 0 ||
+        typeof f.depth !== "number" ||
+        !Number.isFinite(f.depth) ||
+        f.depth <= 0 ||
+        typeof f.rotation !== "number" ||
+        !Number.isFinite(f.rotation) ||
+        typeof f.isFixed !== "boolean"
+      ) {
+        return { isValid: false, error: `Invalid baseline furniture item at index ${i}` };
+      }
+      baselineItems.push(f as unknown as SpatialFurniture);
+    }
+    appliedLayoutBaseline = baselineItems;
+  }
+
+  const appliedCandidateId =
+    typeof obj.appliedCandidateId === "string" && obj.appliedCandidateId.trim()
+      ? obj.appliedCandidateId.trim()
+      : null;
+
   return {
     isValid: true,
     data: {
@@ -407,6 +450,8 @@ export function validatePersistedPayload(val: unknown): {
       activeProfileSnapshot,
       routeWaypoints,
       furniture,
+      appliedLayoutBaseline,
+      appliedCandidateId,
     },
   };
 }
@@ -437,6 +482,8 @@ export function savePersistedAssessment(state: PersistedAssessmentState): Storag
       activeProfileSnapshot: state.activeProfileSnapshot,
       routeWaypoints: state.routeWaypoints,
       furniture: state.furniture,
+      appliedLayoutBaseline: state.appliedLayoutBaseline ?? null,
+      appliedCandidateId: state.appliedCandidateId ?? null,
     };
 
     const json = JSON.stringify(payloadToSerialize);

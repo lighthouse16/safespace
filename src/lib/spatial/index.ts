@@ -177,6 +177,7 @@ export type {
 // Deterministic Constrained Layout Optimizer (Gate 3)
 export {
   optimizeLayout,
+  computeSceneFingerprint,
 } from "./optimization/optimizer";
 
 export type {

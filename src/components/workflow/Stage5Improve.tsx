@@ -27,8 +27,8 @@ export function Stage5Improve() {
     revertLayoutCandidate,
     activeOptimizationResult,
     selectedCandidateId,
+    appliedCandidateId,
     selectCandidate,
-    approvalStatus,
     setReportModalOpen,
     setStage,
     getSpatialFindings,
@@ -56,8 +56,8 @@ export function Stage5Improve() {
 
   // Baseline furniture: if a candidate was applied, use baselineFurnitureSnapshot; otherwise current furniture
   const baselineFurniture = useMemo(() => {
-    return baselineFurnitureSnapshot || (optResult ? optResult.baselineEvaluation ? furniture : furniture : furniture);
-  }, [baselineFurnitureSnapshot, optResult, furniture]);
+    return baselineFurnitureSnapshot || furniture;
+  }, [baselineFurnitureSnapshot, furniture]);
 
   const baselineEval = optResult?.baselineEvaluation || getSpatialFindings();
   const baselineRoute = optResult?.baselineRouteResult || routeResult;
@@ -74,13 +74,18 @@ export function Stage5Improve() {
   };
 
   const handleRevert = () => {
-    revertLayoutCandidate();
-    setActionFeedback("Reverted back to baseline layout.");
-    setTimeout(() => setActionFeedback(null), 3500);
+    const res = revertLayoutCandidate();
+    if (res.success) {
+      setActionFeedback("Reverted back to baseline layout.");
+      setTimeout(() => setActionFeedback(null), 3500);
+    } else {
+      setActionFeedback(res.error || "Failed to revert layout.");
+      setTimeout(() => setActionFeedback(null), 3500);
+    }
   };
 
   const isCurrentCandidateApplied =
-    Boolean(activeCandidate && selectedCandidateId === activeCandidate.id && approvalStatus === "approved");
+    Boolean(activeCandidate && appliedCandidateId === activeCandidate.id);
 
   return (
     <div className="flex flex-col h-[calc(100vh-3.5rem)] w-full overflow-hidden bg-[#f7f8f6]">
@@ -195,9 +200,11 @@ export function Stage5Improve() {
                             ? `${Math.abs(cand.metrics.actionableDeficitsDelta)} deficit${
                                 Math.abs(cand.metrics.actionableDeficitsDelta) === 1 ? "" : "s"
                               } resolved`
-                            : "Deficits resolved"}
+                            : cand.metrics.becameFeasible
+                            ? "Route became feasible"
+                            : "Deficit count maintained"}
                         </span>
-                        {cand.metrics.clearanceGainCm > 0 && (
+                        {cand.metrics.clearanceGainCm !== null && cand.metrics.clearanceGainCm > 0 && (
                           <>
                             <span>·</span>
                             <span className="text-emerald-700 font-medium">
@@ -252,6 +259,21 @@ export function Stage5Improve() {
             </button>
           </div>
         </div>
+
+        {optResult && (
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between text-[11px] text-slate-500 pt-1.5 border-t border-slate-100 mt-1 gap-1">
+            <div className="flex items-center gap-1.5 truncate">
+              <span className="text-slate-600 truncate">{optResult.message}</span>
+            </div>
+            <div className="flex items-center gap-2 shrink-0 font-mono text-[10px] text-slate-400">
+              <span>Budget: {optResult.computeBudget.evaluatedCount} eval / {optResult.computeBudget.prunedCount} pruned (cap: {optResult.computeBudget.maxEvaluations})</span>
+              <span>·</span>
+              <span className="text-amber-700 bg-amber-50 px-1 py-0.2 rounded border border-amber-200 font-sans">
+                Manual editing deferred (post-MVP)
+              </span>
+            </div>
+          </div>
+        )}
 
         {actionFeedback && (
           <div className="mt-1.5 px-2.5 py-1 rounded text-xs bg-emerald-100 text-emerald-900 border border-emerald-200 flex items-center gap-1.5 animate-fadeIn">
