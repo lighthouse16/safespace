@@ -1,26 +1,192 @@
 "use client";
 
-import React from "react";
-import { useSafeSpaceStore } from "@/store/safespace-store";
+import React, { useState, useMemo, useEffect, useRef } from "react";
+import { useSafeSpaceStore, computeStoreRoute } from "@/store/safespace-store";
+import { evaluateSpatialScene } from "@/lib/spatial";
+import { Floorplan2D } from "@/components/spatial/Floorplan2D";
 import {
   FileText,
   ChevronLeft,
-  Clock,
+  CheckCircle2,
+  RotateCcw,
+  Sparkles,
+  ArrowRight,
+  ShieldCheck,
+  Move,
+  AlertCircle,
 } from "lucide-react";
+import type { LayoutCandidate } from "@/lib/spatial";
 
 export function Stage5Improve() {
   const {
     assessmentType,
     assessmentMetadata,
-    loadDemoAssessment,
+    furniture,
+    baselineFurnitureSnapshot,
+    routeResult,
+    rooms,
+    walls,
+    doors,
+    activeProfile,
+    routeWaypoints,
+    canonicalBoundary,
+    runOptimization,
+    applyLayoutCandidate,
+    revertLayoutCandidate,
+    activeOptimizationResult,
+    selectedCandidateId,
+    selectCandidate,
     setReportModalOpen,
     setStage,
-    getSpatialFindings,
   } = useSafeSpaceStore();
 
-  const evaluation = getSpatialFindings();
-  const { summary } = evaluation;
   const isUserAssessment = assessmentType === "user";
+  const [viewMode, setViewMode] = useState<"side-by-side" | "before" | "proposed">("side-by-side");
+  const [actionFeedback, setActionFeedback] = useState<{ type: "success" | "error"; message: string } | null>(null);
+  const feedbackTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // Clean up feedback timer on unmount
+  useEffect(() => {
+    return () => {
+      if (feedbackTimeoutRef.current) {
+        clearTimeout(feedbackTimeoutRef.current);
+      }
+    };
+  }, []);
+
+  // Two coherent modes: Proposal mode vs Applied-layout review mode
+  const isAppliedReviewMode = baselineFurnitureSnapshot !== null;
+
+  // Run optimization ONLY in Proposal mode when not yet performed
+  useEffect(() => {
+    if (!isAppliedReviewMode && !activeOptimizationResult) {
+      runOptimization();
+    }
+  }, [isAppliedReviewMode, activeOptimizationResult, runOptimization]);
+
+  // Current canonical spatial findings: derived reactively from complete scene snapshot
+  const currentFindings = useMemo(() => {
+    return evaluateSpatialScene({
+      assessmentType,
+      assessmentMetadata,
+      canonicalBoundary,
+      rooms,
+      furniture,
+      profile: activeProfile,
+      routeWaypoints,
+      routeResult,
+      doors,
+      walls,
+    });
+  }, [
+    assessmentType,
+    assessmentMetadata,
+    canonicalBoundary,
+    rooms,
+    furniture,
+    activeProfile,
+    routeWaypoints,
+    routeResult,
+    doors,
+    walls,
+  ]);
+
+  // In Proposal Mode: candidates from active optimizer result
+  const optResult = !isAppliedReviewMode ? activeOptimizationResult : null;
+  const candidates = useMemo(() => optResult?.candidates || [], [optResult]);
+
+  // Active candidate in Proposal Mode: selectedCandidateId or first candidate
+  const activeCandidate: LayoutCandidate | null = useMemo(() => {
+    if (isAppliedReviewMode || !candidates || candidates.length === 0) return null;
+    return candidates.find((c) => c.id === selectedCandidateId) || candidates[0];
+  }, [isAppliedReviewMode, candidates, selectedCandidateId]);
+
+  // Before condition:
+  // - In Applied Review Mode: historical pre-apply snapshot
+  // - In Proposal Mode: current accepted layout
+  const beforeFurniture = useMemo(() => {
+    return isAppliedReviewMode && baselineFurnitureSnapshot ? baselineFurnitureSnapshot : furniture;
+  }, [isAppliedReviewMode, baselineFurnitureSnapshot, furniture]);
+
+  const beforeRoute = useMemo(() => {
+    if (isAppliedReviewMode && baselineFurnitureSnapshot) {
+      return computeStoreRoute(
+        baselineFurnitureSnapshot,
+        rooms,
+        activeProfile,
+        routeWaypoints,
+        walls,
+        doors,
+        canonicalBoundary
+      );
+    }
+    return routeResult;
+  }, [
+    isAppliedReviewMode,
+    baselineFurnitureSnapshot,
+    routeResult,
+    rooms,
+    activeProfile,
+    routeWaypoints,
+    walls,
+    doors,
+    canonicalBoundary,
+  ]);
+
+  const beforeEval = useMemo(() => {
+    if (isAppliedReviewMode && baselineFurnitureSnapshot) {
+      return evaluateSpatialScene({
+        assessmentType,
+        assessmentMetadata,
+        canonicalBoundary,
+        rooms,
+        furniture: baselineFurnitureSnapshot,
+        profile: activeProfile,
+        routeWaypoints,
+        routeResult: beforeRoute,
+        doors,
+        walls,
+      });
+    }
+    return currentFindings;
+  }, [
+    isAppliedReviewMode,
+    baselineFurnitureSnapshot,
+    currentFindings,
+    assessmentType,
+    assessmentMetadata,
+    canonicalBoundary,
+    rooms,
+    activeProfile,
+    routeWaypoints,
+    beforeRoute,
+    doors,
+    walls,
+  ]);
+
+  const handleApply = (candId: string) => {
+    if (feedbackTimeoutRef.current) clearTimeout(feedbackTimeoutRef.current);
+    const res = applyLayoutCandidate(candId);
+    if (res.success) {
+      setActionFeedback({ type: "success", message: "Layout applied and persisted to workspace (Draft)." });
+      feedbackTimeoutRef.current = setTimeout(() => setActionFeedback(null), 3500);
+    } else {
+      setActionFeedback({ type: "error", message: res.error || "Failed to apply layout." });
+      feedbackTimeoutRef.current = setTimeout(() => setActionFeedback(null), 4500);
+    }
+  };
+
+  const handleRevert = () => {
+    if (feedbackTimeoutRef.current) clearTimeout(feedbackTimeoutRef.current);
+    const res = revertLayoutCandidate();
+    if (res.success) {
+      setActionFeedback({ type: "success", message: "Reverted back to original baseline layout." });
+      feedbackTimeoutRef.current = setTimeout(() => setActionFeedback(null), 3500);
+    } else {
+      setActionFeedback({ type: "error", message: res.error || "Failed to revert layout." });
+      feedbackTimeoutRef.current = setTimeout(() => setActionFeedback(null), 4500);
+    }
+  };
 
   return (
     <div className="flex flex-col h-[calc(100vh-3.5rem)] w-full overflow-hidden bg-[#f7f8f6]">
@@ -28,119 +194,483 @@ export function Stage5Improve() {
       <div className="h-10 bg-white border-b border-[#e2e8e4] px-3.5 flex items-center justify-between shrink-0 select-none z-10">
         <div className="flex items-center gap-2">
           <span className="text-xs font-semibold text-[#1e7168]">
-            Stage 5 · Layout Alternatives
+            {isAppliedReviewMode ? "Improve Layout · Applied Layout Review" : "Improve Layout · Alternative Proposals"}
           </span>
           <span className="text-slate-300">/</span>
           <span className="text-xs text-slate-500">
-            {isUserAssessment
+            {isAppliedReviewMode
+              ? "Reviewing Applied Alternative (Draft)"
+              : isUserAssessment
               ? assessmentMetadata?.facilityName || "Custom Assessment"
               : "Queen Care Clinic Fixture"}
           </span>
         </div>
-        <button
-          onClick={() => setReportModalOpen(true)}
-          className="px-2.5 py-1 rounded bg-[#1e7168] text-white text-xs font-semibold hover:bg-[#175b54] transition cursor-pointer flex items-center gap-1 shadow-xs"
-        >
-          <FileText className="w-3.5 h-3.5" />
-          <span>View Summary Report</span>
-        </button>
-      </div>
 
-      <div className="flex flex-1 items-center justify-center p-6 overflow-y-auto">
-        <div className="max-w-lg w-full bg-white rounded-xl border border-slate-200 p-6 shadow-xs text-center space-y-4">
-          <div className="w-12 h-12 rounded-full bg-emerald-50 border border-emerald-200 flex items-center justify-center mx-auto text-[#1e7168]">
-            <Clock className="w-6 h-6" />
-          </div>
-          <div>
-            <span className="text-[10px] uppercase font-bold tracking-wider text-amber-800 bg-amber-50 px-2 py-0.5 rounded border border-amber-200">
-              Pending Gate 3 Delivery
-            </span>
-            <h3 className="text-base font-bold text-slate-900 mt-2">
-              Layout Alternatives & Optimization
-            </h3>
-            <p className="text-xs text-slate-600 mt-2 leading-relaxed">
-              Automated layout alternatives, iterative furniture repositioning, and cost-benefit scheduling are scheduled for Gate 3 delivery. Live evaluation for this space is provided deterministically in Stage 4 Evidence Findings without synthetic risk scores or unvalidated optimizer claims.
-            </p>
-          </div>
-
-          <div className="p-3 bg-slate-50 rounded-lg border border-slate-200 text-left text-xs font-mono space-y-1.5">
-            <div className="flex justify-between items-center">
-              <span className="text-slate-500 font-sans">Active Space:</span>
-              <span className="font-semibold text-slate-900 truncate max-w-[240px]">
-                {evaluation.sceneLabel}
-              </span>
-            </div>
-            <div className="flex justify-between items-center">
-              <span className="text-slate-500 font-sans">Route Status:</span>
-              <span className="font-semibold text-slate-800">
-                {summary.overallStatusLabel}
-              </span>
-            </div>
-            <div className="flex justify-between items-center">
-              <span className="text-slate-500 font-sans">Narrowest Clearance:</span>
-              <span
-                className={`font-semibold ${
-                  summary.minimumClearanceCm !== null &&
-                  summary.requiredClearanceRadiusCm !== null &&
-                  summary.minimumClearanceCm >= summary.requiredClearanceRadiusCm
-                    ? "text-emerald-700"
-                    : summary.minimumClearanceCm !== null && summary.minimumClearanceCm > 0
-                    ? "text-red-700"
-                    : "text-slate-400"
-                }`}
-              >
-                {summary.minimumClearanceCm !== null && summary.minimumClearanceCm > 0
-                  ? `${summary.minimumClearanceCm} cm`
-                  : "—"}
-              </span>
-            </div>
-            <div className="flex justify-between items-center">
-              <span className="text-slate-500 font-sans">Actionable Deficits:</span>
-              <span
-                className={`font-semibold ${
-                  summary.actionableDeficitsCount > 0
-                    ? "text-red-700"
-                    : summary.routeFeasibility === "adequate"
-                    ? "text-emerald-700"
-                    : "text-slate-500"
-                }`}
-              >
-                {summary.actionableDeficitsCount}
-              </span>
-            </div>
-            <div className="flex justify-between items-center">
-              <span className="text-slate-500 font-sans">Unassessed Scope:</span>
-              <span className="font-semibold text-slate-600">
-                {summary.unassessedScopeCount} categories
-              </span>
-            </div>
-          </div>
-
-          <div className="flex flex-col gap-2 pt-2">
+        <div className="flex items-center gap-2">
+          {/* View Mode Toggle */}
+          <div className="hidden sm:flex items-center bg-slate-100 rounded p-0.5 border border-slate-200">
             <button
-              onClick={() => setStage("analysis")}
-              className="w-full py-2 px-3 bg-[#1e7168] text-white rounded-lg text-xs font-semibold hover:bg-[#185e56] transition cursor-pointer flex items-center justify-center gap-1 shadow-xs"
+              onClick={() => setViewMode("side-by-side")}
+              className={`px-2 py-0.5 text-[11px] font-medium rounded transition cursor-pointer ${
+                viewMode === "side-by-side"
+                  ? "bg-white text-slate-800 shadow-2xs"
+                  : "text-slate-600 hover:text-slate-900"
+              }`}
             >
-              <ChevronLeft className="w-3.5 h-3.5" />
-              <span>Back to Evidence Findings (Stage 4)</span>
+              Side-by-Side
             </button>
             <button
-              onClick={() => setStage("routes")}
-              className="w-full py-1.5 px-3 border border-slate-200 bg-white text-slate-700 rounded-lg text-xs font-medium hover:bg-slate-50 transition cursor-pointer"
+              onClick={() => setViewMode("before")}
+              className={`px-2 py-0.5 text-[11px] font-medium rounded transition cursor-pointer ${
+                viewMode === "before"
+                  ? "bg-white text-slate-800 shadow-2xs"
+                  : "text-slate-600 hover:text-slate-900"
+              }`}
             >
-              Inspect Route Clearance (Stage 3)
+              Before Only
             </button>
-            {isUserAssessment && (
-              <button
-                onClick={loadDemoAssessment}
-                className="w-full py-1.5 px-3 border border-slate-200 bg-white text-slate-600 rounded-lg text-xs hover:bg-slate-50 transition cursor-pointer"
-              >
-                Switch to Demo Clinic Scenario
-              </button>
-            )}
+            <button
+              onClick={() => setViewMode("proposed")}
+              className={`px-2 py-0.5 text-[11px] font-medium rounded transition cursor-pointer ${
+                viewMode === "proposed"
+                  ? "bg-white text-slate-800 shadow-2xs"
+                  : "text-slate-600 hover:text-slate-900"
+              }`}
+            >
+              {isAppliedReviewMode ? "After Only" : "Proposed Only"}
+            </button>
           </div>
+
+          <button
+            onClick={() => setReportModalOpen(true)}
+            className="px-2.5 py-1 rounded bg-[#1e7168] text-white text-xs font-semibold hover:bg-[#175b54] transition cursor-pointer flex items-center gap-1 shadow-xs"
+          >
+            <FileText className="w-3.5 h-3.5" />
+            <span>Summary Report</span>
+          </button>
         </div>
       </div>
+
+      {/* Subheader Ribbon: Mode-Specific Banner */}
+      <div className="bg-white border-b border-slate-200 px-3.5 py-2 shrink-0 overflow-hidden">
+        {isAppliedReviewMode ? (
+          /* Applied-Layout Review Mode Banner */
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 min-w-0">
+            <div className="flex items-center gap-2 min-w-0">
+              <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold bg-emerald-100 text-emerald-900 border border-emerald-200 shrink-0">
+                <CheckCircle2 className="w-3.5 h-3.5 text-emerald-700" />
+                <span>Applied Layout Review</span>
+              </span>
+              <span className="text-xs text-slate-600 truncate">
+                Pre-apply baseline is preserved for comparison and rollback. Proposal generation paused.
+              </span>
+            </div>
+
+            <div className="flex items-center gap-2 shrink-0">
+              <button
+                onClick={handleRevert}
+                className="px-3 py-1.5 rounded-lg bg-white border border-slate-300 text-slate-800 text-xs font-semibold hover:bg-slate-50 transition cursor-pointer flex items-center gap-1.5 shadow-xs"
+                title="Revert to pre-optimization layout baseline"
+              >
+                <RotateCcw className="w-3.5 h-3.5 text-slate-600" />
+                <span>Revert to Original Baseline</span>
+              </button>
+            </div>
+          </div>
+        ) : (
+          /* Proposal Mode Ribbon */
+          <div className="flex flex-col md:flex-row md:items-center justify-between gap-2 min-w-0">
+            <div className="flex items-center gap-2 overflow-x-auto pb-1 md:pb-0 min-w-0 flex-1">
+              <span className="text-[11px] font-bold uppercase tracking-wider text-slate-400 shrink-0">
+                Alternatives ({candidates.length}):
+              </span>
+
+              {candidates.length === 0 ? (
+                <span className="text-xs text-slate-500 italic">
+                  {optResult?.status === "already_optimal"
+                    ? "No clearance deficits detected along configured walking route (0 deficits). No modifications needed."
+                    : optResult?.status === "infeasible"
+                    ? "No alternatives found within bounded search scope. You can adjust the layout manually."
+                    : "Optimization unavailable."}
+                </span>
+              ) : (
+                candidates.map((cand) => {
+                  const isSelected = activeCandidate?.id === cand.id;
+                  return (
+                    <button
+                      key={cand.id}
+                      onClick={() => selectCandidate(cand.id)}
+                      className={`flex items-center gap-2 px-3 py-1.5 rounded-lg border text-xs text-left transition cursor-pointer shrink-0 ${
+                        isSelected
+                          ? "bg-emerald-50/80 border-[#1e7168] text-slate-900 shadow-2xs"
+                          : "bg-white border-slate-200 text-slate-700 hover:border-slate-300 hover:bg-slate-50"
+                      }`}
+                    >
+                      <div className="flex flex-col">
+                        <div className="flex items-center gap-1.5">
+                          <span className="font-semibold text-slate-900">{cand.name}</span>
+                          <span
+                            className={`px-1.5 py-0.2 rounded text-[10px] font-bold uppercase tracking-wider ${
+                              cand.strategy === "minimal_displacement"
+                                ? "bg-blue-100 text-blue-800"
+                                : cand.strategy === "deficit_elimination"
+                                ? "bg-emerald-100 text-emerald-800"
+                                : "bg-purple-100 text-purple-800"
+                            }`}
+                          >
+                            {cand.strategy.replace("_", " ")}
+                          </span>
+                        </div>
+                        <div className="flex items-center gap-2 text-[10px] text-slate-500 mt-0.5">
+                          <span>{cand.moveCount} fixture move{cand.moveCount === 1 ? "" : "s"}</span>
+                          <span>·</span>
+                          <span className="text-emerald-700 font-medium">
+                            {cand.metrics.actionableDeficitsDelta < 0
+                              ? `${Math.abs(cand.metrics.actionableDeficitsDelta)} deficit${
+                                  Math.abs(cand.metrics.actionableDeficitsDelta) === 1 ? "" : "s"
+                                } resolved`
+                              : cand.metrics.becameFeasible
+                              ? "Route became feasible"
+                              : "Deficit count maintained"}
+                          </span>
+                          {cand.metrics.clearanceGainCm !== null && cand.metrics.clearanceGainCm > 0 && (
+                            <>
+                              <span>·</span>
+                              <span className="text-emerald-700 font-medium">
+                                +{cand.metrics.clearanceGainCm} cm clearance
+                              </span>
+                            </>
+                          )}
+                        </div>
+                      </div>
+                    </button>
+                  );
+                })
+              )}
+            </div>
+
+            {/* Proposal Mode Actions */}
+            <div className="flex items-center gap-2 shrink-0">
+              {activeCandidate && (
+                <button
+                  onClick={() => handleApply(activeCandidate.id)}
+                  className="px-3 py-1 rounded bg-[#1e7168] text-white text-xs font-semibold hover:bg-[#175b54] transition cursor-pointer flex items-center gap-1 shadow-xs"
+                >
+                  <CheckCircle2 className="w-3.5 h-3.5" />
+                  <span>Apply This Layout</span>
+                </button>
+              )}
+
+              <button
+                onClick={() => runOptimization()}
+                title="Re-run geometric solver"
+                className="px-2 py-1 rounded border border-slate-200 bg-white text-slate-600 hover:bg-slate-50 text-xs transition cursor-pointer flex items-center gap-1"
+              >
+                <Sparkles className="w-3 h-3 text-amber-600" />
+                <span>Re-optimize</span>
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* Message row in proposal mode */}
+        {!isAppliedReviewMode && optResult && (
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between text-[11px] text-slate-500 pt-1.5 border-t border-slate-100 mt-1 gap-1">
+            <div className="flex items-center gap-1.5 truncate">
+              <span className="text-slate-600 truncate">{optResult.message}</span>
+            </div>
+            <div className="flex items-center gap-2 shrink-0 text-[10px] text-slate-400">
+              <span>Deterministic 2D spatial evaluation</span>
+            </div>
+          </div>
+        )}
+
+        {/* Feedback message banner */}
+        {actionFeedback && (
+          <div
+            className={`mt-1.5 px-2.5 py-1 rounded text-xs flex items-center gap-1.5 animate-fadeIn ${
+              actionFeedback.type === "success"
+                ? "bg-emerald-100 text-emerald-900 border border-emerald-200"
+                : "bg-rose-100 text-rose-900 border border-rose-200"
+            }`}
+          >
+            {actionFeedback.type === "success" ? (
+              <CheckCircle2 className="w-3.5 h-3.5 text-emerald-700" />
+            ) : (
+              <AlertCircle className="w-3.5 h-3.5 text-rose-700" />
+            )}
+            <span>{actionFeedback.message}</span>
+          </div>
+        )}
+      </div>
+
+      {/* Main Floorplan Comparison Canvas */}
+      <div className="flex-1 min-h-0 flex flex-col lg:flex-row overflow-hidden p-2 gap-2">
+        {/* Left: Baseline Condition */}
+        {(viewMode === "side-by-side" || viewMode === "before") && (
+          <div
+            className={`flex flex-col bg-white rounded-lg border border-slate-200 overflow-hidden shadow-2xs w-full ${
+              viewMode === "side-by-side" ? "flex-1 min-w-0" : "flex-1"
+            }`}
+          >
+            <div className="h-8 bg-slate-50 border-b border-slate-200 px-3 flex items-center justify-between shrink-0 select-none">
+              <div className="flex items-center gap-2">
+                <span className="w-2 h-2 rounded-full bg-slate-400" />
+                <span className="text-xs font-bold text-slate-700">
+                  {isAppliedReviewMode ? "Before: Original Baseline" : "Before: Current Layout"}
+                </span>
+              </div>
+              <div className="flex items-center gap-2 text-[11px] font-mono">
+                <span
+                  className={`font-semibold ${
+                    beforeEval.summary.actionableDeficitsCount > 0 ? "text-red-700" : "text-emerald-700"
+                  }`}
+                >
+                  {beforeEval.summary.actionableDeficitsCount} deficit{beforeEval.summary.actionableDeficitsCount === 1 ? "" : "s"}
+                </span>
+                <span className="text-slate-300">|</span>
+                <span className="text-slate-600">
+                  Clr: {beforeEval.summary.minimumClearanceCm ? `${beforeEval.summary.minimumClearanceCm} cm` : "—"}
+                </span>
+              </div>
+            </div>
+            <div className="flex-1 min-h-0 relative">
+              <Floorplan2D
+                readOnly={true}
+                isBeforeCondition={true}
+                customFurniture={beforeFurniture}
+                customRouteResult={beforeRoute}
+                customEvaluation={beforeEval}
+                className="w-full h-full"
+              />
+            </div>
+          </div>
+        )}
+
+        {/* Right: Proposed Layout Alternative OR After: Accepted Layout */}
+        {(viewMode === "side-by-side" || viewMode === "proposed") && (
+          <div
+            className={`flex flex-col bg-white rounded-lg border border-slate-200 overflow-hidden shadow-2xs w-full ${
+              viewMode === "side-by-side" ? "flex-1 min-w-0" : "flex-1"
+            }`}
+          >
+            <div className="h-8 bg-emerald-50/60 border-b border-emerald-100 px-3 flex items-center justify-between shrink-0 select-none">
+              <div className="flex items-center gap-2">
+                <span className="w-2 h-2 rounded-full bg-emerald-600" />
+                <span className="text-xs font-bold text-slate-900">
+                  {isAppliedReviewMode
+                    ? "After: Accepted Layout (Draft)"
+                    : activeCandidate
+                    ? `Proposed: ${activeCandidate.name}`
+                    : "Proposed Alternative"}
+                </span>
+                <span className="text-[10px] font-bold text-emerald-800 bg-emerald-100 px-1.5 py-0.2 rounded">
+                  {isAppliedReviewMode ? "Applied (Draft)" : "Candidate (Unverified)"}
+                </span>
+              </div>
+
+              {isAppliedReviewMode ? (
+                <div className="flex items-center gap-2 text-[11px] font-mono">
+                  <span
+                    className={`font-semibold ${
+                      currentFindings.summary.actionableDeficitsCount === 0
+                        ? "text-emerald-700"
+                        : "text-amber-700"
+                    }`}
+                  >
+                    {currentFindings.summary.actionableDeficitsCount} deficit{currentFindings.summary.actionableDeficitsCount === 1 ? "" : "s"}
+                  </span>
+                  <span className="text-slate-300">|</span>
+                  <span className="text-slate-700">
+                    Clr: {currentFindings.summary.minimumClearanceCm ? `${currentFindings.summary.minimumClearanceCm} cm` : "—"}
+                  </span>
+                </div>
+              ) : activeCandidate ? (
+                <div className="flex items-center gap-2 text-[11px] font-mono">
+                  <span
+                    className={`font-semibold ${
+                      activeCandidate.metrics.actionableDeficitsCount === 0
+                        ? "text-emerald-700"
+                        : "text-amber-700"
+                    }`}
+                  >
+                    {activeCandidate.metrics.actionableDeficitsCount} deficit{activeCandidate.metrics.actionableDeficitsCount === 1 ? "" : "s"}
+                  </span>
+                  <span className="text-slate-300">|</span>
+                  <span className="text-slate-700">
+                    Clr: {activeCandidate.metrics.minimumClearanceCm ? `${activeCandidate.metrics.minimumClearanceCm} cm` : "—"}
+                  </span>
+                </div>
+              ) : (
+                <span className="text-xs text-slate-500 italic">No alternative active</span>
+              )}
+            </div>
+
+            <div className="flex-1 min-h-0 relative">
+              {isAppliedReviewMode ? (
+                <Floorplan2D
+                  readOnly={true}
+                  customFurniture={furniture}
+                  customRouteResult={routeResult}
+                  customEvaluation={currentFindings}
+                  className="w-full h-full"
+                />
+              ) : activeCandidate ? (
+                <Floorplan2D
+                  readOnly={true}
+                  customFurniture={activeCandidate.furniture}
+                  customRouteResult={activeCandidate.routeResult}
+                  customEvaluation={activeCandidate.evaluation}
+                  className="w-full h-full"
+                />
+              ) : (
+                <div className="flex items-center justify-center h-full text-xs text-slate-400 p-4 text-center">
+                  No layout alternative selected or available.
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+      </div>
+
+      {/* Bottom Details Drawer */}
+      {isAppliedReviewMode ? (
+        <div className="bg-white border-t border-slate-200 px-4 py-2.5 shrink-0 select-none max-h-40 overflow-y-auto overflow-x-hidden">
+          <div className="flex flex-col md:flex-row md:items-center justify-between gap-3 min-w-0">
+            <div className="min-w-0 flex-1">
+              <div className="flex items-center gap-2">
+                <span className="text-xs font-bold text-slate-800">
+                  Applied Layout Review (Draft)
+                </span>
+                <span className="text-xs text-slate-400">·</span>
+                <span className="text-xs text-slate-600">
+                  Comparing original pre-optimization baseline against current accepted layout draft.
+                </span>
+              </div>
+              <div className="text-[11px] text-slate-500 mt-1">
+                To explore different proposal alternatives, revert to the original baseline first.
+              </div>
+            </div>
+
+            <div className="flex items-center gap-2 shrink-0">
+              <div className="flex items-center gap-1.5 bg-emerald-50 border border-emerald-200 rounded px-2.5 py-1 text-xs text-emerald-800">
+                <ShieldCheck className="w-3.5 h-3.5 text-emerald-600" />
+                <span>
+                  Deficits:{" "}
+                  <strong>
+                    {beforeEval.summary.actionableDeficitsCount} → {currentFindings.summary.actionableDeficitsCount}
+                  </strong>
+                </span>
+              </div>
+              <button
+                onClick={handleRevert}
+                className="px-2.5 py-1 text-xs font-semibold text-slate-700 bg-white border border-slate-300 rounded hover:bg-slate-50 transition cursor-pointer flex items-center gap-1 shadow-2xs"
+              >
+                <RotateCcw className="w-3 h-3 text-slate-500" />
+                <span>Revert Baseline</span>
+              </button>
+              <button
+                onClick={() => setStage("analysis")}
+                className="px-2.5 py-1 text-xs font-medium text-slate-600 hover:text-slate-900 border border-slate-200 rounded hover:bg-slate-50 transition cursor-pointer flex items-center gap-1"
+              >
+                <ChevronLeft className="w-3 h-3" />
+                <span>Back to Findings</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : activeCandidate ? (
+        <div className="bg-white border-t border-slate-200 px-4 py-2.5 shrink-0 select-none max-h-40 overflow-y-auto overflow-x-hidden">
+          <div className="flex flex-col md:flex-row md:items-center justify-between gap-3 min-w-0">
+            <div className="min-w-0 flex-1">
+              <div className="flex items-center gap-2">
+                <span className="text-xs font-bold text-slate-800">
+                  Optimization Summary: {activeCandidate.name}
+                </span>
+                <span className="text-xs text-slate-400">·</span>
+                <span className="text-xs text-slate-600">{activeCandidate.description}</span>
+              </div>
+
+              {/* Exact fixture moves list */}
+              <div className="flex flex-wrap items-center gap-2 mt-1.5">
+                <span className="text-[11px] font-bold text-slate-500 uppercase tracking-wider">
+                  Fixture Adjustments:
+                </span>
+                {activeCandidate.moves.map((move, i) => (
+                  <div
+                    key={i}
+                    className="flex items-center gap-1.5 bg-slate-50 border border-slate-200 rounded px-2 py-0.5 text-xs text-slate-700 font-mono"
+                  >
+                    <Move className="w-3 h-3 text-[#1e7168]" />
+                    <span className="font-semibold text-slate-900 font-sans">{move.furnitureName}:</span>
+                    <span>
+                      ({move.fromPosition.x}, {move.fromPosition.y})
+                    </span>
+                    <ArrowRight className="w-3 h-3 text-slate-400" />
+                    <span className="text-[#1e7168] font-bold">
+                      ({move.toPosition.x}, {move.toPosition.y})
+                    </span>
+                    <span className="text-slate-400 font-sans text-[11px]">
+                      ({move.distanceCm} cm{move.rotationDelta ? `, ${move.rotationDelta}°` : ""})
+                    </span>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            {/* Transparent metric badges */}
+            <div className="flex items-center gap-2 shrink-0">
+              <div className="flex items-center gap-1.5 bg-emerald-50 border border-emerald-200 rounded px-2 py-1 text-xs text-emerald-800">
+                <ShieldCheck className="w-3.5 h-3.5 text-emerald-600" />
+                <span>
+                  Deficits:{" "}
+                  <strong>
+                    {beforeEval.summary.actionableDeficitsCount} → {activeCandidate.metrics.actionableDeficitsCount}
+                  </strong>
+                </span>
+              </div>
+              <div className="flex items-center gap-1.5 bg-slate-100 border border-slate-200 rounded px-2 py-1 text-xs text-slate-700">
+                <span>
+                  Moves: <strong>{activeCandidate.moveCount}</strong>
+                </span>
+              </div>
+              <div className="flex items-center gap-1.5 bg-slate-100 border border-slate-200 rounded px-2 py-1 text-xs text-slate-700">
+                <span>
+                  Displacement: <strong>{activeCandidate.totalDisplacementCm} cm</strong>
+                </span>
+              </div>
+              <button
+                onClick={() => setStage("analysis")}
+                className="px-2.5 py-1 text-xs font-medium text-slate-600 hover:text-slate-900 border border-slate-200 rounded hover:bg-slate-50 transition cursor-pointer flex items-center gap-1"
+              >
+                <ChevronLeft className="w-3 h-3" />
+                <span>Back to Findings</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : !isAppliedReviewMode ? (
+        <div className="bg-white border-t border-slate-200 px-4 py-2.5 shrink-0 select-none max-h-40 overflow-y-auto overflow-x-hidden">
+          <div className="flex flex-col md:flex-row md:items-center justify-between gap-3 min-w-0">
+            <div className="min-w-0 flex-1 text-xs text-slate-500">
+              {optResult?.status === "already_optimal"
+                ? "Walking route has adequate clearance (0 actionable deficits). No fixture modifications needed."
+                : optResult?.status === "infeasible"
+                ? "No alternatives found within bounded search scope. Manual adjustments may be required."
+                : "No alternative proposal active."}
+            </div>
+            <div className="flex items-center gap-2 shrink-0">
+              <button
+                onClick={() => setStage("analysis")}
+                className="px-2.5 py-1 text-xs font-medium text-slate-600 hover:text-slate-900 border border-slate-200 rounded hover:bg-slate-50 transition cursor-pointer flex items-center gap-1"
+              >
+                <ChevronLeft className="w-3 h-3" />
+                <span>Back to Findings</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
     </div>
   );
 }
