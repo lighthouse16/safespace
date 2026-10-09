@@ -153,3 +153,22 @@ export {
   type CoordinateConversionPolicy,
   type IntakeBoundaryValidationResult,
 } from "./intake-conversion";
+
+// Deterministic Spatial Findings & Evidence Evaluation (Gate 2)
+export {
+  evaluateSpatialScene,
+  type SpatialSceneEvaluationParams,
+} from "./analysis/evaluator";
+
+export type {
+  EvidenceSource,
+  FindingEvidence,
+  FindingRequirement,
+  SpatialEvaluationResult,
+  SpatialEvaluationSummary,
+  SpatialFinding,
+  SpatialFindingClassification,
+  SpatialFindingKind,
+  SpatialFindingStatus,
+  SuggestedAction,
+} from "./analysis/types";

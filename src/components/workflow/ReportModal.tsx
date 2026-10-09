@@ -160,11 +160,11 @@ export function ReportModal() {
                   <tbody className="divide-y divide-slate-100 font-mono">
                     <tr>
                       <td className="p-2.5 font-sans font-medium text-slate-800">
-                        Environmental Risk Index
+                        Composite Risk Score (EHS)
                       </td>
-                      <td className="p-2.5 text-red-600 font-bold">68 (High)</td>
-                      <td className="p-2.5 text-emerald-700 font-bold">27 (Low)</td>
-                      <td className="p-2.5 text-emerald-700 font-semibold">-41 pts (-60%)</td>
+                      <td className="p-2.5 text-slate-500 font-sans">Disabled (Unvalidated)</td>
+                      <td className="p-2.5 text-slate-500 font-sans">Disabled (Unvalidated)</td>
+                      <td className="p-2.5 text-slate-500 font-sans">Pending OT review</td>
                     </tr>
                     <tr>
                       <td className="p-2.5 font-sans font-medium text-slate-800">
@@ -201,7 +201,7 @@ export function ReportModal() {
             <h3 className="font-bold text-xs uppercase tracking-wider text-slate-500 mb-2">
               {isUserAssessment
                 ? "Custom Space Modification Protocol"
-                : "Prescribed Modification Schedule (Est. HK$850)"}
+                : "Prescribed Modification Schedule (Sample Demonstration Estimates)"}
             </h3>
             {isUserAssessment ? (
               <div className="p-3 bg-slate-50 border border-slate-200 rounded-lg text-xs text-slate-600 space-y-1">

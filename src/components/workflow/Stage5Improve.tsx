@@ -238,7 +238,7 @@ export function Stage5Improve() {
                       <span className="text-[10px] text-slate-500">(Original Layout)</span>
                     </div>
                     <span className="font-mono text-[11px] text-red-600 font-bold">
-                      Risk 68 · 54 cm
+                      Original · 54 cm min
                     </span>
                   </div>
                   <div className="flex-1 overflow-hidden">
@@ -271,7 +271,7 @@ export function Stage5Improve() {
                       )}
                     </div>
                     <span className="font-mono text-[11px] text-emerald-700 font-bold">
-                      Risk {metrics.riskIndex ?? "—"} · {metrics.minClearanceCm} cm
+                      Clearance {metrics.minClearanceCm} cm
                     </span>
                   </div>
                   <div className="flex-1 overflow-hidden relative">
@@ -345,10 +345,10 @@ export function Stage5Improve() {
                 </div>
 
                 <div className="absolute top-2.5 left-2.5 z-10 px-2 py-0.5 rounded bg-black/60 text-white text-[11px] backdrop-blur-xs font-medium">
-                  Original (Risk 68 · 54 cm)
+                  Original (Baseline · 54 cm min)
                 </div>
                 <div className="absolute top-2.5 right-2.5 z-10 px-2 py-0.5 rounded bg-[#1e7168]/90 text-white text-[11px] backdrop-blur-xs font-medium">
-                  Proposed ({currentAlt.title} · Risk {metrics.riskIndex ?? "—"})
+                  Proposed ({currentAlt.title} · {metrics.minClearanceCm} cm min)
                 </div>
               </div>
             )
@@ -440,12 +440,10 @@ export function Stage5Improve() {
                     </thead>
                     <tbody className="divide-y divide-slate-100 font-mono text-[11px]">
                       <tr>
-                        <td className="py-1.5 font-sans font-medium text-slate-800">Environmental Risk</td>
-                        <td className="py-1.5 text-red-600 font-bold">68 / 100</td>
-                        <td className="py-1.5 text-emerald-700 font-bold">
-                          {metrics.riskIndex !== null ? `${metrics.riskIndex} / 100` : "—"}
-                        </td>
-                        <td className="py-1.5 text-slate-500 font-sans">&lt; 30 (Low risk)</td>
+                        <td className="py-1.5 font-sans font-medium text-slate-800">Safety Scoring (EHS)</td>
+                        <td className="py-1.5 text-slate-500 font-sans">Pending OT</td>
+                        <td className="py-1.5 text-slate-500 font-sans">Pending OT</td>
+                        <td className="py-1.5 text-slate-500 font-sans">Disabled (no validation)</td>
                       </tr>
                       <tr>
                         <td className="py-1.5 font-sans font-medium text-slate-800">Minimum Clearance</td>
@@ -569,7 +567,7 @@ export function Stage5Improve() {
                     </div>
 
                     <div className="mt-1.5 pt-1.5 border-t border-slate-100 flex items-center justify-between text-[10px] font-mono">
-                      <span className="text-emerald-700 font-bold">Risk: {alt.riskIndex}</span>
+                      <span className="text-emerald-700 font-bold capitalize">{alt.id.replace("-", " ")}</span>
                       <span>Clear: {alt.minClearanceCm} cm</span>
                       <span className="text-slate-400">{alt.furnitureMovesCount} moves</span>
                     </div>
@@ -584,10 +582,9 @@ export function Stage5Improve() {
                 Improvement Summary
               </span>
               <div className="flex justify-between">
-                <span className="font-sans text-slate-500">Risk Index:</span>
-                <span className="font-bold">
-                  <span className="text-red-600">68</span> →{" "}
-                  <span className="text-emerald-700">{metrics.riskIndex ?? "—"}</span>
+                <span className="font-sans text-slate-500">Evaluation:</span>
+                <span className="font-bold text-emerald-700 font-sans">
+                  Deterministic Geometry
                 </span>
               </div>
               <div className="flex justify-between">

@@ -28,6 +28,8 @@ import {
   validatePolygon2D,
   isSimplePolygon,
   polygonArea,
+  evaluateSpatialScene,
+  type SpatialEvaluationResult,
   type Polygon2D,
   type RouteResult,
 } from "@/lib/spatial";
@@ -77,8 +79,10 @@ export interface SafeSpaceState {
   // Selection
   selectedFurnitureId: string | null;
   selectedHazardId: string | null;
+  selectedFindingId: string | null;
   selectFurniture: (id: string | null) => void;
   selectHazard: (id: string | null) => void;
+  selectFinding: (id: string | null) => void;
 
   // View & Grid controls
   showGrid: boolean;
@@ -159,6 +163,7 @@ export interface SafeSpaceState {
   setReportModalOpen: (open: boolean) => void;
 
   // Computed helper
+  getSpatialFindings: () => SpatialEvaluationResult;
   getLiveMetrics: () => ReturnType<typeof calculateLiveMetrics>;
   resetToDemo: () => void;
 
@@ -302,10 +307,13 @@ export const useSafeSpaceStore = create<SafeSpaceState>((set, get) => ({
 
   selectedFurnitureId: null,
   selectedHazardId: null,
+  selectedFindingId: null,
   selectFurniture: (id) =>
-    set({ selectedFurnitureId: id, selectedHazardId: null }),
+    set({ selectedFurnitureId: id, selectedHazardId: null, selectedFindingId: null }),
   selectHazard: (id) =>
-    set({ selectedHazardId: id, selectedFurnitureId: null }),
+    set({ selectedHazardId: id, selectedFurnitureId: null, selectedFindingId: null }),
+  selectFinding: (id) =>
+    set({ selectedFindingId: id, selectedHazardId: null, selectedFurnitureId: null }),
 
   showGrid: true,
   setShowGrid: (val) =>
@@ -649,6 +657,23 @@ export const useSafeSpaceStore = create<SafeSpaceState>((set, get) => ({
   reportModalOpen: false,
   setReportModalOpen: (reportModalOpen) => set({ reportModalOpen }),
 
+  getSpatialFindings: () => {
+    const state = get();
+    const activeFurn = state.activeStage === "improve" ? state.proposedFurniture : state.furniture;
+    return evaluateSpatialScene({
+      assessmentType: state.assessmentType,
+      assessmentMetadata: state.assessmentMetadata,
+      canonicalBoundary: state.canonicalBoundary,
+      rooms: state.rooms,
+      furniture: activeFurn,
+      profile: state.activeProfile,
+      routeWaypoints: state.routeWaypoints,
+      routeResult: state.routeResult,
+      doors: state.doors,
+      walls: state.walls,
+    });
+  },
+
   getLiveMetrics: () => {
     const {
       assessmentType,
@@ -657,27 +682,25 @@ export const useSafeSpaceStore = create<SafeSpaceState>((set, get) => ({
       proposedFurniture,
       selectedAlternativeId,
       routeWaypoints,
-      routeResult,
-      activeProfile,
     } = get();
 
     if (assessmentType === "user") {
-      const isSuccess = routeResult?.status === "success";
-      const requiredRadiusCm = activeProfile.minClearanceCm / 2;
-      const minClearanceCm = isSuccess ? Math.round(routeResult.minimumClearanceCm) : 0;
-      const routeLengthM = isSuccess ? Number((routeResult.pathLengthCm / 100).toFixed(1)) : 0;
-      const isDeficit = isSuccess && routeResult.minimumClearanceCm < requiredRadiusCm;
+      const evaluation = get().getSpatialFindings();
+      const minClearanceCm = evaluation.summary.minimumClearanceCm ?? 0;
+      const routeLengthM = evaluation.summary.pathLengthM ?? 0;
+      const deficits = evaluation.summary.actionableDeficitsCount;
 
       return {
         riskIndex: null,
         riskLevel: "Pending Review" as const,
         minClearanceCm,
         routeLengthM,
-        constraintWarning: isDeficit
-          ? `Narrowest path margin (${minClearanceCm} cm) is below required margin (≥ ${requiredRadiusCm} cm).`
-          : null,
-        activeHazardsCount: 0,
-        highPriorityHazardsCount: 0,
+        constraintWarning:
+          deficits > 0
+            ? `${deficits} geometric clearance deficit(s) detected along transit corridor.`
+            : null,
+        activeHazardsCount: deficits,
+        highPriorityHazardsCount: deficits,
       };
     }
 

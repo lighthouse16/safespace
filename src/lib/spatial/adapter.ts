@@ -265,7 +265,12 @@ export function toCanonicalProfile(
       },
     },
     turningDiameterCm: {
-      value: p.turningSpaceCm,
+      value:
+        typeof p.turningSpaceCm === "number"
+          ? p.turningSpaceCm
+          : typeof (p as { turnRadiusCm?: number }).turnRadiusCm === "number"
+          ? ((p as { turnRadiusCm?: number }).turnRadiusCm as number) * 2
+          : 150,
       unit: "cm",
       source: {
         type: "clinical-input",
