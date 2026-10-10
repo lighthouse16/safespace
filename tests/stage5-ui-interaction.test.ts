@@ -431,3 +431,104 @@ test("Stage 5 Mounted UI: 390px mobile viewport defaults to Proposed view and re
   }
 });
 
+test("Stage 5 Mounted UI P1-4: exactly one primary Apply/Revert per mode, narrow viewport renders single floorplan, and resize across 1024 preserves operator control", async () => {
+  const store = useSafeSpaceStore.getState();
+  store.resetToDemo();
+  store.setStage("improve");
+  store.runOptimization();
+
+  // Test narrow viewport (< 1024px)
+  const origInnerWidth = dom.window.innerWidth;
+  Object.defineProperty(dom.window, "innerWidth", { writable: true, configurable: true, value: 900 });
+  Object.defineProperty(globalThis, "innerWidth", { writable: true, configurable: true, value: 900 });
+
+  const harness = await createMountedHarness();
+
+  try {
+    const queryButtons = (label: string) =>
+      Array.from(harness.rootEl.querySelectorAll("button")).filter((b) => b.textContent?.trim().includes(label));
+
+    // 1. In Proposal mode: EXACTLY ONE primary "Apply This Layout" button exists
+    const applyButtons = queryButtons("Apply This Layout");
+    assert.equal(applyButtons.length, 1, "Must render exactly one primary Apply This Layout button in proposal mode");
+
+    // 2. On narrow viewport (900px < 1024px), defaults to single-pane Proposed view
+    // Assert exactly ONE floorplan container pane is rendered
+    const beforePanes = harness.rootEl.querySelectorAll('[data-testid="floorplan-pane-before"]');
+    const proposedPanes = harness.rootEl.querySelectorAll('[data-testid="floorplan-pane-proposed"]');
+    assert.equal(beforePanes.length, 0, "Before pane must not be rendered in default proposed view");
+    assert.equal(proposedPanes.length, 1, "Exactly one proposed floorplan pane rendered on narrow viewport");
+
+    // 3. Switch to Review Mode by clicking the single Apply button
+    await act(async () => {
+      applyButtons[0].click();
+    });
+
+    // 4. In Review Mode: EXACTLY ONE primary "Revert to Original" button exists
+    const revertButtons = queryButtons("Revert to Original");
+    assert.equal(revertButtons.length, 1, "Must render exactly one primary Revert to Original button in review mode");
+    assert.equal(queryButtons("Apply This Layout").length, 0, "No Apply button rendered in review mode");
+
+    // 5. Test resize across 1024px threshold
+    // Resize to desktop (1280px >= 1024px)
+    Object.defineProperty(dom.window, "innerWidth", { writable: true, configurable: true, value: 1280 });
+    Object.defineProperty(globalThis, "innerWidth", { writable: true, configurable: true, value: 1280 });
+    await act(async () => {
+      dom.window.dispatchEvent(new dom.window.Event("resize"));
+    });
+
+    // Operator switches to side-by-side on desktop
+    const sideBySideBtn = queryButtons("Side-by-Side")[0];
+    assert.ok(sideBySideBtn, "Side-by-Side button is available on desktop");
+    await act(async () => {
+      sideBySideBtn.click();
+    });
+
+    // Both panes rendered in side-by-side mode on desktop
+    assert.equal(harness.rootEl.querySelectorAll('[data-testid="floorplan-pane-before"]').length, 1);
+    assert.equal(harness.rootEl.querySelectorAll('[data-testid="floorplan-pane-proposed"]').length, 1);
+
+    // Resize back across 1024px to tablet (800px < 1024px)
+    Object.defineProperty(dom.window, "innerWidth", { writable: true, configurable: true, value: 800 });
+    Object.defineProperty(globalThis, "innerWidth", { writable: true, configurable: true, value: 800 });
+    await act(async () => {
+      dom.window.dispatchEvent(new dom.window.Event("resize"));
+    });
+
+    // Automatically switches out of side-by-side into proposed single pane
+    assert.equal(
+      harness.rootEl.querySelectorAll('[data-testid="floorplan-pane-before"]').length,
+      0,
+      "Before pane hidden on tablet resize"
+    );
+    assert.equal(
+      harness.rootEl.querySelectorAll('[data-testid="floorplan-pane-proposed"]').length,
+      1,
+      "Single proposed pane visible on tablet resize"
+    );
+
+    // Operator still has control: can switch to Before view
+    const beforeToggle = queryButtons("Before")[0];
+    assert.ok(beforeToggle, "Before toggle available on tablet");
+    await act(async () => {
+      beforeToggle.click();
+    });
+    assert.equal(
+      harness.rootEl.querySelectorAll('[data-testid="floorplan-pane-before"]').length,
+      1,
+      "Before pane rendered when operator selects Before view"
+    );
+    assert.equal(
+      harness.rootEl.querySelectorAll('[data-testid="floorplan-pane-proposed"]').length,
+      0,
+      "Proposed pane hidden when operator selects Before view"
+    );
+  } finally {
+    Object.defineProperty(dom.window, "innerWidth", { writable: true, configurable: true, value: origInnerWidth });
+    Object.defineProperty(globalThis, "innerWidth", { writable: true, configurable: true, value: origInnerWidth });
+    await harness.cleanup();
+    store.resetToDemo();
+  }
+});
+
+

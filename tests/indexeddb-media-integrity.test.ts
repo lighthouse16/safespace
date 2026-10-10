@@ -8,7 +8,15 @@ import {
   type PersistedFloorplanImage,
 } from '../src/lib/storage/image-db';
 import { coordinatedDeleteAssessment } from '../src/lib/storage/coordinated-storage';
-import { loadPersistedAssessment, SAFESPACE_STORAGE_KEY } from '../src/lib/storage/persistence';
+import {
+  loadPersistedAssessment,
+  savePersistedAssessment,
+  getPersistedAssessment,
+  loadActiveWorkspace,
+  saveActiveWorkspace,
+  SAFESPACE_STORAGE_KEY,
+  SAFESPACE_ACTIVE_WORKSPACE_KEY,
+} from '../src/lib/storage/persistence';
 import { useSafeSpaceStore } from '../src/store/safespace-store';
 
 interface MockRecord {
@@ -492,3 +500,444 @@ test('Adversarial Storage: coordinatedDeleteAssessment verifies absence before r
   assert.equal(await getFloorplanImage('coord-verify-space'), null, 'IDB record must not exist');
   assert.equal(globalThis.localStorage.getItem(SAFESPACE_STORAGE_KEY), null, 'localStorage key must not exist');
 });
+
+test('Adversarial Storage P0-1: selective setItem failure on active-workspace key preserves previous assessment and image with no orphan media', async () => {
+  const store = useSafeSpaceStore.getState();
+  store.resetToDemo();
+
+  // 1. Seed previous confirmed assessment with image
+  const prevFile = new File(['prev-image-data'], 'prev.png', { type: 'image/png' });
+  await saveFloorplanImage({
+    assessmentId: 'prev-p01-id',
+    blob: prevFile,
+    mimeType: 'image/png',
+    name: 'prev.png',
+    size: prevFile.size,
+    canvasWidth: 800,
+    canvasHeight: 600,
+    updatedAt: new Date().toISOString(),
+  });
+  savePersistedAssessment({
+    schemaVersion: 1,
+    assessmentType: 'user',
+    metadata: {
+      id: 'prev-p01-id',
+      name: 'Previous Confirmed Space',
+      facilityName: 'St. Jude Rehab',
+      spaceName: 'Physical Therapy Suite',
+      environmentType: 'clinic',
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    },
+    canonicalBoundary: [
+      { x: 0, y: 0 },
+      { x: 400, y: 0 },
+      { x: 400, y: 400 },
+      { x: 0, y: 400 },
+    ],
+    calibration: {
+      pixelsPerCm: 1.0,
+      realLength: 400,
+      unit: 'cm',
+      pixelDistance: 400,
+      originPolicy: 'canvas-origin-0-0',
+    },
+    activeProfileId: 'walker',
+    routeWaypoints: [],
+    furniture: [],
+    hasFloorplanImage: true,
+  });
+  saveActiveWorkspace('user');
+
+  // Verify baseline
+  assert.ok((await getFloorplanImage('prev-p01-id')) !== null);
+  assert.equal(getPersistedAssessment()?.metadata?.id, 'prev-p01-id');
+  assert.equal(loadActiveWorkspace(), 'user');
+
+  // 2. Intercept localStorage.setItem: throw ONLY when writing SAFESPACE_ACTIVE_WORKSPACE_KEY
+  const origSetItem = globalThis.localStorage.setItem.bind(globalThis.localStorage);
+  globalThis.localStorage.setItem = (key: string, value: string) => {
+    if (key === SAFESPACE_ACTIVE_WORKSPACE_KEY) {
+      throw new Error('DiskFull: Cannot write active workspace pointer');
+    }
+    origSetItem(key, value);
+  };
+
+  const newFile = new File(['new-image-data'], 'new.png', { type: 'image/png' });
+
+  try {
+    const res = await store.createAndLoadUserAssessment({
+      metadata: {
+        id: 'new-p01-id',
+        name: 'New Candidate Space',
+        facilityName: 'St. Jude Rehab',
+        spaceName: 'Room 2',
+        environmentType: 'clinic',
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+      },
+      boundaryCm: [
+        { x: 0, y: 0 },
+        { x: 500, y: 0 },
+        { x: 500, y: 500 },
+        { x: 0, y: 500 },
+      ],
+      calibration: {
+        pixelsPerCm: 1.0,
+        realLength: 500,
+        unit: 'cm',
+        pixelDistance: 500,
+        originPolicy: 'canvas-origin-0-0',
+      },
+      imageFile: newFile,
+    });
+
+    // Operation must report failure
+    assert.equal(res.success, false, 'Must report failure when active workspace write fails');
+    assert.equal(res.rollbackFailed, false, 'Rollback must have succeeded cleanly');
+    assert.equal(useSafeSpaceStore.getState().storageStatus, 'error');
+
+    // Invariant 1: Previous assessment must be preserved in localStorage
+    const currentPersisted = getPersistedAssessment();
+    assert.equal(currentPersisted?.metadata?.id, 'prev-p01-id', 'Previous assessment must remain intact');
+
+    // Invariant 2: Previous image must be preserved in IndexedDB
+    const prevImg = await getFloorplanImage('prev-p01-id');
+    assert.ok(prevImg !== null, 'Previous floorplan image must NOT be deleted');
+
+    // Invariant 3: No orphan new image in IndexedDB
+    const newImg = await getFloorplanImage('new-p01-id');
+    assert.equal(newImg, null, 'New image must be rolled back and not orphaned in IDB');
+
+    // Invariant 4: Active workspace selection restored
+    assert.equal(loadActiveWorkspace(), 'user', 'Active workspace selection must remain preserved');
+
+    // Invariant 5: In-memory store does not navigate to new assessment
+    assert.notEqual(useSafeSpaceStore.getState().assessmentId, 'new-p01-id', 'Store must not switch to failed assessment');
+  } finally {
+    globalThis.localStorage.setItem = origSetItem;
+  }
+});
+
+test('Adversarial Storage P0-1: failure when same assessment ID is reused preserves previous image in IndexedDB', async () => {
+  const store = useSafeSpaceStore.getState();
+  store.resetToDemo();
+
+  // 1. Seed assessment with image for 'reused-space-id'
+  const originalBlob = new Blob(['original-floorplan-bytes'], { type: 'image/png' });
+  await saveFloorplanImage({
+    assessmentId: 'reused-space-id',
+    blob: originalBlob,
+    mimeType: 'image/png',
+    name: 'original.png',
+    size: originalBlob.size,
+    canvasWidth: 800,
+    canvasHeight: 600,
+    updatedAt: new Date().toISOString(),
+  });
+  savePersistedAssessment({
+    schemaVersion: 1,
+    assessmentType: 'user',
+    metadata: {
+      id: 'reused-space-id',
+      name: 'Original Reused Space',
+      facilityName: 'Clinic',
+      spaceName: 'Room 1',
+      environmentType: 'clinic',
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    },
+    canonicalBoundary: [
+      { x: 0, y: 0 },
+      { x: 300, y: 0 },
+      { x: 300, y: 300 },
+      { x: 0, y: 300 },
+    ],
+    calibration: {
+      pixelsPerCm: 1.0,
+      realLength: 300,
+      unit: 'cm',
+      pixelDistance: 300,
+      originPolicy: 'canvas-origin-0-0',
+    },
+    activeProfileId: 'walker',
+    routeWaypoints: [],
+    furniture: [],
+    hasFloorplanImage: true,
+  });
+
+  // 2. Intercept localStorage.setItem: throw on active workspace key
+  const origSetItem = globalThis.localStorage.setItem.bind(globalThis.localStorage);
+  globalThis.localStorage.setItem = (key: string, value: string) => {
+    if (key === SAFESPACE_ACTIVE_WORKSPACE_KEY) {
+      throw new Error('Simulated workspace write failure');
+    }
+    origSetItem(key, value);
+  };
+
+  const replacementFile = new File(['replacement-bytes'], 'replace.png', { type: 'image/png' });
+
+  try {
+    const res = await store.createAndLoadUserAssessment({
+      metadata: {
+        id: 'reused-space-id', // Same ID reused!
+        name: 'Updated Reused Space',
+        facilityName: 'Clinic',
+        spaceName: 'Room 1',
+        environmentType: 'clinic',
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+      },
+      boundaryCm: [
+        { x: 0, y: 0 },
+        { x: 300, y: 0 },
+        { x: 300, y: 300 },
+        { x: 0, y: 300 },
+      ],
+      calibration: {
+        pixelsPerCm: 1.0,
+        realLength: 300,
+        unit: 'cm',
+        pixelDistance: 300,
+        originPolicy: 'canvas-origin-0-0',
+      },
+      imageFile: replacementFile,
+    });
+
+    assert.equal(res.success, false);
+
+    // Invariant: Floorplan image for reused-space-id must still exist in IDB
+    const imgAfterFailure = await getFloorplanImage('reused-space-id');
+    assert.ok(imgAfterFailure !== null, 'Reused assessment image must NOT be destroyed on failure');
+
+    // Invariant: Persisted payload remains intact
+    const persisted = getPersistedAssessment();
+    assert.equal(persisted?.metadata?.id, 'reused-space-id');
+  } finally {
+    globalThis.localStorage.setItem = origSetItem;
+  }
+});
+
+test('Adversarial Storage P0-2: cold store reset replacement cleans up old image using persisted ID, not transient demo state', async () => {
+  const store = useSafeSpaceStore.getState();
+
+  // 1. Seed persisted user assessment in localStorage and IDB
+  const oldBlob = new Blob(['old-persisted-image'], { type: 'image/png' });
+  await saveFloorplanImage({
+    assessmentId: 'cold-persisted-old-id',
+    blob: oldBlob,
+    mimeType: 'image/png',
+    name: 'old.png',
+    size: oldBlob.size,
+    canvasWidth: 800,
+    canvasHeight: 600,
+    updatedAt: new Date().toISOString(),
+  });
+  savePersistedAssessment({
+    schemaVersion: 1,
+    assessmentType: 'user',
+    metadata: {
+      id: 'cold-persisted-old-id',
+      name: 'Cold Old Space',
+      facilityName: 'Cold Facility',
+      spaceName: 'Suite 1',
+      environmentType: 'clinic',
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    },
+    canonicalBoundary: [
+      { x: 0, y: 0 },
+      { x: 350, y: 0 },
+      { x: 350, y: 350 },
+      { x: 0, y: 350 },
+    ],
+    calibration: {
+      pixelsPerCm: 1.0,
+      realLength: 350,
+      unit: 'cm',
+      pixelDistance: 350,
+      originPolicy: 'canvas-origin-0-0',
+    },
+    activeProfileId: 'walker',
+    routeWaypoints: [],
+    furniture: [],
+    hasFloorplanImage: true,
+  });
+
+  // 2. Perform a cold reset of in-memory Zustand store (e.g. fresh tab in demo mode)
+  store.resetToDemo();
+  assert.equal(useSafeSpaceStore.getState().assessmentType, 'demo', 'Transient in-memory state is demo');
+  assert.equal(useSafeSpaceStore.getState().assessmentId, 'demo-queen-care', 'Transient ID is demo');
+
+  // Verify old image exists prior to replacement
+  assert.ok((await getFloorplanImage('cold-persisted-old-id')) !== null);
+
+  // 3. User creates a new assessment
+  const newFile = new File(['new-persisted-image'], 'new.png', { type: 'image/png' });
+  const res = await store.createAndLoadUserAssessment({
+    metadata: {
+      id: 'fresh-new-assessment-id',
+      name: 'Fresh New Space',
+      facilityName: 'Fresh Facility',
+      spaceName: 'Room 101',
+      environmentType: 'clinic',
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    },
+    boundaryCm: [
+      { x: 0, y: 0 },
+      { x: 400, y: 0 },
+      { x: 400, y: 400 },
+      { x: 0, y: 400 },
+    ],
+    calibration: {
+      pixelsPerCm: 1.0,
+      realLength: 400,
+      unit: 'cm',
+      pixelDistance: 400,
+      originPolicy: 'canvas-origin-0-0',
+    },
+    imageFile: newFile,
+  });
+
+  assert.equal(res.success, true);
+
+  // Invariant: Old image identified from PERSISTED snapshot was deleted
+  const oldImageAfter = await getFloorplanImage('cold-persisted-old-id');
+  assert.equal(oldImageAfter, null, 'Previous image must be cleaned up using persisted record ID despite demo in-memory state');
+
+  // New image exists
+  const newImageAfter = await getFloorplanImage('fresh-new-assessment-id');
+  assert.ok(newImageAfter !== null, 'New image committed to IndexedDB');
+});
+
+test('Adversarial Storage P0-3: IDB delete failure retains localStorage record, ensuring recoverable retry across refresh', async () => {
+  // 1. Seed assessment in localStorage and IDB
+  const dummyFile = new File(['recoverable-bytes'], 'plan.png', { type: 'image/png' });
+  await saveFloorplanImage({
+    assessmentId: 'p03-recoverable-del',
+    blob: dummyFile,
+    mimeType: 'image/png',
+    name: 'plan.png',
+    size: dummyFile.size,
+    canvasWidth: 800,
+    canvasHeight: 600,
+    updatedAt: new Date().toISOString(),
+  });
+  savePersistedAssessment({
+    schemaVersion: 1,
+    assessmentType: 'user',
+    metadata: {
+      id: 'p03-recoverable-del',
+      name: 'Recoverable Deletion Space',
+      facilityName: 'Clinic',
+      spaceName: 'Room 5',
+      environmentType: 'clinic',
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    },
+    canonicalBoundary: [
+      { x: 0, y: 0 },
+      { x: 300, y: 0 },
+      { x: 300, y: 300 },
+      { x: 0, y: 300 },
+    ],
+    calibration: {
+      pixelsPerCm: 1.0,
+      realLength: 300,
+      unit: 'cm',
+      pixelDistance: 300,
+      originPolicy: 'canvas-origin-0-0',
+    },
+    activeProfileId: 'walker',
+    routeWaypoints: [],
+    furniture: [],
+    hasFloorplanImage: true,
+  });
+
+  // Verify initial state
+  assert.ok((await getFloorplanImage('p03-recoverable-del')) !== null);
+  assert.ok(globalThis.localStorage.getItem(SAFESPACE_STORAGE_KEY) !== null);
+
+  // 2. Inject failure on IDB delete
+  mockDbInstance.failNextTx = 'error';
+
+  const delRes = await coordinatedDeleteAssessment('p03-recoverable-del');
+
+  // Deletion must report failure
+  assert.equal(delRes.success, false, 'Must report failure when IDB media deletion fails');
+  assert.equal(delRes.localStorageCleared, false, 'localStorage must NOT be cleared when media deletion fails');
+
+  // Crucial invariant: localStorage record must NOT be deleted!
+  assert.ok(
+    globalThis.localStorage.getItem(SAFESPACE_STORAGE_KEY) !== null,
+    'localStorage key must be retained to preserve durable reference'
+  );
+
+  // Simulate hard browser reload: assessment can still be loaded and inspected
+  const reloaded = loadPersistedAssessment();
+  assert.equal(reloaded.success, true, 'Assessment survives hard refresh for deletion retry');
+  if (reloaded.success) {
+    assert.equal(reloaded.data.metadata?.id, 'p03-recoverable-del');
+  }
+
+  // 3. Retry deletion when IDB is healthy
+  const retryRes = await coordinatedDeleteAssessment('p03-recoverable-del');
+  assert.equal(retryRes.success, true, 'Retry must succeed');
+  assert.equal(retryRes.localStorageCleared, true);
+  assert.equal(retryRes.mediaCleared, true);
+
+  // Authoritative double absence check
+  assert.equal(await getFloorplanImage('p03-recoverable-del'), null, 'IDB record absent');
+  assert.equal(globalThis.localStorage.getItem(SAFESPACE_STORAGE_KEY), null, 'localStorage key absent');
+});
+
+test('Adversarial Storage P0-3: honest support for manual-only data when IndexedDB is unavailable', async () => {
+  // 1. Seed manual-only assessment (hasFloorplanImage: false)
+  savePersistedAssessment({
+    schemaVersion: 1,
+    assessmentType: 'user',
+    metadata: {
+      id: 'manual-only-space',
+      name: 'Manual Geometry Room',
+      facilityName: 'Community Clinic',
+      spaceName: 'Room A',
+      environmentType: 'clinic',
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    },
+    canonicalBoundary: [
+      { x: 0, y: 0 },
+      { x: 250, y: 0 },
+      { x: 250, y: 250 },
+      { x: 0, y: 250 },
+    ],
+    calibration: {
+      pixelsPerCm: 1.0,
+      realLength: 250,
+      unit: 'cm',
+      pixelDistance: 250,
+      originPolicy: 'canvas-origin-0-0',
+    },
+    activeProfileId: 'walker',
+    routeWaypoints: [],
+    furniture: [],
+    hasFloorplanImage: false,
+  });
+
+  // Verify seeded
+  assert.ok(globalThis.localStorage.getItem(SAFESPACE_STORAGE_KEY) !== null);
+
+  // 2. Disable IndexedDB completely by injecting failure
+  mockDbInstance.failNextTx = 'error';
+
+  // 3. Execute coordinated deletion on manual-only space
+  const delRes = await coordinatedDeleteAssessment('manual-only-space');
+
+  // Must honestly succeed: there was no personal media to delete
+  assert.equal(delRes.success, true, 'Manual-only assessment deletion succeeds honestly without IDB media');
+  assert.equal(delRes.localStorageCleared, true);
+  assert.equal(delRes.mediaCleared, true);
+  assert.equal(globalThis.localStorage.getItem(SAFESPACE_STORAGE_KEY), null);
+});
+

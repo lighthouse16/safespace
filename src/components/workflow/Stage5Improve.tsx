@@ -81,11 +81,11 @@ export function Stage5Improve() {
     };
   }, []);
 
-  // Responsive viewMode adjustment when window resizes
+  // Responsive viewMode adjustment when window resizes across 1024px threshold
   useEffect(() => {
     if (typeof window === "undefined") return;
     const handleResize = () => {
-      if (window.innerWidth < 768 && viewMode === "side-by-side") {
+      if (window.innerWidth < 1024 && viewMode === "side-by-side") {
         setViewMode("proposed");
       }
     };
@@ -269,7 +269,7 @@ export function Stage5Improve() {
             <button
               type="button"
               onClick={() => setViewMode("side-by-side")}
-              className={`hidden md:inline-flex px-2 py-0.5 text-[11px] font-medium rounded transition cursor-pointer ${
+              className={`hidden lg:inline-flex px-2 py-0.5 text-[11px] font-medium rounded transition cursor-pointer ${
                 viewMode === "side-by-side"
                   ? "bg-white text-slate-800 shadow-2xs font-semibold"
                   : "text-slate-600 hover:text-slate-900"
@@ -325,18 +325,6 @@ export function Stage5Improve() {
               <span className="text-xs text-slate-600 truncate">
                 Original layout is saved. You can compare changes or revert at any time.
               </span>
-            </div>
-
-            <div className="flex items-center gap-2 shrink-0">
-              <button
-                type="button"
-                onClick={handleRevert}
-                className="px-3.5 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-900 text-white text-xs font-semibold transition cursor-pointer flex items-center gap-1.5 shadow-xs"
-                title="Revert to original layout"
-              >
-                <RotateCcw className="w-3.5 h-3.5 text-slate-200" />
-                <span>Revert to Original</span>
-              </button>
             </div>
           </div>
         ) : (
@@ -407,17 +395,6 @@ export function Stage5Improve() {
 
             {/* Proposal Mode Actions */}
             <div className="flex items-center gap-2 shrink-0">
-              {activeCandidate && (
-                <button
-                  type="button"
-                  onClick={() => handleApply(activeCandidate.id)}
-                  className="px-3.5 py-1.5 rounded-lg bg-[#1e7168] text-white text-xs font-semibold hover:bg-[#175b54] transition cursor-pointer flex items-center gap-1 shadow-xs"
-                >
-                  <CheckCircle2 className="w-3.5 h-3.5" />
-                  <span>Apply This Layout</span>
-                </button>
-              )}
-
               <button
                 type="button"
                 onClick={() => runOptimization()}
@@ -451,11 +428,12 @@ export function Stage5Improve() {
         )}
       </div>
 
-      {/* Main Floorplan Canvas: Single pane on mobile, Side-by-Side on desktop */}
-      <div className="flex-1 min-h-0 flex flex-col md:flex-row overflow-hidden p-2 gap-2">
+      {/* Main Floorplan Canvas: Single pane on mobile/tablet (<1024px), Side-by-Side on desktop (>=1024px) */}
+      <div className="flex-1 min-h-0 flex flex-col lg:flex-row overflow-hidden p-2 gap-2">
         {/* Left / Baseline Condition */}
         {(viewMode === "side-by-side" || viewMode === "before") && (
           <div
+            data-testid="floorplan-pane-before"
             className={`flex flex-col bg-white rounded-lg border border-slate-200 overflow-hidden shadow-2xs w-full ${
               viewMode === "side-by-side" ? "flex-1 min-w-0" : "flex-1"
             }`}
@@ -498,6 +476,7 @@ export function Stage5Improve() {
         {/* Right / Proposed Condition */}
         {(viewMode === "side-by-side" || viewMode === "proposed") && (
           <div
+            data-testid="floorplan-pane-proposed"
             className={`flex flex-col bg-white rounded-lg border border-slate-200 overflow-hidden shadow-2xs w-full ${
               viewMode === "side-by-side" ? "flex-1 min-w-0" : "flex-1"
             }`}

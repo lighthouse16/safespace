@@ -807,6 +807,32 @@ test("Correctness: active workspace key write failure preserves assessment data 
     { x: 0, y: 200 },
   ];
 
+  // Seed an existing saved assessment to verify that active workspace key write failure preserves it
+  savePersistedAssessment({
+    schemaVersion: 1,
+    assessmentType: "user",
+    metadata: {
+      id: "pre-existing-saved-space",
+      name: "Existing Space",
+      facilityName: "Existing Facility",
+      spaceName: "Existing Room",
+      environmentType: "clinic",
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    },
+    canonicalBoundary: boundary,
+    calibration: {
+      pixelsPerCm: 1.0,
+      realLength: 200,
+      unit: "cm",
+      pixelDistance: 200,
+      originPolicy: INTAKE_ORIGIN_POLICY,
+    },
+    activeProfileId: "walker",
+    routeWaypoints: [],
+    furniture: [],
+  });
+
   const originalSetItem = globalMockStorage.setItem.bind(globalMockStorage);
   // Intercept writes to SAFESPACE_ACTIVE_WORKSPACE_KEY to simulate quota/storage error
   globalMockStorage.setItem = (key: string, value: string) => {
@@ -842,11 +868,11 @@ test("Correctness: active workspace key write failure preserves assessment data 
     assert.match(res.error || "", /failed to persist active workspace selection/i);
     assert.equal(useSafeSpaceStore.getState().storageStatus, "error");
 
-    // 2. Saved assessment payload in SAFESPACE_STORAGE_KEY must NOT be wiped
+    // 2. Saved assessment payload in SAFESPACE_STORAGE_KEY must NOT be overwritten with active-fail-test
     const persisted = loadPersistedAssessment();
     assert.equal(persisted.success, true);
     if (persisted.success) {
-      assert.equal(persisted.data.metadata?.id, "active-fail-test");
+      assert.equal(persisted.data.metadata?.id, "pre-existing-saved-space");
     }
 
     // 3. resetToDemo with failed active key write sets error status and preserves assessment data
@@ -855,7 +881,7 @@ test("Correctness: active workspace key write failure preserves assessment data 
     const preservedAfterDemo = loadPersistedAssessment();
     assert.equal(preservedAfterDemo.success, true);
     if (preservedAfterDemo.success) {
-      assert.equal(preservedAfterDemo.data.metadata?.id, "active-fail-test");
+      assert.equal(preservedAfterDemo.data.metadata?.id, "pre-existing-saved-space");
     }
   } finally {
     globalMockStorage.setItem = originalSetItem;

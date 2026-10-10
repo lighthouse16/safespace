@@ -40,6 +40,7 @@ export type PersistedAssessmentState = {
   appliedLayoutBaseline?: SpatialFurniture[] | null;
   appliedCandidateId?: string | null;
   appliedSceneFingerprint?: string | null;
+  hasFloorplanImage?: boolean;
 };
 
 export type StorageLoadResult =
@@ -444,6 +445,9 @@ export function validatePersistedPayload(val: unknown): {
       ? obj.appliedSceneFingerprint.trim()
       : null;
 
+  const hasFloorplanImage =
+    typeof obj.hasFloorplanImage === "boolean" ? obj.hasFloorplanImage : undefined;
+
   return {
     isValid: true,
     data: {
@@ -459,6 +463,7 @@ export function validatePersistedPayload(val: unknown): {
       appliedLayoutBaseline,
       appliedCandidateId,
       appliedSceneFingerprint,
+      hasFloorplanImage,
     },
   };
 }
@@ -492,6 +497,7 @@ export function savePersistedAssessment(state: PersistedAssessmentState): Storag
       appliedLayoutBaseline: state.appliedLayoutBaseline ?? null,
       appliedCandidateId: state.appliedCandidateId ?? null,
       appliedSceneFingerprint: state.appliedSceneFingerprint ?? null,
+      hasFloorplanImage: state.hasFloorplanImage ?? false,
     };
 
     const json = JSON.stringify(payloadToSerialize);
@@ -502,6 +508,18 @@ export function savePersistedAssessment(state: PersistedAssessmentState): Storag
     return { success: false, error: `Failed to save to storage: ${message}` };
   }
 }
+
+/**
+ * Convenience helper returning parsed and validated persisted assessment or null.
+ */
+export function getPersistedAssessment(
+  storageKey = SAFESPACE_STORAGE_KEY
+): PersistedAssessmentState | null {
+  const res = loadPersistedAssessment(storageKey);
+  return res.success ? res.data : null;
+}
+
+export const getActiveWorkspace = loadActiveWorkspace;
 
 /**
  * Loads and validates confirmed assessment state from browser localStorage.

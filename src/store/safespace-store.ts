@@ -40,7 +40,10 @@ import {
   SAFESPACE_STORAGE_VERSION,
   savePersistedAssessment,
   loadPersistedAssessment,
+  getPersistedAssessment,
+  clearPersistedAssessment,
   saveActiveWorkspace,
+  loadActiveWorkspace,
   type AssessmentMetadata,
   type CalibrationProvenance,
   type PersistedAssessmentState,
@@ -49,6 +52,7 @@ import {
   saveFloorplanImage,
   getFloorplanImage,
   deleteFloorplanImage,
+  type PersistedFloorplanImage,
 } from "@/lib/storage/image-db";
 import {
   coordinatedDeleteAssessment,
@@ -72,6 +76,7 @@ export type AssessmentCreationResult = {
   error?: string;
   isSaved?: boolean;
   assessmentId?: string;
+  rollbackFailed?: boolean;
 };
 
 export interface SafeSpaceState {
@@ -1177,6 +1182,19 @@ export const useSafeSpaceStore = create<SafeSpaceState>((set, get) => ({
   createAndLoadUserAssessment: async (payload) => {
     const { metadata, boundaryCm, calibration, imageFile } = payload;
 
+    // 0. Pre-flight capture of persisted snapshot before ANY write
+    const previousPersisted = getPersistedAssessment();
+    const previousPersistedId = previousPersisted?.metadata?.id;
+    const previousActiveWs = loadActiveWorkspace();
+    const isReusingId = Boolean(previousPersistedId && previousPersistedId === metadata.id);
+
+    let previousImageRecord: PersistedFloorplanImage | null = null;
+    if (isReusingId && previousPersistedId) {
+      try {
+        previousImageRecord = await getFloorplanImage(previousPersistedId);
+      } catch {}
+    }
+
     // 1. Validate geometry and metadata inputs
     if (!boundaryCm || !Array.isArray(boundaryCm) || boundaryCm.length < 3) {
       const err = "Boundary requires at least 3 vertices";
@@ -1212,6 +1230,7 @@ export const useSafeSpaceStore = create<SafeSpaceState>((set, get) => ({
       activeProfileSnapshot: defaultProfile,
       routeWaypoints: [],
       furniture: [],
+      hasFloorplanImage: Boolean(imageFile),
     };
 
     // 3. Persist floorplan image to IndexedDB FIRST if provided
@@ -1245,33 +1264,106 @@ export const useSafeSpaceStore = create<SafeSpaceState>((set, get) => ({
     // 4. Persist assessment state to localStorage
     const saveRes = savePersistedAssessment(savePayload);
     if (!saveRes.success) {
-      // Rollback media if saved
+      // Rollback media if written
+      let rollbackOk = true;
       if (imageCommitted) {
         try {
-          await deleteFloorplanImage(metadata.id);
-        } catch {}
+          if (!isReusingId) {
+            rollbackOk = await deleteFloorplanImage(metadata.id);
+          } else if (previousImageRecord) {
+            rollbackOk = await saveFloorplanImage(previousImageRecord);
+          }
+        } catch {
+          rollbackOk = false;
+        }
       }
+
+      // Ensure previous assessment remains in localStorage
+      if (previousPersisted) {
+        try {
+          savePersistedAssessment(previousPersisted);
+        } catch {
+          rollbackOk = false;
+        }
+      }
+
       const err = saveRes.error || "Failed to persist assessment layout to browser storage.";
-      set({ storageStatus: "error", storageError: err });
-      return { success: false, error: err };
+      const finalErr = rollbackOk
+        ? `${err} Previous assessment state preserved.`
+        : `${err} Warning: partial rollback failure; database may be in inconsistent state.`;
+      set({ storageStatus: "error", storageError: finalErr });
+      return { success: false, error: finalErr, rollbackFailed: !rollbackOk };
     }
 
     // 5. Persist active workspace selection
     const savedWs = saveActiveWorkspace("user");
     if (!savedWs) {
-      const err = "Assessment saved, but failed to persist active workspace selection.";
+      // ACTIVE WORKSPACE FAILED! ROLLBACK EVERYTHING TO PREVIOUS STATE!
+      let rollbackOk = true;
+
+      // 5a. Rollback localStorage
+      try {
+        if (previousPersisted) {
+          const restoreRes = savePersistedAssessment(previousPersisted);
+          if (!restoreRes.success) rollbackOk = false;
+        } else {
+          clearPersistedAssessment();
+        }
+      } catch {
+        rollbackOk = false;
+      }
+
+      // 5b. Rollback active workspace
+      try {
+        saveActiveWorkspace(previousActiveWs);
+      } catch {
+        rollbackOk = false;
+      }
+
+      // 5c. Rollback IndexedDB image
+      if (imageCommitted) {
+        try {
+          if (!isReusingId) {
+            const delOk = await deleteFloorplanImage(metadata.id);
+            if (!delOk) rollbackOk = false;
+          } else if (previousImageRecord) {
+            const restOk = await saveFloorplanImage(previousImageRecord);
+            if (!restOk) rollbackOk = false;
+          }
+        } catch {
+          rollbackOk = false;
+        }
+      }
+
+      // 5d. Verify rollback integrity
+      const currentPersistedAfterRollback = getPersistedAssessment();
+      const verifiedIntact = previousPersisted
+        ? currentPersistedAfterRollback?.metadata?.id === previousPersistedId
+        : currentPersistedAfterRollback === null;
+
+      if (!verifiedIntact) {
+        rollbackOk = false;
+      }
+
+      const err = rollbackOk
+        ? "Failed to persist active workspace selection. Previous assessment state has been preserved."
+        : "Failed to persist active workspace selection, and rollback of previous assessment failed. Storage may be in inconsistent state.";
+
       set({ storageStatus: "error", storageError: err });
-      return { success: false, error: err };
+      return { success: false, error: err, rollbackFailed: !rollbackOk };
     }
 
     // 6. Safe commit point reached! Both stores acknowledged durable writes.
-    // Now clean up previous user assessment media if ID changed
-    const previousId = get().assessmentId;
-    const previousType = get().assessmentType;
-    if (previousId && previousId !== metadata.id && previousType === "user") {
+    // Now clean up previous user assessment media if ID changed (derived from PERSISTED previous ID!)
+    if (previousPersistedId && previousPersistedId !== metadata.id) {
       try {
-        await deleteFloorplanImage(previousId);
-      } catch {}
+        const deletedOld = await deleteFloorplanImage(previousPersistedId);
+        if (!deletedOld) {
+          console.warn(`Previous assessment image (${previousPersistedId}) could not be cleaned up from IndexedDB.`);
+        }
+      } catch (err) {
+        console.warn(`Previous assessment image cleanup error:`, err);
+      }
     }
 
     // Revoke old URL and create new URL

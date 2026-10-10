@@ -6,6 +6,7 @@ import {
 import {
   clearPersistedAssessment,
   saveActiveWorkspace,
+  getPersistedAssessment,
   SAFESPACE_STORAGE_KEY,
 } from "./persistence";
 
@@ -33,28 +34,52 @@ function getLocalStorage(): Storage | null {
 /**
  * Authoritative coordinated deletion operation across both localStorage and IndexedDB.
  * Verifies that all user records are confirmed absent before reporting success.
- * If either store fails, reports partial failure and prevents false claims of personal data removal.
+ * If mandatory image cleanup is not verified, DOES NOT delete localStorage, ensuring
+ * recoverable retry across refresh.
+ * Honest support for manual-only data when IndexedDB is unavailable.
  */
 export async function coordinatedDeleteAssessment(assessmentId?: string): Promise<DeletionResult> {
+  const persisted = getPersistedAssessment();
+  const targetId = assessmentId || persisted?.metadata?.id;
+  const isExplicitManualOnly = persisted?.hasFloorplanImage === false;
+
   let mediaCleared = false;
-  let localStorageCleared = false;
 
-  // 1. Delete IndexedDB floorplan media
+  // 1. Delete IndexedDB floorplan media if applicable
   try {
-    let idDeleteOk = true;
-    if (assessmentId) {
-      idDeleteOk = await deleteFloorplanImage(assessmentId);
+    if (isExplicitManualOnly) {
+      // Geometry has no image: honest support for manual-only data with no nonexistent media to delete
+      mediaCleared = true;
+      try {
+        if (targetId) await deleteFloorplanImage(targetId);
+      } catch {}
+    } else {
+      const idDeleteOk = targetId ? await deleteFloorplanImage(targetId) : true;
+      const clearAllOk = await clearAllFloorplanImages();
+      const remaining = targetId ? await getFloorplanImage(targetId) : null;
+      mediaCleared = idDeleteOk && clearAllOk && remaining === null;
     }
-    const clearAllOk = await clearAllFloorplanImages();
-
-    // Verify absence
-    const remaining = assessmentId ? await getFloorplanImage(assessmentId) : null;
-    mediaCleared = remaining === null && idDeleteOk && clearAllOk;
   } catch {
-    mediaCleared = false;
+    if (isExplicitManualOnly) {
+      mediaCleared = true;
+    } else {
+      mediaCleared = false;
+    }
   }
 
-  // 2. Delete localStorage assessment state
+  // STOP: If mandatory image cleanup could not be verified, DO NOT delete localStorage!
+  // This preserves the only durable reference to personal floorplan media so the operator can retry deletion.
+  if (!mediaCleared) {
+    return {
+      success: false,
+      error: "Floorplan image could not be verified deleted from local database. Assessment retained in browser storage so you can retry deletion.",
+      localStorageCleared: false,
+      mediaCleared: false,
+    };
+  }
+
+  // 2. Delete localStorage assessment state ONLY after media is verified cleared
+  let localStorageCleared = false;
   try {
     const lsRes = clearPersistedAssessment();
     const storage = getLocalStorage();
@@ -79,14 +104,10 @@ export async function coordinatedDeleteAssessment(assessmentId?: string): Promis
     };
   }
 
-  const errors: string[] = [];
-  if (!mediaCleared) errors.push("Floorplan image could not be completely removed from local database");
-  if (!localStorageCleared) errors.push("Assessment layout could not be cleared from browser storage");
-
   return {
     success: false,
-    error: errors.join("; "),
-    localStorageCleared,
-    mediaCleared,
+    error: "Assessment layout could not be cleared from browser storage",
+    localStorageCleared: false,
+    mediaCleared: true,
   };
 }
