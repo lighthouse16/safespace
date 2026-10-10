@@ -12,6 +12,7 @@ const dom = new JSDOM("<!DOCTYPE html><html><body><div id='root'></div></body></
   url: "http://localhost:3000",
 });
 (globalThis as unknown as Record<string, unknown>).window = dom.window;
+(globalThis as unknown as Record<string, unknown>).self = dom.window;
 (globalThis as unknown as Record<string, unknown>).document = dom.window.document;
 (globalThis as unknown as Record<string, unknown>).localStorage = dom.window.localStorage;
 (globalThis as unknown as Record<string, unknown>).HTMLElement = dom.window.HTMLElement;
@@ -27,12 +28,14 @@ import {
   saveActiveWorkspace,
   loadActiveWorkspace,
   SAFESPACE_STORAGE_KEY,
+  SAFESPACE_ACTIVE_WORKSPACE_KEY,
   SAFESPACE_STORAGE_VERSION,
   type PersistedAssessmentState,
 } from "../src/lib/storage/persistence";
 import { AnalysisTransition } from "../src/components/workflow/AnalysisTransition";
 import { ReportModal } from "../src/components/workflow/ReportModal";
 import { MOBILITY_PROFILES } from "../src/lib/spatial-model";
+import AssessmentsPage from "../src/app/assessments/page";
 
 // Retired page components
 import RetiredAnalysisPage from "../src/app/assessments/queen-care-clinic/analysis/page";
@@ -176,74 +179,153 @@ test("Adversarial QA: Retired routes render truthful retirement notices and cano
   }
 });
 
-test("Adversarial QA: Static export in out/ contains clean 200 HTML files for all retired routes", () => {
-  const outDir = path.resolve(process.cwd(), "out");
-  assert.ok(fs.existsSync(outDir), "out/ directory exists");
-
-  const expectedHtmlFiles = [
-    "assessments/queen-care-clinic/analysis.html",
-    "assessments/queen-care-clinic/model.html",
-    "assessments/queen-care-clinic/options.html",
-    "assessments/queen-care-clinic/options/compare.html",
-    "assessments/queen-care-clinic/report.html",
-    "reports/queen-care-clinic.html",
-    "reviews.html",
-    "reviews/queen-care-clinic.html",
+test("Adversarial QA: Zero imports of legacy components or mock workflows from reachable app routes", () => {
+  const appDir = path.resolve(process.cwd(), "src/app");
+  const FORBIDDEN_IMPORT_PATTERNS = [
+    "@/components/analysis",
+    "@/components/options",
+    "@/components/report",
+    "@/components/review",
+    "components/analysis",
+    "components/options",
+    "components/report",
+    "components/review",
+    "risk-analysis",
+    "options-compare",
+    "assessment-report",
+    "review-workspace",
   ];
 
-  for (const relHtml of expectedHtmlFiles) {
-    const fullHtmlPath = path.join(outDir, relHtml);
-    assert.ok(fs.existsSync(fullHtmlPath), `Exported HTML exists: ${relHtml}`);
-    const content = fs.readFileSync(fullHtmlPath, "utf-8");
-    assert.ok(
-      content.includes("Legacy Route Retired"),
-      `Static file ${relHtml} must contain retirement badge`
+  function checkDir(dir: string): void {
+    const entries = fs.readdirSync(dir, { withFileTypes: true });
+    for (const entry of entries) {
+      const full = path.join(dir, entry.name);
+      if (entry.isDirectory()) {
+        checkDir(full);
+      } else if (entry.name.endsWith(".tsx") || entry.name.endsWith(".ts")) {
+        const text = fs.readFileSync(full, "utf-8");
+        for (const pattern of FORBIDDEN_IMPORT_PATTERNS) {
+          assert.ok(
+            !text.includes(pattern),
+            `Reachable route file ${path.relative(process.cwd(), full)} imports legacy component pattern "${pattern}"`
+          );
+        }
+      }
+    }
+  }
+  checkDir(appDir);
+});
+
+test("Adversarial QA: handleOpenDemoAssessment in AssessmentsPage fails closed when saveActiveWorkspace fails", async () => {
+  dom.window.localStorage.clear();
+  const userAssessment = createValidTestAssessment();
+  const saveRes = savePersistedAssessment(userAssessment);
+  assert.equal(saveRes.success, true);
+  saveActiveWorkspace("user");
+
+  const container = dom.window.document.createElement("div");
+  dom.window.document.body.appendChild(container);
+  const root = createRoot(container);
+
+  await act(async () => {
+    root.render(React.createElement(AssessmentsPage));
+  });
+
+  const originalProtoSetItem = dom.window.Storage.prototype.setItem;
+  dom.window.Storage.prototype.setItem = function (this: Storage, key: string, value: string) {
+    if (key === SAFESPACE_ACTIVE_WORKSPACE_KEY) {
+      throw new Error("QuotaExceededError: simulated storage write error");
+    }
+    return originalProtoSetItem.call(this, key, value);
+  };
+
+  try {
+    const links = Array.from(container.querySelectorAll("a"));
+    const demoLink = links.find((l) => l.textContent?.includes("Open demo"));
+    assert.ok(demoLink, "Demo link must exist in AssessmentsPage");
+
+    const clickEvent = new dom.window.MouseEvent("click", {
+      bubbles: true,
+      cancelable: true,
+    });
+
+    await act(async () => {
+      demoLink.dispatchEvent(clickEvent);
+    });
+
+    // 1. Navigation must be prevented
+    assert.equal(clickEvent.defaultPrevented, true, "clickEvent must be defaultPrevented on storage write failure");
+
+    // 2. Visible error must be rendered in role=alert
+    const alerts = Array.from(container.querySelectorAll("[role='alert']"));
+    const hasExpectedError = alerts.some((a) =>
+      a.textContent?.includes("Failed to switch workspace: storage write failed")
     );
-    assert.ok(
-      content.includes('href="/"'),
-      `Static file ${relHtml} must contain link to canonical root '/'`
-    );
-    assert.ok(
-      content.includes('href="/assessments"'),
-      `Static file ${relHtml} must contain link to '/assessments'`
-    );
+    assert.ok(hasExpectedError, "Error alert must be visible on storage failure");
+
+    // 3. User assessment in localStorage must NOT be deleted or corrupted
+    const stored = loadPersistedAssessment();
+    assert.equal(stored.success, true);
+    if (stored.success) {
+      assert.equal(stored.data.metadata?.facilityName, "Sunrise Senior Living");
+    }
+  } finally {
+    dom.window.Storage.prototype.setItem = originalProtoSetItem;
+    await act(async () => {
+      root.unmount();
+    });
+    container.remove();
+  }
+});
+
+test("Adversarial QA: handleOpenDemoAssessment in AssessmentsPage switches active workspace when storage succeeds", async () => {
+  dom.window.localStorage.clear();
+  const userAssessment = createValidTestAssessment();
+  savePersistedAssessment(userAssessment);
+  saveActiveWorkspace("user");
+
+  const container = dom.window.document.createElement("div");
+  dom.window.document.body.appendChild(container);
+  const root = createRoot(container);
+
+  await act(async () => {
+    root.render(React.createElement(AssessmentsPage));
+  });
+
+  try {
+    const links = Array.from(container.querySelectorAll("a"));
+    const demoLink = links.find((l) => l.textContent?.includes("Open demo"));
+    assert.ok(demoLink, "Demo link must exist in AssessmentsPage");
+
+    const clickEvent = new dom.window.MouseEvent("click", {
+      bubbles: true,
+      cancelable: true,
+    });
+
+    await act(async () => {
+      demoLink.dispatchEvent(clickEvent);
+    });
+
+    assert.equal(clickEvent.defaultPrevented, false, "clickEvent must NOT be defaultPrevented on success");
+    assert.equal(loadActiveWorkspace(), "demo", "Active workspace must switch to demo");
+    assert.equal(useSafeSpaceStore.getState().assessmentType, "demo");
+
+    const stored = loadPersistedAssessment();
+    assert.equal(stored.success, true);
+    if (stored.success) {
+      assert.equal(stored.data.metadata?.facilityName, "Sunrise Senior Living");
+    }
+  } finally {
+    await act(async () => {
+      root.unmount();
+    });
+    container.remove();
   }
 });
 
 // ---------------------------------------------------------------------------
 // 2. Zero Fabricated Risk Scores, Lux Readings, Quotes, or Clinician Sign-Offs
 // ---------------------------------------------------------------------------
-
-test("Adversarial QA: Zero fabricated markers in static export out/ directory", () => {
-  const outDir = path.resolve(process.cwd(), "out");
-  function scanDir(dir: string): void {
-    const entries = fs.readdirSync(dir, { withFileTypes: true });
-    for (const entry of entries) {
-      const full = path.join(dir, entry.name);
-      if (entry.isDirectory()) {
-        scanDir(full);
-      } else if (entry.name.endsWith(".html") || entry.name.endsWith(".txt")) {
-        const text = fs.readFileSync(full, "utf-8");
-        for (const marker of FABRICATED_MARKERS) {
-          assert.ok(
-            !text.includes(marker),
-            `Fabricated marker "${marker}" found in exported file ${path.relative(outDir, full)}`
-          );
-        }
-        // Check for fabricated hardcoded risk scores as standalone metrics
-        assert.ok(
-          !text.includes("68/27"),
-          `Fabricated risk fraction 68/27 found in ${entry.name}`
-        );
-        assert.ok(
-          !text.includes("Risk Score: 68") && !text.includes("Risk Score: 39") && !text.includes("Risk Score: 18"),
-          `Fabricated risk score label found in ${entry.name}`
-        );
-      }
-    }
-  }
-  scanDir(outDir);
-});
 
 test("Adversarial QA: Zero fabricated markers in retired components markup", () => {
   for (const { name, comp } of RETIRED_COMPONENTS) {
@@ -462,15 +544,15 @@ test("Adversarial QA: ReportModal renders truthful data without fabricated sign-
   useSafeSpaceStore.getState().resetToDemo();
   useSafeSpaceStore.setState({ reportModalOpen: true });
 
-  const rootEl = dom.window.document.getElementById("root")!;
-  rootEl.innerHTML = "";
-  const root = createRoot(rootEl);
+  const container = dom.window.document.createElement("div");
+  dom.window.document.body.appendChild(container);
+  const root = createRoot(container);
 
   await act(async () => {
     root.render(React.createElement(ReportModal));
   });
 
-  const html = rootEl.innerHTML;
+  const html = container.innerHTML;
   assert.ok(html.length > 0, "ReportModal renders markup in DOM");
 
   // Must NOT include fabricated markers
@@ -490,6 +572,6 @@ test("Adversarial QA: ReportModal renders truthful data without fabricated sign-
   await act(async () => {
     root.unmount();
   });
-  rootEl.innerHTML = "";
+  container.remove();
   useSafeSpaceStore.setState({ reportModalOpen: false });
 });

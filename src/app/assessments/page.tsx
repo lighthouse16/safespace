@@ -41,9 +41,14 @@ export default function AssessmentsPage() {
     hydrateFromStorage();
   };
 
-  const handleOpenDemoAssessment = (stage: WorkflowStage = "layout") => {
+  const handleOpenDemoAssessment = (e: React.MouseEvent, stage: WorkflowStage = "layout") => {
     setOpenError(null);
-    saveActiveWorkspace("demo");
+    const ok = saveActiveWorkspace("demo");
+    if (!ok) {
+      e.preventDefault();
+      setOpenError("Failed to switch workspace: storage write failed. Your saved assessment remains safe.");
+      return;
+    }
     resetToDemo(stage);
   };
 
@@ -253,6 +258,12 @@ export default function AssessmentsPage() {
             </span>
           </div>
 
+          {openError && (
+            <div role="alert" className="p-3 rounded-lg bg-red-50 border border-red-200 text-xs text-red-700">
+              {openError}
+            </div>
+          )}
+
           <div className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-xs">
             <div className="p-5 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
               <div className="space-y-1">
@@ -275,14 +286,14 @@ export default function AssessmentsPage() {
               <div className="flex items-center gap-3 shrink-0">
                 <Link
                   href="/"
-                  onClick={() => handleOpenDemoAssessment("analysis")}
+                  onClick={(e) => handleOpenDemoAssessment(e, "analysis")}
                   className="rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-50 transition cursor-pointer"
                 >
                   View analysis demo
                 </Link>
                 <Link
                   href="/"
-                  onClick={() => handleOpenDemoAssessment("layout")}
+                  onClick={(e) => handleOpenDemoAssessment(e, "layout")}
                   className="rounded-lg bg-[#1e7168] px-3.5 py-1.5 text-xs font-semibold text-white hover:bg-[#175b54] transition cursor-pointer"
                 >
                   Open demo &rarr;
