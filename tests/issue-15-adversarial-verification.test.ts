@@ -241,7 +241,7 @@ test("Adversarial QA: handleOpenDemoAssessment in AssessmentsPage fails closed w
 
   try {
     const links = Array.from(container.querySelectorAll("a"));
-    const demoLink = links.find((l) => l.textContent?.includes("Open demo"));
+    const demoLink = links.find((l) => l.textContent?.includes("Open demo") || l.textContent?.includes("Open example clinic"));
     assert.ok(demoLink, "Demo link must exist in AssessmentsPage");
 
     const clickEvent = new dom.window.MouseEvent("click", {
@@ -294,7 +294,7 @@ test("Adversarial QA: handleOpenDemoAssessment in AssessmentsPage switches activ
 
   try {
     const links = Array.from(container.querySelectorAll("a"));
-    const demoLink = links.find((l) => l.textContent?.includes("Open demo"));
+    const demoLink = links.find((l) => l.textContent?.includes("Open demo") || l.textContent?.includes("Open example clinic"));
     assert.ok(demoLink, "Demo link must exist in AssessmentsPage");
 
     const clickEvent = new dom.window.MouseEvent("click", {

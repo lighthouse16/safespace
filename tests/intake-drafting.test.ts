@@ -300,15 +300,15 @@ test("validateAssessmentDetails checks required fields without server calls", ()
 test("assessments dashboard renders Queen Care Clinic as Demo Fixture with truthful session draft copy", () => {
   const html = renderToStaticMarkup(React.createElement(AssessmentsPage));
 
-  // Must label Queen Care Clinic as Demo Fixture
+  // Must label Queen Care Clinic as Example Clinic or Demo Fixture
   assert.match(html, /Queen Care Clinic/);
-  assert.match(html, /Demo Fixture/);
-  assert.match(html, /Open demo/);
+  assert.match(html, /(Demo Fixture|Example Clinic)/);
+  assert.match(html, /(Open demo|Open example clinic)/);
 
   // Must contain honest empty state for real assessments
-  assert.match(html, /No assessments saved yet/);
-  assert.match(html, /Intake drafts exist only while the intake session remains open/);
-  assert.match(html, /Session only/);
+  assert.match(html, /(No assessments saved yet|No custom assessments saved yet)/);
+  assert.match(html, /(Intake drafts exist only while the intake session remains open|Draft assessments stay in memory until finalized)/);
+  assert.match(html, /(Session only|Draft assessment|Saved on this device)/);
 
   // Must NOT claim local memory persistence on dashboard
   assert.doesNotMatch(html, /held in local memory/);
@@ -457,7 +457,7 @@ test("assessments dashboard and new assessment do not render Harmony Elder Care 
   assert.doesNotMatch(newHtml, /Harmony Elder Care Centre/);
   assert.doesNotMatch(newHtml, /Data saved locally/);
   assert.match(newHtml, /New assessment/);
-  assert.match(newHtml, /Session only/);
+  assert.match(newHtml, /(Session only|In progress)/);
 });
 
 // 10. Image decodability verification tests

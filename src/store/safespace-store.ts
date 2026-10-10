@@ -472,13 +472,27 @@ export const useSafeSpaceStore = create<SafeSpaceState>((set, get) => ({
     };
 
     const def = categoryDefaults[category] || { w: 60, d: 60, h: 75, name: "Item" };
+    let posX = 240;
+    let posY = 200;
+
+    if (canonicalBoundary && canonicalBoundary.length >= 3) {
+      const refPoints = furniture.map((f) => ({ x: f.x, y: f.y }));
+      const interiorPt =
+        findInteriorProvisionalPoint(canonicalBoundary, "intermediate", refPoints) ||
+        findInteriorProvisionalPoint(canonicalBoundary, "start");
+      if (interiorPt) {
+        posX = interiorPt.x;
+        posY = interiorPt.y;
+      }
+    }
+
     const newItem: SpatialFurniture = {
       id,
       name: def.name,
       category,
       roomId: canonicalBoundary ? "user-space" : rooms[0]?.id || "room-1",
-      x: 240,
-      y: 200,
+      x: posX,
+      y: posY,
       width: def.w,
       depth: def.d,
       height: def.h,

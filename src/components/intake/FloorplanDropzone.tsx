@@ -206,7 +206,7 @@ export function FloorplanDropzone({
           </Button>
 
           <div className="mt-4 text-[11px] text-[#94a3b8]">
-            Selected file stays in your browser session only. No file is sent to any remote server.
+            Selected file stays on this device. No file is sent to external servers.
           </div>
         </div>
       ) : (
@@ -222,7 +222,7 @@ export function FloorplanDropzone({
                 </span>
               </div>
               <div className="mt-0.5 text-[11px] text-[#64748b]">
-                {formatFileSize(currentFile.size)} · In-browser session only
+                {formatFileSize(currentFile.size)} · Kept on this device
               </div>
             </div>
 

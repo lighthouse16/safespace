@@ -194,15 +194,15 @@ export function Stage5Improve() {
       <div className="h-10 bg-white border-b border-[#e2e8e4] px-3.5 flex items-center justify-between shrink-0 select-none z-10">
         <div className="flex items-center gap-2">
           <span className="text-xs font-semibold text-[#1e7168]">
-            {isAppliedReviewMode ? "Improve Layout · Applied Layout Review" : "Improve Layout · Alternative Proposals"}
+            {isAppliedReviewMode ? "Applied Layout Review" : "Layout Improvement Options"}
           </span>
           <span className="text-slate-300">/</span>
           <span className="text-xs text-slate-500">
             {isAppliedReviewMode
-              ? "Reviewing Applied Alternative (Draft)"
+              ? "Reviewing Applied Alternative"
               : isUserAssessment
               ? assessmentMetadata?.facilityName || "Custom Assessment"
-              : "Queen Care Clinic Fixture"}
+              : "Example Clinic"}
           </span>
         </div>
 
@@ -210,6 +210,7 @@ export function Stage5Improve() {
           {/* View Mode Toggle */}
           <div className="hidden sm:flex items-center bg-slate-100 rounded p-0.5 border border-slate-200">
             <button
+              type="button"
               onClick={() => setViewMode("side-by-side")}
               className={`px-2 py-0.5 text-[11px] font-medium rounded transition cursor-pointer ${
                 viewMode === "side-by-side"
@@ -220,6 +221,7 @@ export function Stage5Improve() {
               Side-by-Side
             </button>
             <button
+              type="button"
               onClick={() => setViewMode("before")}
               className={`px-2 py-0.5 text-[11px] font-medium rounded transition cursor-pointer ${
                 viewMode === "before"
@@ -230,6 +232,7 @@ export function Stage5Improve() {
               Before Only
             </button>
             <button
+              type="button"
               onClick={() => setViewMode("proposed")}
               className={`px-2 py-0.5 text-[11px] font-medium rounded transition cursor-pointer ${
                 viewMode === "proposed"
@@ -242,6 +245,7 @@ export function Stage5Improve() {
           </div>
 
           <button
+            type="button"
             onClick={() => setReportModalOpen(true)}
             className="px-2.5 py-1 rounded bg-[#1e7168] text-white text-xs font-semibold hover:bg-[#175b54] transition cursor-pointer flex items-center gap-1 shadow-xs"
           >
@@ -262,18 +266,19 @@ export function Stage5Improve() {
                 <span>Applied Layout Review</span>
               </span>
               <span className="text-xs text-slate-600 truncate">
-                Pre-apply baseline is preserved for comparison and rollback. Proposal generation paused.
+                Original layout is saved. You can compare changes or revert at any time.
               </span>
             </div>
 
             <div className="flex items-center gap-2 shrink-0">
               <button
+                type="button"
                 onClick={handleRevert}
                 className="px-3 py-1.5 rounded-lg bg-white border border-slate-300 text-slate-800 text-xs font-semibold hover:bg-slate-50 transition cursor-pointer flex items-center gap-1.5 shadow-xs"
-                title="Revert to pre-optimization layout baseline"
+                title="Revert to original layout"
               >
                 <RotateCcw className="w-3.5 h-3.5 text-slate-600" />
-                <span>Revert to Original Baseline</span>
+                <span>Revert to Original Layout</span>
               </button>
             </div>
           </div>

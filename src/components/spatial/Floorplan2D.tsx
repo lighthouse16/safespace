@@ -313,11 +313,37 @@ export function Floorplan2D({
         }
       } else if (e.key.toLowerCase() === "r" && selectedFurnitureId && !readOnly) {
         rotateFurniture(selectedFurnitureId);
+      } else if (selectedFurnitureId && !readOnly && ["ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight"].includes(e.key)) {
+        const item = furniture.find((f) => f.id === selectedFurnitureId);
+        if (item && !item.isFixed) {
+          e.preventDefault();
+          const step = e.shiftKey ? 10 : 2;
+          let dx = 0;
+          let dy = 0;
+          if (e.key === "ArrowUp") dy = -step;
+          if (e.key === "ArrowDown") dy = step;
+          if (e.key === "ArrowLeft") dx = -step;
+          if (e.key === "ArrowRight") dx = step;
+          handleMove(selectedFurnitureId, Math.round(item.x + dx), Math.round(item.y + dy));
+        }
+      } else if (selectedWaypointId && stage === "routes" && !readOnly && ["ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight"].includes(e.key)) {
+        const pt = routeWaypoints.find((w) => w.id === selectedWaypointId);
+        if (pt) {
+          e.preventDefault();
+          const step = e.shiftKey ? 10 : 2;
+          let dx = 0;
+          let dy = 0;
+          if (e.key === "ArrowUp") dy = -step;
+          if (e.key === "ArrowDown") dy = step;
+          if (e.key === "ArrowLeft") dx = -step;
+          if (e.key === "ArrowRight") dx = step;
+          moveRouteWaypoint(selectedWaypointId, Math.round(pt.x + dx), Math.round(pt.y + dy));
+        }
       }
     };
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [selectedFurnitureId, furniture, readOnly, rotateFurniture, deleteFurniture, selectFurniture, selectHazard, selectWaypoint]);
+  }, [selectedFurnitureId, furniture, readOnly, rotateFurniture, deleteFurniture, selectFurniture, selectHazard, selectWaypoint, selectedWaypointId, stage, routeWaypoints, moveRouteWaypoint, handleMove]);
 
   return (
     <div
@@ -332,24 +358,30 @@ export function Floorplan2D({
         </span>
         <span className="text-[#a4b2ad]">|</span>
         <button
+          type="button"
+          aria-label="Toggle grid visibility"
           onClick={() => setShowGrid((v) => !v)}
-          className={`px-1.5 py-0.5 rounded transition ${
+          className={`min-h-[28px] px-2 py-0.5 rounded transition flex items-center text-xs ${
             showGrid ? "bg-[#e8f3f1] text-[#1e7168] font-medium" : "text-[#627571] hover:bg-slate-100"
           }`}
         >
           Grid
         </button>
         <button
+          type="button"
+          aria-label="Toggle snap to grid"
           onClick={() => setSnapToGrid((v) => !v)}
-          className={`px-1.5 py-0.5 rounded transition ${
+          className={`min-h-[28px] px-2 py-0.5 rounded transition flex items-center text-xs ${
             snapToGrid ? "bg-[#e8f3f1] text-[#1e7168] font-medium" : "text-[#627571] hover:bg-slate-100"
           }`}
         >
           Snap
         </button>
         <button
+          type="button"
+          aria-label="Toggle dimension indicators"
           onClick={() => setShowDimensions((v) => !v)}
-          className={`px-1.5 py-0.5 rounded transition ${
+          className={`min-h-[28px] px-2 py-0.5 rounded transition flex items-center text-xs ${
             showDimensions ? "bg-[#e8f3f1] text-[#1e7168] font-medium" : "text-[#627571] hover:bg-slate-100"
           }`}
         >
@@ -360,8 +392,10 @@ export function Floorplan2D({
       {/* Floating Zoom / Fit Controls */}
       <div className="absolute bottom-2.5 right-2.5 z-10 flex items-center gap-1 bg-white/95 backdrop-blur-sm border border-[#e2e8e4] p-1 rounded">
         <button
+          type="button"
           onClick={handleZoomIn}
-          className="p-1 text-[#4a5e59] hover:text-[#1e7168] hover:bg-slate-100 rounded transition"
+          aria-label="Zoom in"
+          className="min-h-[28px] min-w-[28px] flex items-center justify-center p-1 text-[#4a5e59] hover:text-[#1e7168] hover:bg-slate-100 rounded transition"
         >
           <ZoomIn className="w-3.5 h-3.5" />
         </button>
@@ -369,14 +403,18 @@ export function Floorplan2D({
           {Math.round(zoom * 100)}%
         </span>
         <button
+          type="button"
           onClick={handleZoomOut}
-          className="p-1 text-[#4a5e59] hover:text-[#1e7168] hover:bg-slate-100 rounded transition"
+          aria-label="Zoom out"
+          className="min-h-[28px] min-w-[28px] flex items-center justify-center p-1 text-[#4a5e59] hover:text-[#1e7168] hover:bg-slate-100 rounded transition"
         >
           <ZoomOut className="w-3.5 h-3.5" />
         </button>
         <button
+          type="button"
           onClick={handleFitView}
-          className="p-1 text-[#4a5e59] hover:text-[#1e7168] hover:bg-slate-100 rounded transition"
+          aria-label="Fit view to room"
+          className="min-h-[28px] min-w-[28px] flex items-center justify-center p-1 text-[#4a5e59] hover:text-[#1e7168] hover:bg-slate-100 rounded transition"
         >
           <Maximize2 className="w-3.5 h-3.5" />
         </button>
@@ -625,7 +663,12 @@ export function Floorplan2D({
                 return (
                   <g
                     key={`wp-${pt.id}`}
-                    className={stage === "routes" ? "cursor-move" : "cursor-pointer"}
+                    tabIndex={stage === "routes" && !readOnly ? 0 : undefined}
+                    role={stage === "routes" ? "button" : undefined}
+                    aria-label={`Route checkpoint ${i + 1}: ${pt.name}${isSelected ? ", selected" : ""}`}
+                    aria-pressed={stage === "routes" ? isSelected : undefined}
+                    onFocus={() => selectWaypoint(pt.id)}
+                    className={stage === "routes" ? "cursor-move outline-none" : "cursor-pointer"}
                     onMouseDown={(e) => startDragWaypoint(e, pt)}
                     onMouseEnter={() => setHoveredWaypointId(pt.id)}
                     onMouseLeave={() => setHoveredWaypointId(null)}
@@ -779,8 +822,13 @@ export function Floorplan2D({
             return (
               <g
                 key={item.id}
+                tabIndex={readOnly ? undefined : 0}
+                role="button"
+                aria-label={`${item.name} (${item.code || item.id}), ${item.width} by ${item.depth} centimeters${isSelected ? ", selected" : ""}`}
+                aria-pressed={isSelected}
+                onFocus={() => selectFurniture(item.id)}
                 transform={`translate(${item.x}, ${item.y}) rotate(${item.rotation || 0}, ${item.width / 2}, ${item.depth / 2})`}
-                className={`transition-all duration-100 ${
+                className={`transition-all duration-100 outline-none focus:outline-none ${
                   item.isFixed ? "cursor-not-allowed" : "cursor-move"
                 }`}
                 opacity={opacity}

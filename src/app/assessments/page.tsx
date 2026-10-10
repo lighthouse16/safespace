@@ -127,7 +127,7 @@ export default function AssessmentsPage() {
                       {savedAssessment.metadata?.facilityName || "Custom Facility"}
                     </span>
                     <span className="rounded bg-emerald-50 px-2 py-0.5 text-[10px] font-semibold text-emerald-800 border border-emerald-200">
-                      User Assessment
+                      Saved Assessment
                     </span>
                     <span className="text-slate-400 text-xs">·</span>
                     <span className="text-xs font-medium text-slate-600">
@@ -135,7 +135,7 @@ export default function AssessmentsPage() {
                     </span>
                   </div>
                   <p className="text-xs text-slate-600">
-                    Boundary: {savedAssessment.canonicalBoundary?.length ?? 0} vertices · Scale: {savedAssessment.calibration?.pixelsPerCm.toFixed(2)} px/cm
+                    Room perimeter: {savedAssessment.canonicalBoundary?.length ?? 0} boundary points · Calibrated ({savedAssessment.calibration?.pixelsPerCm.toFixed(1)} px/cm)
                   </p>
                   <p className="text-[11px] text-slate-400">
                     Saved: {savedAssessment.metadata?.updatedAt ? new Date(savedAssessment.metadata.updatedAt).toLocaleString() : "Recently"}
@@ -175,14 +175,17 @@ export default function AssessmentsPage() {
                 role="dialog"
                 aria-modal="true"
                 aria-labelledby="delete-dialog-title"
+                onKeyDown={(e) => {
+                  if (e.key === "Escape") setShowDeleteConfirm(false);
+                }}
                 className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-xs p-4"
               >
                 <div className="bg-white rounded-xl shadow-2xl border border-slate-200 max-w-md w-full p-6 space-y-4">
                   <h3 id="delete-dialog-title" className="text-base font-bold text-slate-900">
-                    Delete Confirmed Assessment?
+                    Delete Saved Assessment?
                   </h3>
                   <p className="text-xs text-slate-600 leading-relaxed">
-                    This will permanently delete your confirmed assessment from browser storage. This action cannot be undone.
+                    This will permanently delete this room assessment from your device. This action cannot be undone.
                   </p>
                   {deleteError && (
                     <div role="alert" className="p-2.5 rounded bg-red-50 border border-red-200 text-xs text-red-700">
@@ -192,15 +195,16 @@ export default function AssessmentsPage() {
                   <div className="flex items-center justify-end gap-2 pt-2">
                     <button
                       type="button"
+                      autoFocus
                       onClick={() => setShowDeleteConfirm(false)}
-                      className="px-3 py-1.5 rounded-lg border border-slate-300 text-xs font-semibold text-slate-700 hover:bg-slate-50 transition cursor-pointer"
+                      className="px-3 py-1.5 rounded-lg border border-slate-300 text-xs font-semibold text-slate-700 hover:bg-slate-50 transition cursor-pointer focus-visible:outline focus-visible:outline-2 focus-visible:outline-[#1e7168]"
                     >
                       Cancel
                     </button>
                     <button
                       type="button"
                       onClick={handleConfirmDelete}
-                      className="px-3.5 py-1.5 rounded-lg bg-red-600 hover:bg-red-700 text-xs font-semibold text-white transition cursor-pointer"
+                      className="px-3.5 py-1.5 rounded-lg bg-red-600 hover:bg-red-700 text-xs font-semibold text-white transition cursor-pointer focus-visible:outline focus-visible:outline-2 focus-visible:outline-red-600"
                     >
                       Delete Assessment
                     </button>
@@ -228,10 +232,10 @@ export default function AssessmentsPage() {
               </svg>
             </div>
             <h2 className="mt-3 text-sm font-semibold text-[#192329]">
-              No assessments saved yet
+              No custom assessments saved yet
             </h2>
             <p className="mt-1 text-xs text-[#64748b] max-w-md mx-auto">
-              Intake drafts exist only while the intake session remains open (Session only); leaving or refreshing discards unsaved session state until canonical project storage is connected.
+              Draft assessments stay in memory until finalized. Start a new assessment to measure your space and save it to this device.
             </p>
             <div className="mt-4">
               <Link
@@ -244,17 +248,17 @@ export default function AssessmentsPage() {
           </div>
         )}
 
-        {/* Labelled Demo Fixture Section */}
+        {/* Labelled Example Clinic Section */}
         <section aria-labelledby="demo-fixtures-heading" className="space-y-3">
           <div className="flex items-center justify-between">
             <h2
               id="demo-fixtures-heading"
-              className="text-xs font-semibold uppercase tracking-wider text-slate-400"
+              className="text-xs font-semibold uppercase tracking-wider text-slate-500"
             >
-              Pre-Configured Demo Fixture
+              Example Clinic Scenario
             </h2>
             <span className="text-[11px] text-slate-500">
-              Interactive sample scenario
+              Explore a sample room layout and clearance audit
             </span>
           </div>
 
@@ -271,8 +275,8 @@ export default function AssessmentsPage() {
                   <span className="font-semibold text-sm text-[#192329]">
                     Queen Care Clinic
                   </span>
-                  <span className="rounded bg-amber-50 px-2 py-0.5 text-[10px] font-semibold text-amber-800 border border-amber-200">
-                    Demo Fixture
+                  <span className="rounded bg-teal-50 px-2 py-0.5 text-[10px] font-semibold text-teal-800 border border-teal-200">
+                    Example Clinic
                   </span>
                 </div>
                 <p className="text-xs text-slate-600">
@@ -289,14 +293,14 @@ export default function AssessmentsPage() {
                   onClick={(e) => handleOpenDemoAssessment(e, "analysis")}
                   className="rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-50 transition cursor-pointer"
                 >
-                  View analysis demo
+                  View sample analysis
                 </Link>
                 <Link
                   href="/"
                   onClick={(e) => handleOpenDemoAssessment(e, "layout")}
                   className="rounded-lg bg-[#1e7168] px-3.5 py-1.5 text-xs font-semibold text-white hover:bg-[#175b54] transition cursor-pointer"
                 >
-                  Open demo &rarr;
+                  Open example clinic &rarr;
                 </Link>
               </div>
             </div>
