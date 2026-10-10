@@ -18,6 +18,7 @@ import {
   SAFESPACE_ACTIVE_WORKSPACE_KEY,
 } from '../src/lib/storage/persistence';
 import { useSafeSpaceStore } from '../src/store/safespace-store';
+import { computeSceneFingerprint } from '../src/lib/spatial/optimization/optimizer';
 
 interface MockRecord {
   assessmentId: string;
@@ -54,6 +55,7 @@ class MockIDBDatabase {
   closeCalls = 0;
   stores = new Map<string, Map<string, MockRecord>>();
   failNextTx: 'error' | 'abort' | null = null;
+  failOnDeleteId: string | null = null;
 
   objectStoreNames = {
     contains: (name: string) => this.stores.has(name),
@@ -128,6 +130,11 @@ class MockIDBDatabase {
           return req;
         },
         delete: (key: string) => {
+          if (this.failOnDeleteId && key === this.failOnDeleteId) {
+            this.failOnDeleteId = null;
+            setTimeout(() => tx.onerror?.(), 0);
+            return;
+          }
           dataStore.delete(key);
           setTimeout(() => tx.oncomplete?.(), 0);
         },
@@ -939,5 +946,287 @@ test('Adversarial Storage P0-3: honest support for manual-only data when Indexed
   assert.equal(delRes.localStorageCleared, true);
   assert.equal(delRes.mediaCleared, true);
   assert.equal(globalThis.localStorage.getItem(SAFESPACE_STORAGE_KEY), null);
+});
+
+test('Media Provenance Regression: upload -> edit furniture -> apply/revert -> reload -> blocked IDB retains localStorage -> healthy IDB deletes both', async () => {
+  const dummyFile = new File(['provenance-test-image-bytes'], 'floorplan.png', { type: 'image/png' });
+  const store = useSafeSpaceStore.getState();
+
+  // 1. Upload image and create user assessment
+  const createRes = await store.createAndLoadUserAssessment({
+    metadata: {
+      id: 'prov-flow-space',
+      name: 'Provenance Flow Clinic',
+      facilityName: 'St. Jude Rehabilitation',
+      spaceName: 'Suite A',
+      environmentType: 'clinic',
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    },
+    boundaryCm: [
+      { x: 0, y: 0 },
+      { x: 500, y: 0 },
+      { x: 500, y: 400 },
+      { x: 0, y: 400 },
+    ],
+    calibration: {
+      pixelsPerCm: 1.0,
+      realLength: 500,
+      unit: 'cm',
+      pixelDistance: 500,
+      originPolicy: 'canvas-origin-0-0',
+    },
+    imageFile: dummyFile,
+  });
+
+  assert.equal(createRes.success, true);
+  assert.equal(useSafeSpaceStore.getState().hasFloorplanImage, true, 'Store state must reflect imported media provenance');
+
+  let persisted = getPersistedAssessment();
+  assert.equal(persisted?.hasFloorplanImage, true, 'Initial persisted payload must retain hasFloorplanImage === true');
+  assert.ok((await getFloorplanImage('prov-flow-space')) !== null, 'Image must be committed in IndexedDB');
+
+  // 2. Edit furniture (triggers persistUserMutation)
+  useSafeSpaceStore.getState().addFurniture('table');
+  const addedFurniture = useSafeSpaceStore.getState().furniture;
+  assert.ok(addedFurniture.length > 0, 'Furniture should be added');
+  const tableItem = addedFurniture[0];
+
+  persisted = getPersistedAssessment();
+  assert.equal(persisted?.hasFloorplanImage, true, 'Provenance must survive furniture edit');
+  assert.equal(useSafeSpaceStore.getState().hasFloorplanImage, true);
+
+  // 3. Edit mobility profile & route (triggers persistUserMutation)
+  useSafeSpaceStore.getState().setProfile('wheelchair');
+  persisted = getPersistedAssessment();
+  assert.equal(persisted?.hasFloorplanImage, true, 'Provenance must survive profile edit');
+
+  useSafeSpaceStore.getState().addRouteWaypoint('Waypoint 1', 20, 20);
+  persisted = getPersistedAssessment();
+  assert.equal(persisted?.hasFloorplanImage, true, 'Provenance must survive route edit');
+
+  // 4. Apply layout candidate (Stage 5)
+  const stateBeforeOpt = useSafeSpaceStore.getState();
+  const currentFingerprint = computeSceneFingerprint({
+    furniture: stateBeforeOpt.furniture,
+    waypoints: stateBeforeOpt.routeWaypoints,
+    boundary: stateBeforeOpt.canonicalBoundary,
+    rooms: stateBeforeOpt.rooms,
+    walls: stateBeforeOpt.walls,
+    doors: stateBeforeOpt.doors,
+    profile: stateBeforeOpt.activeProfile,
+  });
+
+  const candidate = {
+    id: 'cand-prov-1',
+    name: 'Option 1',
+    description: 'Move Table 20cm',
+    strategy: 'minimal_displacement' as const,
+    moves: [],
+    moveCount: 1,
+    totalDisplacementCm: 20,
+    furniture: [{ ...tableItem, x: tableItem.x + 20 }],
+    routeResult: {} as unknown as import('../src/lib/spatial/routing/types').RouteResult,
+    evaluation: {} as unknown as import('../src/lib/spatial/analysis/types').SpatialEvaluationResult,
+    metrics: {} as unknown as import('../src/lib/spatial/optimization/types').LayoutCandidateMetrics,
+  };
+
+  useSafeSpaceStore.setState({
+    activeOptimizationResult: {
+      status: 'improved',
+      candidates: [candidate],
+      baselineEvaluation: {} as unknown as import('../src/lib/spatial/analysis/types').SpatialEvaluationResult,
+      baselineRouteResult: null,
+      message: 'Improved layout found',
+      movableFurnitureCount: 1,
+      unmovableFurnitureCount: 0,
+      sceneFingerprint: currentFingerprint,
+      computeBudget: { maxEvaluations: 10, evaluatedCount: 1, prunedCount: 0, budgetExhausted: false },
+    },
+  });
+
+  const applyRes = useSafeSpaceStore.getState().applyLayoutCandidate('cand-prov-1');
+  assert.equal(applyRes.success, true);
+  persisted = getPersistedAssessment();
+  assert.equal(persisted?.hasFloorplanImage, true, 'Provenance must survive Apply candidate');
+
+  // 5. Revert layout candidate
+  const revertRes = useSafeSpaceStore.getState().revertLayoutCandidate();
+  assert.equal(revertRes.success, true);
+  persisted = getPersistedAssessment();
+  assert.equal(persisted?.hasFloorplanImage, true, 'Provenance must survive Revert candidate');
+
+  // 6. Hard reload (reset in-memory store and hydrate from storage)
+  useSafeSpaceStore.getState().resetToDemo();
+  assert.equal(useSafeSpaceStore.getState().assessmentType, 'demo');
+
+  useSafeSpaceStore.getState().hydrateFromStorage();
+  assert.equal(useSafeSpaceStore.getState().assessmentType, 'user');
+  assert.equal(useSafeSpaceStore.getState().assessmentId, 'prov-flow-space');
+  assert.equal(useSafeSpaceStore.getState().hasFloorplanImage, true, 'Hydrated state must retain hasFloorplanImage === true');
+
+  // Await background async getFloorplanImage triggered by hydration to complete
+  await new Promise((r) => setTimeout(r, 50));
+
+  // 7. Block IndexedDB deletion
+  mockDbInstance.failNextTx = 'error';
+
+  // 8. Attempt Delete while IndexedDB is blocked
+  const failedDelRes = await coordinatedDeleteAssessment('prov-flow-space');
+  assert.equal(failedDelRes.success, false, 'Delete must fail when IndexedDB media cleanup is blocked');
+  assert.equal(failedDelRes.localStorageCleared, false, 'localStorage must NOT be cleared');
+  assert.equal(failedDelRes.mediaCleared, false, 'mediaCleared must NOT report true');
+
+  // Verification: Assessment remains durable in localStorage for retry
+  const remainingPersisted = getPersistedAssessment();
+  assert.ok(remainingPersisted !== null, 'Durable assessment record must remain in localStorage');
+  assert.equal(remainingPersisted?.metadata?.id, 'prov-flow-space');
+  assert.equal(remainingPersisted?.hasFloorplanImage, true, 'Provenance bit remains true');
+
+  // 9. Restore IndexedDB and retry deletion
+  mockDbInstance.failNextTx = null;
+  const retryDelRes = await coordinatedDeleteAssessment('prov-flow-space');
+  assert.equal(retryDelRes.success, true, 'Deletion must succeed after IndexedDB is healthy');
+  assert.equal(retryDelRes.localStorageCleared, true, 'localStorage cleared');
+  assert.equal(retryDelRes.mediaCleared, true, 'mediaCleared true');
+
+  // Double absence check
+  assert.equal(getPersistedAssessment(), null, 'localStorage must be absent');
+  assert.equal(await getFloorplanImage('prov-flow-space'), null, 'IndexedDB image must be absent');
+});
+
+test('Media Provenance Guard: savePersistedAssessment preserves hasFloorplanImage when omitted', () => {
+  savePersistedAssessment({
+    schemaVersion: 1,
+    assessmentType: 'user',
+    metadata: {
+      id: 'guard-test-space',
+      name: 'Guard Room',
+      facilityName: 'Clinic',
+      spaceName: 'Room G',
+      environmentType: 'clinic',
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    },
+    canonicalBoundary: [{ x: 0, y: 0 }, { x: 200, y: 0 }, { x: 200, y: 200 }, { x: 0, y: 200 }],
+    calibration: { pixelsPerCm: 1.0, realLength: 200, unit: 'cm', pixelDistance: 200, originPolicy: 'canvas-origin-0-0' },
+    activeProfileId: 'walker',
+    routeWaypoints: [],
+    furniture: [],
+    hasFloorplanImage: true,
+  });
+
+  assert.equal(getPersistedAssessment()?.hasFloorplanImage, true);
+
+  // Subsequent save omitting hasFloorplanImage (simulating unhardened code)
+  savePersistedAssessment({
+    schemaVersion: 1,
+    assessmentType: 'user',
+    metadata: {
+      id: 'guard-test-space',
+      name: 'Guard Room Updated',
+      facilityName: 'Clinic',
+      spaceName: 'Room G',
+      environmentType: 'clinic',
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    },
+    canonicalBoundary: [{ x: 0, y: 0 }, { x: 200, y: 0 }, { x: 200, y: 200 }, { x: 0, y: 200 }],
+    calibration: { pixelsPerCm: 1.0, realLength: 200, unit: 'cm', pixelDistance: 200, originPolicy: 'canvas-origin-0-0' },
+    activeProfileId: 'walker',
+    routeWaypoints: [],
+    furniture: [],
+  });
+
+  // Guard must preserve existing true value, NOT default to false!
+  assert.equal(getPersistedAssessment()?.hasFloorplanImage, true, 'Guard must prevent overwrite to false');
+});
+
+test('Media Provenance: unknown provenance (undefined) requires IDB verification and fails closed if blocked', async () => {
+  // Legacy snapshot where hasFloorplanImage is completely undefined
+  savePersistedAssessment({
+    schemaVersion: 1,
+    assessmentType: 'user',
+    metadata: {
+      id: 'legacy-unknown-space',
+      name: 'Legacy Room',
+      facilityName: 'Clinic',
+      spaceName: 'Room L',
+      environmentType: 'clinic',
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    },
+    canonicalBoundary: [{ x: 0, y: 0 }, { x: 200, y: 0 }, { x: 200, y: 200 }, { x: 0, y: 200 }],
+    calibration: { pixelsPerCm: 1.0, realLength: 200, unit: 'cm', pixelDistance: 200, originPolicy: 'canvas-origin-0-0' },
+    activeProfileId: 'walker',
+    routeWaypoints: [],
+    furniture: [],
+  });
+
+  const persisted = getPersistedAssessment();
+  assert.equal(persisted?.hasFloorplanImage, undefined, 'Legacy snapshot has undefined hasFloorplanImage');
+
+  // Block IDB
+  mockDbInstance.failNextTx = 'error';
+
+  // Coordinated delete must NOT treat unknown provenance as manual-only!
+  const delRes = await coordinatedDeleteAssessment('legacy-unknown-space');
+  assert.equal(delRes.success, false, 'Unknown provenance must fail closed when IDB blocked');
+  assert.equal(delRes.localStorageCleared, false);
+  assert.equal(delRes.mediaCleared, false);
+  assert.ok(getPersistedAssessment() !== null, 'localStorage remains intact');
+
+  // When IDB is unblocked, it can clean up
+  mockDbInstance.failNextTx = null;
+  const retryRes = await coordinatedDeleteAssessment('legacy-unknown-space');
+  assert.equal(retryRes.success, true);
+  assert.equal(retryRes.localStorageCleared, true);
+});
+
+test('Media Provenance: replacement old-image cleanup failure reports actionable warning', async () => {
+  const dummyFile1 = new File(['img1'], 'plan1.png', { type: 'image/png' });
+  const dummyFile2 = new File(['img2'], 'plan2.png', { type: 'image/png' });
+  const store = useSafeSpaceStore.getState();
+
+  // Create initial assessment A
+  const resA = await store.createAndLoadUserAssessment({
+    metadata: {
+      id: 'space-replace-a',
+      name: 'Space A',
+      facilityName: 'Facility',
+      spaceName: 'Room A',
+      environmentType: 'clinic',
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    },
+    boundaryCm: [{ x: 0, y: 0 }, { x: 300, y: 0 }, { x: 300, y: 300 }, { x: 0, y: 300 }],
+    calibration: { pixelsPerCm: 1.0, realLength: 300, unit: 'cm', pixelDistance: 300, originPolicy: 'canvas-origin-0-0' },
+    imageFile: dummyFile1,
+  });
+  assert.equal(resA.success, true);
+  assert.ok((await getFloorplanImage('space-replace-a')) !== null);
+
+  // Set mockDbInstance to fail when deleting 'space-replace-a'
+  mockDbInstance.failOnDeleteId = 'space-replace-a';
+
+  const resB = await store.createAndLoadUserAssessment({
+    metadata: {
+      id: 'space-replace-b',
+      name: 'Space B',
+      facilityName: 'Facility',
+      spaceName: 'Room B',
+      environmentType: 'clinic',
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    },
+    boundaryCm: [{ x: 0, y: 0 }, { x: 300, y: 0 }, { x: 300, y: 300 }, { x: 0, y: 300 }],
+    calibration: { pixelsPerCm: 1.0, realLength: 300, unit: 'cm', pixelDistance: 300, originPolicy: 'canvas-origin-0-0' },
+    imageFile: dummyFile2,
+  });
+
+  assert.equal(resB.success, true, 'Creation of B succeeds');
+  assert.equal(resB.previousMediaCleanupFailed, true, 'Must report previousMediaCleanupFailed === true');
+  assert.ok(typeof resB.cleanupWarning === 'string', 'Must provide actionable cleanupWarning');
+  assert.equal(mockDbInstance.failOnDeleteId, null, 'Delete failure was intercepted');
 });
 

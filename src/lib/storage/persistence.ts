@@ -484,7 +484,22 @@ export function savePersistedAssessment(state: PersistedAssessmentState): Storag
   }
 
   try {
-    const payloadToSerialize = {
+    // Media provenance guard: Never default an omitted or undefined field to false!
+    // If state.hasFloorplanImage is missing/undefined, recover from existing persisted snapshot
+    // matching the same assessment ID.
+    let resolvedHasFloorplanImage = state.hasFloorplanImage;
+    if (typeof resolvedHasFloorplanImage !== "boolean") {
+      const existing = getPersistedAssessment(SAFESPACE_STORAGE_KEY);
+      if (
+        existing &&
+        existing.metadata?.id === state.metadata?.id &&
+        typeof existing.hasFloorplanImage === "boolean"
+      ) {
+        resolvedHasFloorplanImage = existing.hasFloorplanImage;
+      }
+    }
+
+    const payloadToSerialize: Record<string, unknown> = {
       schemaVersion: SAFESPACE_STORAGE_VERSION,
       assessmentType: state.assessmentType,
       metadata: state.metadata,
@@ -497,8 +512,11 @@ export function savePersistedAssessment(state: PersistedAssessmentState): Storag
       appliedLayoutBaseline: state.appliedLayoutBaseline ?? null,
       appliedCandidateId: state.appliedCandidateId ?? null,
       appliedSceneFingerprint: state.appliedSceneFingerprint ?? null,
-      hasFloorplanImage: state.hasFloorplanImage ?? false,
     };
+
+    if (typeof resolvedHasFloorplanImage === "boolean") {
+      payloadToSerialize.hasFloorplanImage = resolvedHasFloorplanImage;
+    }
 
     const json = JSON.stringify(payloadToSerialize);
     storage.setItem(SAFESPACE_STORAGE_KEY, json);

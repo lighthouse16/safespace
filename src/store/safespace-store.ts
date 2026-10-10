@@ -77,6 +77,8 @@ export type AssessmentCreationResult = {
   isSaved?: boolean;
   assessmentId?: string;
   rollbackFailed?: boolean;
+  previousMediaCleanupFailed?: boolean;
+  cleanupWarning?: string;
 };
 
 export interface SafeSpaceState {
@@ -88,6 +90,7 @@ export interface SafeSpaceState {
   calibrationProvenance: CalibrationProvenance | null;
   floorplanImageBlobUrl: string | null;
   setFloorplanImageBlobUrl: (url: string | null) => void;
+  hasFloorplanImage?: boolean;
   storageStatus: "idle" | "saved" | "error" | "quota_exceeded";
   storageError: string | null;
 
@@ -311,6 +314,14 @@ function persistUserMutation(
 ): { success: boolean; error?: string } {
   const state = get();
   if (state.assessmentType === "user") {
+    let hasFloorplanImage = state.hasFloorplanImage;
+    if (typeof hasFloorplanImage !== "boolean") {
+      const existing = getPersistedAssessment();
+      if (existing && typeof existing.hasFloorplanImage === "boolean" && existing.metadata?.id === state.assessmentMetadata?.id) {
+        hasFloorplanImage = existing.hasFloorplanImage;
+      }
+    }
+
     const saveRes = savePersistedAssessment({
       schemaVersion: SAFESPACE_STORAGE_VERSION,
       assessmentType: "user",
@@ -324,9 +335,10 @@ function persistUserMutation(
       appliedLayoutBaseline: state.baselineFurnitureSnapshot,
       appliedCandidateId: state.appliedCandidateId,
       appliedSceneFingerprint: state.appliedSceneFingerprint,
+      hasFloorplanImage,
     });
     if (saveRes.success) {
-      set({ storageStatus: "saved", storageError: null });
+      set({ storageStatus: "saved", storageError: null, hasFloorplanImage });
       return { success: true };
     } else {
       set({ storageStatus: "error", storageError: saveRes.error });
@@ -968,6 +980,14 @@ export const useSafeSpaceStore = create<SafeSpaceState>((set, get) => ({
 
     // P0 B: Commit durable user assessment first with error handling
     if (state.assessmentType === "user") {
+      let hasFloorplanImage = state.hasFloorplanImage;
+      if (typeof hasFloorplanImage !== "boolean") {
+        const existing = getPersistedAssessment();
+        if (existing && typeof existing.hasFloorplanImage === "boolean" && existing.metadata?.id === state.assessmentMetadata?.id) {
+          hasFloorplanImage = existing.hasFloorplanImage;
+        }
+      }
+
       const saveRes = savePersistedAssessment({
         schemaVersion: SAFESPACE_STORAGE_VERSION,
         assessmentType: "user",
@@ -981,6 +1001,7 @@ export const useSafeSpaceStore = create<SafeSpaceState>((set, get) => ({
         appliedLayoutBaseline: baseline,
         appliedCandidateId: candidate.id,
         appliedSceneFingerprint: appliedFingerprint,
+        hasFloorplanImage,
       });
 
       if (!saveRes.success) {
@@ -1030,6 +1051,14 @@ export const useSafeSpaceStore = create<SafeSpaceState>((set, get) => ({
     );
 
     if (state.assessmentType === "user") {
+      let hasFloorplanImage = state.hasFloorplanImage;
+      if (typeof hasFloorplanImage !== "boolean") {
+        const existing = getPersistedAssessment();
+        if (existing && typeof existing.hasFloorplanImage === "boolean" && existing.metadata?.id === state.assessmentMetadata?.id) {
+          hasFloorplanImage = existing.hasFloorplanImage;
+        }
+      }
+
       const saveRes = savePersistedAssessment({
         schemaVersion: SAFESPACE_STORAGE_VERSION,
         assessmentType: "user",
@@ -1043,6 +1072,7 @@ export const useSafeSpaceStore = create<SafeSpaceState>((set, get) => ({
         appliedLayoutBaseline: null,
         appliedCandidateId: null,
         appliedSceneFingerprint: null,
+        hasFloorplanImage,
       });
 
       if (!saveRes.success) {
@@ -1153,6 +1183,7 @@ export const useSafeSpaceStore = create<SafeSpaceState>((set, get) => ({
       canonicalBoundary: null,
       calibrationProvenance: null,
       floorplanImageBlobUrl: null,
+      hasFloorplanImage: false,
       activeStage: targetStage,
       furniture: defaultFurniture,
       walls: INITIAL_WALLS,
@@ -1355,14 +1386,20 @@ export const useSafeSpaceStore = create<SafeSpaceState>((set, get) => ({
 
     // 6. Safe commit point reached! Both stores acknowledged durable writes.
     // Now clean up previous user assessment media if ID changed (derived from PERSISTED previous ID!)
+    let previousMediaCleanupFailed = false;
+    let cleanupWarning: string | undefined;
     if (previousPersistedId && previousPersistedId !== metadata.id) {
       try {
         const deletedOld = await deleteFloorplanImage(previousPersistedId);
         if (!deletedOld) {
-          console.warn(`Previous assessment image (${previousPersistedId}) could not be cleaned up from IndexedDB.`);
+          previousMediaCleanupFailed = true;
+          cleanupWarning = `Previous assessment image (${previousPersistedId}) could not be cleaned up from IndexedDB.`;
+          console.warn(cleanupWarning);
         }
       } catch (err) {
-        console.warn(`Previous assessment image cleanup error:`, err);
+        previousMediaCleanupFailed = true;
+        cleanupWarning = `Previous assessment image (${previousPersistedId}) cleanup failed: ${err instanceof Error ? err.message : String(err)}`;
+        console.warn(cleanupWarning);
       }
     }
 
@@ -1388,6 +1425,7 @@ export const useSafeSpaceStore = create<SafeSpaceState>((set, get) => ({
       canonicalBoundary: boundaryCm,
       calibrationProvenance: calibration,
       floorplanImageBlobUrl: imageBlobUrl,
+      hasFloorplanImage: Boolean(imageFile),
       activeProfileId: defaultProfile.id,
       activeProfile: defaultProfile,
       activeStage: "layout",
@@ -1415,7 +1453,13 @@ export const useSafeSpaceStore = create<SafeSpaceState>((set, get) => ({
       placementError: null,
     });
 
-    return { success: true, isSaved: true, assessmentId: metadata.id };
+    return {
+      success: true,
+      isSaved: true,
+      assessmentId: metadata.id,
+      previousMediaCleanupFailed,
+      cleanupWarning,
+    };
   },
 
   loadDemoAssessment: (initialStage?: unknown) => {
@@ -1497,12 +1541,18 @@ export const useSafeSpaceStore = create<SafeSpaceState>((set, get) => ({
         data.canonicalBoundary
       );
 
+      const hasImg =
+        typeof data.hasFloorplanImage === "boolean"
+          ? data.hasFloorplanImage
+          : undefined;
+
       set({
         assessmentType: "user",
         assessmentId: data.metadata?.id || `assessment-${Date.now()}`,
         assessmentMetadata: data.metadata,
         canonicalBoundary: data.canonicalBoundary,
         calibrationProvenance: data.calibration,
+        hasFloorplanImage: hasImg,
         activeProfileId: profile.id,
         activeProfile: profile,
         furniture: data.furniture || [],
@@ -1528,7 +1578,7 @@ export const useSafeSpaceStore = create<SafeSpaceState>((set, get) => ({
               try { URL.revokeObjectURL(oldUrl); } catch {}
             }
             const blobUrl = URL.createObjectURL(imgRecord.blob);
-            set({ floorplanImageBlobUrl: blobUrl });
+            set({ floorplanImageBlobUrl: blobUrl, hasFloorplanImage: true });
           }
         }).catch(() => {});
       }

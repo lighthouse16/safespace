@@ -13,6 +13,7 @@ import {
 export interface DeletionResult {
   success: boolean;
   error?: string;
+  warning?: string;
   localStorageCleared: boolean;
   mediaCleared: boolean;
 }
@@ -41,28 +42,43 @@ function getLocalStorage(): Storage | null {
 export async function coordinatedDeleteAssessment(assessmentId?: string): Promise<DeletionResult> {
   const persisted = getPersistedAssessment();
   const targetId = assessmentId || persisted?.metadata?.id;
-  const isExplicitManualOnly = persisted?.hasFloorplanImage === false;
+  // Strict manual-only declaration requires hasFloorplanImage to be explicitly false.
+  // Missing or undefined is treated as unknown provenance, NEVER confirmed manual-only.
+  const isConfirmedManualOnly = persisted?.hasFloorplanImage === false;
 
   let mediaCleared = false;
+  let warning: string | undefined;
 
   // 1. Delete IndexedDB floorplan media if applicable
-  try {
-    if (isExplicitManualOnly) {
-      // Geometry has no image: honest support for manual-only data with no nonexistent media to delete
+  if (isConfirmedManualOnly) {
+    // Assessment is confirmed manual-only (no uploaded image).
+    // If IndexedDB is accessible, verify whether any unexpected orphan image exists for targetId.
+    try {
+      let existingRecord = null;
+      if (targetId) {
+        existingRecord = await getFloorplanImage(targetId);
+      }
+      if (existingRecord !== null && targetId) {
+        const idDeleteOk = await deleteFloorplanImage(targetId);
+        mediaCleared = idDeleteOk;
+      } else {
+        mediaCleared = true;
+      }
+    } catch {
+      // IndexedDB is blocked or disabled on device.
+      // Allow manual-only assessment layout removal, but truthfully note limitation.
       mediaCleared = true;
-      try {
-        if (targetId) await deleteFloorplanImage(targetId);
-      } catch {}
-    } else {
+      warning = "IndexedDB was inaccessible to verify media store absence during manual-only removal.";
+    }
+  } else {
+    // Imported image (hasFloorplanImage === true) OR unknown provenance (undefined):
+    // IndexedDB media cleanup and double-absence verification are strictly mandatory.
+    try {
       const idDeleteOk = targetId ? await deleteFloorplanImage(targetId) : true;
       const clearAllOk = await clearAllFloorplanImages();
       const remaining = targetId ? await getFloorplanImage(targetId) : null;
       mediaCleared = idDeleteOk && clearAllOk && remaining === null;
-    }
-  } catch {
-    if (isExplicitManualOnly) {
-      mediaCleared = true;
-    } else {
+    } catch {
       mediaCleared = false;
     }
   }
@@ -101,6 +117,7 @@ export async function coordinatedDeleteAssessment(assessmentId?: string): Promis
       success: true,
       localStorageCleared: true,
       mediaCleared: true,
+      ...(warning ? { warning } : {}),
     };
   }
 
