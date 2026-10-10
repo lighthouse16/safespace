@@ -240,12 +240,12 @@ export function Stage5Improve() {
             Grid
           </button>
 
-          {/* View Mode Toggle */}
-          <div className="hidden sm:flex items-center bg-slate-100 rounded p-0.5 border border-slate-200">
+          {/* View Mode Toggle: Responsive & accessible on mobile and desktop */}
+          <div className="flex items-center bg-slate-100 rounded p-0.5 border border-slate-200">
             <button
               type="button"
               onClick={() => setViewMode("side-by-side")}
-              className={`px-2 py-0.5 text-[11px] font-medium rounded transition cursor-pointer ${
+              className={`hidden md:inline-flex px-2 py-0.5 text-[11px] font-medium rounded transition cursor-pointer ${
                 viewMode === "side-by-side"
                   ? "bg-white text-slate-800 shadow-2xs font-semibold"
                   : "text-slate-600 hover:text-slate-900"
@@ -262,7 +262,7 @@ export function Stage5Improve() {
                   : "text-slate-600 hover:text-slate-900"
               }`}
             >
-              Before Only
+              Before
             </button>
             <button
               type="button"
@@ -273,7 +273,7 @@ export function Stage5Improve() {
                   : "text-slate-600 hover:text-slate-900"
               }`}
             >
-              {isAppliedReviewMode ? "After Only" : "Proposed Only"}
+              {isAppliedReviewMode ? "After" : "Proposed"}
             </button>
           </div>
 
@@ -457,7 +457,7 @@ export function Stage5Improve() {
       </div>
 
       {/* Main Floorplan Comparison Canvas */}
-      <div className="flex-1 min-h-0 flex flex-col lg:flex-row overflow-hidden p-2 gap-2">
+      <div className="flex-1 min-h-0 flex flex-col md:flex-row overflow-hidden p-2 gap-2">
         {/* Left: Baseline Condition */}
         {(viewMode === "side-by-side" || viewMode === "before") && (
           <div

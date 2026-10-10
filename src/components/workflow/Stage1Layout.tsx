@@ -1,7 +1,6 @@
 "use client";
 
 import React, { useState } from "react";
-import Link from "next/link";
 import { useSafeSpaceStore } from "@/store/safespace-store";
 import { Floorplan2D } from "@/components/spatial/Floorplan2D";
 import {
@@ -18,8 +17,6 @@ import {
   Lock,
   Unlock,
   ChevronRight,
-  Building,
-  Plus,
 } from "lucide-react";
 
 export function Stage1Layout() {
@@ -38,8 +35,6 @@ export function Stage1Layout() {
     history,
     future,
     setStage,
-    importMode,
-    setImportMode,
   } = useSafeSpaceStore();
 
   const [showAddMenu, setShowAddMenu] = useState(false);
@@ -76,78 +71,6 @@ export function Stage1Layout() {
           Item Properties {unconfirmedCount > 0 && `(${unconfirmedCount})`}
         </button>
       </div>
-
-      {/* If in initial mode, show choices modal */}
-      {importMode === "initial" && (
-        <div
-          role="dialog"
-          aria-modal="true"
-          aria-labelledby="import-plan-title"
-          className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-xs p-4"
-        >
-          <div className="max-w-lg w-full bg-white rounded-xl shadow-xl border border-[#e2e8e4] p-5 space-y-4">
-            <div>
-              <h2 id="import-plan-title" className="text-lg font-bold text-[#192329] tracking-tight">
-                Choose Layout Option
-              </h2>
-              <p className="text-xs text-slate-500 mt-0.5">
-                Start with a pre-configured scenario or measure your own facility room.
-              </p>
-            </div>
-
-            <div className="grid gap-2.5">
-              {/* Option 1: Demo Clinic */}
-              <button
-                type="button"
-                onClick={() => setImportMode("ready")}
-                className="flex items-center gap-3.5 p-3.5 rounded-lg border-2 border-[#1e7168] bg-[#f0f7f5] hover:bg-[#e6f2ee] transition text-left cursor-pointer group"
-              >
-                <div className="w-9 h-9 rounded-md bg-[#1e7168] text-white flex items-center justify-center shrink-0">
-                  <Building className="w-4 h-4" />
-                </div>
-                <div className="flex-1">
-                  <div className="flex items-center gap-2">
-                    <span className="font-semibold text-xs text-[#192329]">
-                      Explore Example Clinic
-                    </span>
-                    <span className="px-1.5 py-0.2 rounded text-[9px] font-bold uppercase bg-[#1e7168] text-white">
-                      Ready
-                    </span>
-                  </div>
-                  <p className="text-[11px] text-slate-600 mt-0.5">
-                    Queen Care Clinic sample room · Waiting Area & Corridor (18 items)
-                  </p>
-                </div>
-                <ChevronRight className="w-4 h-4 text-[#1e7168] shrink-0" />
-              </button>
-
-              {/* Option 2: Custom Room Assessment */}
-              <Link
-                href="/assessments/new"
-                className="flex items-center gap-3.5 p-3.5 rounded-lg border border-[#cbd5e1] bg-white hover:bg-slate-50 transition text-left cursor-pointer group"
-              >
-                <div className="w-9 h-9 rounded-md bg-slate-100 text-slate-700 flex items-center justify-center shrink-0 group-hover:bg-teal-50 group-hover:text-teal-800">
-                  <Plus className="w-4 h-4" />
-                </div>
-                <div className="flex-1">
-                  <div className="flex items-center gap-2">
-                    <span className="font-semibold text-xs text-[#192329]">
-                      + Set Up Custom Room
-                    </span>
-                    <span className="px-1.5 py-0.2 rounded text-[9px] font-bold uppercase bg-slate-100 text-slate-600 border border-slate-200">
-                      New
-                    </span>
-                  </div>
-                  <p className="text-[11px] text-slate-600 mt-0.5">
-                    Calibrate scale, trace room outline, and evaluate actual facility dimensions
-                  </p>
-                </div>
-                <ChevronRight className="w-4 h-4 text-slate-400 group-hover:text-teal-700 shrink-0" />
-              </Link>
-            </div>
-          </div>
-        </div>
-      )}
 
       {/* Layout Review Workspace */}
       <div className="flex flex-1 overflow-hidden">

@@ -498,7 +498,7 @@ export function Floorplan2D({
             width={800 / calibrationProvenance.pixelsPerCm}
             height={600 / calibrationProvenance.pixelsPerCm}
             preserveAspectRatio="xMidYMid meet"
-            opacity={0.35}
+            opacity={0.8}
             className="pointer-events-none select-none"
           />
         )}
@@ -509,7 +509,7 @@ export function Floorplan2D({
             <g id="user-canonical-boundary">
               <polygon
                 points={canonicalBoundary.map((p) => `${p.x},${p.y}`).join(" ")}
-                fill="#f4f8f6"
+                fill={floorplanImageBlobUrl ? "none" : "#f4f8f6"}
                 stroke="#0f766e"
                 strokeWidth="2.5"
                 strokeLinejoin="round"

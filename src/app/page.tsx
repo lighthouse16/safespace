@@ -46,8 +46,13 @@ export default function SafeSpaceApp() {
   }, [hydrateFromStorage]);
 
   const handleOpenSaved = () => {
-    saveActiveWorkspace("user");
-    hydrateFromStorage();
+    const stored = loadPersistedAssessment();
+    if (stored.success && stored.data.assessmentType === "user") {
+      saveActiveWorkspace("user");
+      hydrateFromStorage();
+    } else {
+      setPersistedAssessment(null);
+    }
   };
 
   // If user assessment is currently active in store, show spatial workspace
@@ -139,7 +144,7 @@ export default function SafeSpaceApp() {
                 </span>
               </div>
               <p className="text-xs text-slate-500">
-                Calibrated scale ({persistedAssessment.calibration?.pixelsPerCm.toFixed(1)} px/cm) · {persistedAssessment.furniture.length} fixtures · {persistedAssessment.routeWaypoints.length} path points
+                Calibrated scale ({persistedAssessment.calibration?.realLength} {persistedAssessment.calibration?.unit || "cm"} reference) · {persistedAssessment.furniture.length} fixtures · {persistedAssessment.routeWaypoints.length} path points
               </p>
             </div>
             <div className="flex items-center gap-2 shrink-0">
@@ -159,7 +164,7 @@ export default function SafeSpaceApp() {
         <div className="rounded-2xl border border-slate-200 bg-white p-8 sm:p-12 shadow-sm text-center">
           <div className="inline-flex items-center gap-2 rounded-full bg-teal-50 border border-teal-200/60 px-3 py-1 text-xs font-medium text-teal-800 mb-6">
             <ShieldCheck className="w-4 h-4 text-teal-700" />
-            <span>Deterministic Spatial Clearance Audits</span>
+            <span>Standard Pathway Clearance Audit</span>
           </div>
 
           <h1 className="text-3xl sm:text-4xl font-extrabold tracking-tight text-slate-900 max-w-xl mx-auto">
@@ -167,7 +172,7 @@ export default function SafeSpaceApp() {
           </h1>
 
           <p className="mt-4 text-base text-slate-600 max-w-2xl mx-auto leading-relaxed">
-            Assess walking-space constraints, fall risks, and clearance along critical routes for walkers and wheelchairs. Real geometric measurements from your own floorplan.
+            Assess walking-space constraints and clearance along critical routes for walkers and wheelchairs. Real geometric measurements from your own floorplan.
           </p>
 
           <div className="mt-8 flex flex-col sm:flex-row items-center justify-center gap-3">

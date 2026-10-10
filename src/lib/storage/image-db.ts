@@ -57,6 +57,7 @@ function openDatabase(): Promise<IDBDatabase | null> {
 
 /**
  * Saves or updates a floorplan image blob in IndexedDB.
+ * Awaits full transaction completion (tx.oncomplete) before confirming success.
  */
 export async function saveFloorplanImage(record: PersistedFloorplanImage): Promise<boolean> {
   const db = await openDatabase();
@@ -66,12 +67,22 @@ export async function saveFloorplanImage(record: PersistedFloorplanImage): Promi
     try {
       const tx = db.transaction(STORE_NAME, "readwrite");
       const store = tx.objectStore(STORE_NAME);
-      const req = store.put(record);
+      store.put(record);
 
-      req.onsuccess = () => resolve(true);
-      req.onerror = () => resolve(false);
-      tx.onabort = () => resolve(false);
+      tx.oncomplete = () => {
+        db.close();
+        resolve(true);
+      };
+      tx.onerror = () => {
+        db.close();
+        resolve(false);
+      };
+      tx.onabort = () => {
+        db.close();
+        resolve(false);
+      };
     } catch {
+      db.close();
       resolve(false);
     }
   });
@@ -94,10 +105,19 @@ export async function getFloorplanImage(
 
       req.onsuccess = () => {
         const result = req.result as PersistedFloorplanImage | undefined;
+        db.close();
         resolve(result || null);
       };
-      req.onerror = () => resolve(null);
+      req.onerror = () => {
+        db.close();
+        resolve(null);
+      };
+      tx.onabort = () => {
+        db.close();
+        resolve(null);
+      };
     } catch {
+      db.close();
       resolve(null);
     }
   });
@@ -105,6 +125,7 @@ export async function getFloorplanImage(
 
 /**
  * Deletes a persisted floorplan image record by assessment ID.
+ * Awaits full transaction completion before confirming deletion.
  */
 export async function deleteFloorplanImage(assessmentId: string): Promise<boolean> {
   const db = await openDatabase();
@@ -114,12 +135,55 @@ export async function deleteFloorplanImage(assessmentId: string): Promise<boolea
     try {
       const tx = db.transaction(STORE_NAME, "readwrite");
       const store = tx.objectStore(STORE_NAME);
-      const req = store.delete(assessmentId);
+      store.delete(assessmentId);
 
-      req.onsuccess = () => resolve(true);
-      req.onerror = () => resolve(false);
-      tx.onabort = () => resolve(false);
+      tx.oncomplete = () => {
+        db.close();
+        resolve(true);
+      };
+      tx.onerror = () => {
+        db.close();
+        resolve(false);
+      };
+      tx.onabort = () => {
+        db.close();
+        resolve(false);
+      };
     } catch {
+      db.close();
+      resolve(false);
+    }
+  });
+}
+
+/**
+ * Purges all stored floorplan images in IndexedDB.
+ * Used during full assessment deletion to prevent orphaned personal data.
+ */
+export async function clearAllFloorplanImages(): Promise<boolean> {
+  const db = await openDatabase();
+  if (!db) return false;
+
+  return new Promise((resolve) => {
+    try {
+      const tx = db.transaction(STORE_NAME, "readwrite");
+      const store = tx.objectStore(STORE_NAME);
+      store.clear();
+
+      tx.oncomplete = () => {
+        db.close();
+        resolve(true);
+      };
+      tx.onerror = () => {
+        db.close();
+        resolve(false);
+      };
+      tx.onabort = () => {
+        db.close();
+        resolve(false);
+      };
+    } catch {
+      db.close();
       resolve(false);
     }
   });

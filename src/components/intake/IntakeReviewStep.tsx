@@ -57,7 +57,7 @@ export function IntakeReviewStep({
 
   const polygonPoints = boundary.vertices.map((v) => `${v.x},${v.y}`).join(" ");
 
-  const executeConfirmAndOpen = () => {
+  const executeConfirmAndOpen = async () => {
     setValidationError(null);
 
     const validation = validateIntakeBoundary(
@@ -84,7 +84,7 @@ export function IntakeReviewStep({
           ? computePixelDistance(calibration.p1, calibration.p2)
           : calibration.pixelsPerCm! * realLengthCm;
 
-      const res = createAndLoadUserAssessment({
+      const res = await createAndLoadUserAssessment({
         metadata: {
           id: `assessment-${Date.now()}`,
           name: details.assessmentName.trim(),
@@ -318,10 +318,10 @@ export function IntakeReviewStep({
                 Saving Your Assessment
               </div>
               <p>
-                Your confirmed room outline, scale calibration, and space details will be saved to this device.
+                Your confirmed room outline, scale calibration, and space details are saved to local browser storage on this device.
               </p>
               <p className="text-slate-500">
-                Floorplan background images stay in memory while the app is open.
+                Floorplan background images are saved locally to IndexedDB so they persist across reloads.
               </p>
             </div>
           </div>

@@ -9,10 +9,14 @@ import {
   saveActiveWorkspace,
   type PersistedAssessmentState,
 } from "@/lib/storage/persistence";
+import {
+  deleteFloorplanImage,
+  clearAllFloorplanImages,
+} from "@/lib/storage/image-db";
 import { useSafeSpaceStore } from "@/store/safespace-store";
 
 export default function AssessmentsPage() {
-  const { hydrateFromStorage } = useSafeSpaceStore();
+  const { hydrateFromStorage, clearUserAssessment } = useSafeSpaceStore();
   const [savedAssessment, setSavedAssessment] = useState<PersistedAssessmentState | null>(null);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [deleteError, setDeleteError] = useState<string | null>(null);
@@ -39,12 +43,21 @@ export default function AssessmentsPage() {
     hydrateFromStorage();
   };
 
-  const handleConfirmDelete = () => {
+  const handleConfirmDelete = async () => {
     setDeleteError(null);
-    const res = clearPersistedAssessment();
-    if (!res.success) {
-      setDeleteError(res.error || "Failed to clear storage");
-      return;
+    const id = savedAssessment?.metadata?.id;
+    if (id) {
+      try {
+        await deleteFloorplanImage(id);
+      } catch {}
+    }
+    try {
+      await clearAllFloorplanImages();
+    } catch {}
+    try {
+      await clearUserAssessment();
+    } catch {
+      clearPersistedAssessment();
     }
     setSavedAssessment(null);
     setShowDeleteConfirm(false);
@@ -78,7 +91,7 @@ export default function AssessmentsPage() {
               Assessments & Spaces
             </h1>
             <p className="mt-1.5 text-xs text-[#64748b]">
-              Evaluate environmental fall risks, calibrate floorplans, and audit critical routes across living and care environments.
+              Evaluate pathway clearance, calibrate floorplans, and audit critical routes across living and care environments.
             </p>
           </div>
 
@@ -121,7 +134,7 @@ export default function AssessmentsPage() {
                     </span>
                   </div>
                   <p className="text-xs text-slate-600">
-                    Room perimeter: {savedAssessment.canonicalBoundary?.length ?? 0} boundary points · Calibrated ({savedAssessment.calibration?.pixelsPerCm.toFixed(1)} px/cm)
+                    Room perimeter: {savedAssessment.canonicalBoundary?.length ?? 0} boundary points · Calibrated ({savedAssessment.calibration?.realLength} {savedAssessment.calibration?.unit || "cm"} reference)
                   </p>
                   <p className="text-[11px] text-slate-400">
                     Saved: {savedAssessment.metadata?.updatedAt ? new Date(savedAssessment.metadata.updatedAt).toLocaleString() : "Recently"}

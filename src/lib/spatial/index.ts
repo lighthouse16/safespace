@@ -77,6 +77,17 @@ export {
 } from "./geometry/footprints";
 
 export {
+  isValidFootprintPlacement,
+  findFeasibleFootprintPlacement,
+  furnitureToWorldFootprint,
+} from "./geometry/placement";
+
+export type {
+  PlacementCandidate,
+  ObstacleFootprint,
+} from "./geometry/placement";
+
+export {
   computeDoorSwingSector,
   computeOpeningSwingPolygon,
   testDoorSwingEncroachment,
