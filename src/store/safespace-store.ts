@@ -179,7 +179,7 @@ export interface SafeSpaceState {
   // Computed helper
   getSpatialFindings: () => SpatialEvaluationResult;
   getLiveMetrics: () => ReturnType<typeof calculateLiveMetrics>;
-  resetToDemo: () => void;
+  resetToDemo: (initialStage?: unknown) => void;
 
   // Assessment Lifecycle
   createAndLoadUserAssessment: (payload: {
@@ -187,8 +187,8 @@ export interface SafeSpaceState {
     boundaryCm: Polygon2D;
     calibration: CalibrationProvenance;
   }) => { success: boolean; error?: string };
-  loadDemoAssessment: () => void;
-  resetDemoAssessment: () => void;
+  loadDemoAssessment: (initialStage?: unknown) => void;
+  resetDemoAssessment: (initialStage?: unknown) => void;
   clearUserAssessment: () => void;
   hydrateFromStorage: () => void;
 }
@@ -671,12 +671,11 @@ export const useSafeSpaceStore = create<SafeSpaceState>((set, get) => ({
   isTransitioning: false,
   transitionStep: 0,
   runAnalysisTransition: () => {
-    set({ isTransitioning: true, transitionStep: 1 });
-    setTimeout(() => set({ transitionStep: 2 }), 700);
-    setTimeout(() => set({ transitionStep: 3 }), 1400);
-    setTimeout(() => {
-      set({ isTransitioning: false, activeStage: "analysis" });
-    }, 2100);
+    set({
+      isTransitioning: false,
+      transitionStep: 0,
+      activeStage: "analysis",
+    });
   },
 
   // Stage 4: Analysis
@@ -983,7 +982,7 @@ export const useSafeSpaceStore = create<SafeSpaceState>((set, get) => ({
     return calculateLiveMetrics(activeFurn, alt, routeWaypoints);
   },
 
-  resetToDemo: () => {
+  resetToDemo: (initialStage?: unknown) => {
     const savedWs = saveActiveWorkspace("demo");
     const defaultProfile = { ...MOBILITY_PROFILES[0] };
     const defaultFurniture = cloneFurniture(INITIAL_FURNITURE);
@@ -997,13 +996,21 @@ export const useSafeSpaceStore = create<SafeSpaceState>((set, get) => ({
       INITIAL_DOORS,
       null
     );
+    const validStages: readonly WorkflowStage[] = ["layout", "profile", "routes", "analysis", "improve"];
+    // ponytail: preserve explicit stage target when navigating demo workspace
+    const targetStage: WorkflowStage =
+      typeof initialStage === "string" && (validStages as readonly string[]).includes(initialStage)
+        ? (initialStage as WorkflowStage)
+        : get().assessmentType === "demo"
+        ? get().activeStage
+        : "layout";
     set({
       assessmentType: "demo",
       assessmentId: "demo-queen-care",
       assessmentMetadata: null,
       canonicalBoundary: null,
       calibrationProvenance: null,
-      activeStage: "layout",
+      activeStage: targetStage,
       furniture: defaultFurniture,
       walls: INITIAL_WALLS,
       doors: INITIAL_DOORS,
@@ -1122,12 +1129,12 @@ export const useSafeSpaceStore = create<SafeSpaceState>((set, get) => ({
     return { success: true };
   },
 
-  loadDemoAssessment: () => {
-    get().resetToDemo();
+  loadDemoAssessment: (initialStage?: unknown) => {
+    get().resetToDemo(initialStage);
   },
 
-  resetDemoAssessment: () => {
-    get().resetToDemo();
+  resetDemoAssessment: (initialStage?: unknown) => {
+    get().resetToDemo(initialStage);
   },
 
   clearUserAssessment: () => {

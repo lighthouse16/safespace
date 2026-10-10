@@ -9,10 +9,10 @@ import {
   saveActiveWorkspace,
   type PersistedAssessmentState,
 } from "@/lib/storage/persistence";
-import { useSafeSpaceStore } from "@/store/safespace-store";
+import { useSafeSpaceStore, type WorkflowStage } from "@/store/safespace-store";
 
 export default function AssessmentsPage() {
-  const { hydrateFromStorage } = useSafeSpaceStore();
+  const { hydrateFromStorage, resetToDemo } = useSafeSpaceStore();
   const [savedAssessment, setSavedAssessment] = useState<PersistedAssessmentState | null>(null);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [deleteError, setDeleteError] = useState<string | null>(null);
@@ -41,6 +41,12 @@ export default function AssessmentsPage() {
     hydrateFromStorage();
   };
 
+  const handleOpenDemoAssessment = (stage: WorkflowStage = "layout") => {
+    setOpenError(null);
+    saveActiveWorkspace("demo");
+    resetToDemo(stage);
+  };
+
   const handleConfirmDelete = () => {
     setDeleteError(null);
     const res = clearPersistedAssessment();
@@ -58,7 +64,7 @@ export default function AssessmentsPage() {
       activePath="/assessments"
       facilityName={savedAssessment?.metadata?.facilityName ?? null}
       workspaceLabel="SafeSpace workspace"
-      storageLabel={savedAssessment ? "Saved in browser" : "Storage not connected"}
+      storageLabel={savedAssessment ? "Saved on this device" : "Storage not connected"}
     >
       <div className="mx-auto max-w-5xl space-y-6">
         {/* Header */}
@@ -68,16 +74,14 @@ export default function AssessmentsPage() {
               <p className="text-xs font-semibold uppercase tracking-wider text-slate-500">
                 SafeSpace Workspace
               </p>
-              <span
-                role="status"
-                className={`rounded-full px-2.5 py-0.5 text-[11px] font-medium border ${
-                  savedAssessment
-                    ? "bg-emerald-50 text-emerald-800 border-emerald-200"
-                    : "bg-slate-100 text-slate-600 border-slate-200"
-                }`}
-              >
-                {savedAssessment ? "Saved to browser" : "Session only"}
-              </span>
+              {savedAssessment && (
+                <span
+                  role="status"
+                  className="rounded-full px-2.5 py-0.5 text-[11px] font-medium border bg-emerald-50 text-emerald-800 border-emerald-200"
+                >
+                  Saved on this device
+                </span>
+              )}
             </div>
             <h1 className="mt-1 text-2xl font-semibold tracking-tight text-[#192329] sm:text-3xl">
               Assessments & Spaces
@@ -106,7 +110,7 @@ export default function AssessmentsPage() {
                 Confirmed User Assessment
               </h2>
               <span className="text-[11px] text-emerald-700 font-medium">
-                Persisted in localStorage v1
+                Saved on this device
               </span>
             </div>
 
@@ -222,7 +226,7 @@ export default function AssessmentsPage() {
               No assessments saved yet
             </h2>
             <p className="mt-1 text-xs text-[#64748b] max-w-md mx-auto">
-              Intake drafts exist only while the intake session remains open; leaving or refreshing discards unsaved session state until canonical project storage is connected.
+              Intake drafts exist only while the intake session remains open (Session only); leaving or refreshing discards unsaved session state until canonical project storage is connected.
             </p>
             <div className="mt-4">
               <Link
@@ -270,14 +274,16 @@ export default function AssessmentsPage() {
 
               <div className="flex items-center gap-3 shrink-0">
                 <Link
-                  href="/assessments/queen-care-clinic/analysis"
-                  className="rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-50 transition"
+                  href="/"
+                  onClick={() => handleOpenDemoAssessment("analysis")}
+                  className="rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-50 transition cursor-pointer"
                 >
                   View analysis demo
                 </Link>
                 <Link
-                  href="/assessments/queen-care-clinic/model"
-                  className="rounded-lg bg-[#1e7168] px-3.5 py-1.5 text-xs font-semibold text-white hover:bg-[#175b54] transition"
+                  href="/"
+                  onClick={() => handleOpenDemoAssessment("layout")}
+                  className="rounded-lg bg-[#1e7168] px-3.5 py-1.5 text-xs font-semibold text-white hover:bg-[#175b54] transition cursor-pointer"
                 >
                   Open demo &rarr;
                 </Link>
