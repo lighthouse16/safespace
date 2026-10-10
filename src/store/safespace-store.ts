@@ -40,16 +40,46 @@ import {
   SAFESPACE_STORAGE_VERSION,
   savePersistedAssessment,
   loadPersistedAssessment,
+  getPersistedAssessment,
   clearPersistedAssessment,
   saveActiveWorkspace,
+  loadActiveWorkspace,
   type AssessmentMetadata,
   type CalibrationProvenance,
   type PersistedAssessmentState,
 } from "@/lib/storage/persistence";
+import {
+  saveFloorplanImage,
+  getFloorplanImage,
+  deleteFloorplanImage,
+  type PersistedFloorplanImage,
+} from "@/lib/storage/image-db";
+import {
+  coordinatedDeleteAssessment,
+  type DeletionResult,
+} from "@/lib/storage/coordinated-storage";
+import {
+  isValidFootprintPlacement,
+  findFeasibleFootprintPlacement,
+  furnitureToWorldFootprint,
+  wallToObstacleFootprint,
+  doorToObstacleFootprint,
+  type ObstacleFootprint,
+} from "@/lib/spatial";
 
 export type WorkflowStage = "layout" | "profile" | "routes" | "analysis" | "improve";
 
 export type EditorTool = "select" | "pan" | "furniture" | "hazard" | "measure";
+
+export type AssessmentCreationResult = {
+  success: boolean;
+  error?: string;
+  isSaved?: boolean;
+  assessmentId?: string;
+  rollbackFailed?: boolean;
+  previousMediaCleanupFailed?: boolean;
+  cleanupWarning?: string;
+};
 
 export interface SafeSpaceState {
   // Assessment Identity & Isolation
@@ -58,6 +88,9 @@ export interface SafeSpaceState {
   assessmentMetadata: AssessmentMetadata | null;
   canonicalBoundary: Polygon2D | null;
   calibrationProvenance: CalibrationProvenance | null;
+  floorplanImageBlobUrl: string | null;
+  setFloorplanImageBlobUrl: (url: string | null) => void;
+  hasFloorplanImage?: boolean;
   storageStatus: "idle" | "saved" | "error" | "quota_exceeded";
   storageError: string | null;
 
@@ -176,6 +209,10 @@ export interface SafeSpaceState {
   applyLayoutCandidate: (candidateId: string) => { success: boolean; error?: string };
   revertLayoutCandidate: () => { success: boolean; error?: string };
 
+  // Placement & Interaction Feedback
+  placementError: string | null;
+  clearPlacementError: () => void;
+
   // Computed helper
   getSpatialFindings: () => SpatialEvaluationResult;
   getLiveMetrics: () => ReturnType<typeof calculateLiveMetrics>;
@@ -186,10 +223,11 @@ export interface SafeSpaceState {
     metadata: AssessmentMetadata;
     boundaryCm: Polygon2D;
     calibration: CalibrationProvenance;
-  }) => { success: boolean; error?: string };
+    imageFile?: File | Blob;
+  }) => Promise<AssessmentCreationResult>;
   loadDemoAssessment: (initialStage?: unknown) => void;
   resetDemoAssessment: (initialStage?: unknown) => void;
-  clearUserAssessment: () => void;
+  clearUserAssessment: () => Promise<DeletionResult>;
   hydrateFromStorage: () => void;
 }
 
@@ -276,6 +314,14 @@ function persistUserMutation(
 ): { success: boolean; error?: string } {
   const state = get();
   if (state.assessmentType === "user") {
+    let hasFloorplanImage = state.hasFloorplanImage;
+    if (typeof hasFloorplanImage !== "boolean") {
+      const existing = getPersistedAssessment();
+      if (existing && typeof existing.hasFloorplanImage === "boolean" && existing.metadata?.id === state.assessmentMetadata?.id) {
+        hasFloorplanImage = existing.hasFloorplanImage;
+      }
+    }
+
     const saveRes = savePersistedAssessment({
       schemaVersion: SAFESPACE_STORAGE_VERSION,
       assessmentType: "user",
@@ -289,9 +335,10 @@ function persistUserMutation(
       appliedLayoutBaseline: state.baselineFurnitureSnapshot,
       appliedCandidateId: state.appliedCandidateId,
       appliedSceneFingerprint: state.appliedSceneFingerprint,
+      hasFloorplanImage,
     });
     if (saveRes.success) {
-      set({ storageStatus: "saved", storageError: null });
+      set({ storageStatus: "saved", storageError: null, hasFloorplanImage });
       return { success: true };
     } else {
       set({ storageStatus: "error", storageError: saveRes.error });
@@ -314,6 +361,30 @@ function invalidateOptimizationAndAppliedBaseline(
   };
 }
 
+function getObstaclesInStore(state: {
+  furniture: SpatialFurniture[];
+  walls?: SpatialWall[];
+  doors?: SpatialDoor[];
+  ignoreId?: string;
+}): ObstacleFootprint[] {
+  const obstacles: ObstacleFootprint[] = [];
+  for (const f of state.furniture) {
+    if (state.ignoreId && f.id === state.ignoreId) continue;
+    obstacles.push(furnitureToWorldFootprint(f));
+  }
+  if (state.walls) {
+    for (const w of state.walls) {
+      obstacles.push(wallToObstacleFootprint(w));
+    }
+  }
+  if (state.doors) {
+    for (const d of state.doors) {
+      obstacles.push(doorToObstacleFootprint(d));
+    }
+  }
+  return obstacles;
+}
+
 export const useSafeSpaceStore = create<SafeSpaceState>((set, get) => ({
   // Assessment Identity
   assessmentType: "demo",
@@ -321,6 +392,8 @@ export const useSafeSpaceStore = create<SafeSpaceState>((set, get) => ({
   assessmentMetadata: null,
   canonicalBoundary: null,
   calibrationProvenance: null,
+  floorplanImageBlobUrl: null,
+  setFloorplanImageBlobUrl: (url) => set({ floorplanImageBlobUrl: url }),
   storageStatus: "idle",
   storageError: null,
 
@@ -375,6 +448,9 @@ export const useSafeSpaceStore = create<SafeSpaceState>((set, get) => ({
   panOffset: { x: 0, y: 0 },
   setPanOffset: (panOffset) => set({ panOffset }),
 
+  placementError: null,
+  clearPlacementError: () => set({ placementError: null }),
+
   history: [],
   future: [],
 
@@ -382,6 +458,25 @@ export const useSafeSpaceStore = create<SafeSpaceState>((set, get) => ({
     const { furniture, history, rooms, activeProfile, routeWaypoints, walls, doors, canonicalBoundary } = get();
     const item = furniture.find((f) => f.id === id);
     if (!item || item.isFixed) return;
+
+    if (canonicalBoundary && canonicalBoundary.length >= 3) {
+      const obstacles = getObstaclesInStore({ furniture, walls, doors, ignoreId: id });
+      const targetCenter = { x: x + item.width / 2, y: y + item.depth / 2 };
+      const valid = isValidFootprintPlacement(
+        {
+          position: targetCenter,
+          dimensionsCm: { width: item.width, depth: item.depth },
+          rotationDeg: item.rotation,
+        },
+        canonicalBoundary,
+        obstacles,
+        id
+      );
+      if (!valid) {
+        set({ placementError: "Cannot move item: position exceeds room boundary or collides with existing obstacles." });
+        return;
+      }
+    }
 
     const newHistory = [...history, cloneFurniture(furniture)].slice(-20);
     const updated = furniture.map((f) => (f.id === id ? { ...f, x, y } : f));
@@ -391,6 +486,7 @@ export const useSafeSpaceStore = create<SafeSpaceState>((set, get) => ({
       history: newHistory,
       future: [],
       routeResult: newRouteResult,
+      placementError: null,
       ...invalidateOptimizationAndAppliedBaseline(updated),
     });
     persistUserMutation(get, set);
@@ -401,8 +497,28 @@ export const useSafeSpaceStore = create<SafeSpaceState>((set, get) => ({
     const item = furniture.find((f) => f.id === id);
     if (!item || item.isFixed) return;
 
-    const newHistory = [...history, cloneFurniture(furniture)].slice(-20);
     const newRot = (item.rotation + 90) % 360;
+
+    if (canonicalBoundary && canonicalBoundary.length >= 3) {
+      const obstacles = getObstaclesInStore({ furniture, walls, doors, ignoreId: id });
+      const center = { x: item.x + item.width / 2, y: item.y + item.depth / 2 };
+      const valid = isValidFootprintPlacement(
+        {
+          position: center,
+          dimensionsCm: { width: item.width, depth: item.depth },
+          rotationDeg: newRot,
+        },
+        canonicalBoundary,
+        obstacles,
+        id
+      );
+      if (!valid) {
+        set({ placementError: "Cannot rotate item: rotated dimensions exceed room boundary or collide with existing obstacles." });
+        return;
+      }
+    }
+
+    const newHistory = [...history, cloneFurniture(furniture)].slice(-20);
     const updated = furniture.map((f) => (f.id === id ? { ...f, rotation: newRot } : f));
     const newRouteResult = computeStoreRoute(updated, rooms, activeProfile, routeWaypoints, walls, doors, canonicalBoundary);
     set({
@@ -410,6 +526,7 @@ export const useSafeSpaceStore = create<SafeSpaceState>((set, get) => ({
       history: newHistory,
       future: [],
       routeResult: newRouteResult,
+      placementError: null,
       ...invalidateOptimizationAndAppliedBaseline(updated),
     });
     persistUserMutation(get, set);
@@ -472,17 +589,49 @@ export const useSafeSpaceStore = create<SafeSpaceState>((set, get) => ({
     };
 
     const def = categoryDefaults[category] || { w: 60, d: 60, h: 75, name: "Item" };
+    let posX = 240;
+    let posY = 200;
+    let rot = 0;
+
+    if (canonicalBoundary && canonicalBoundary.length >= 3) {
+      const obstacles = getObstaclesInStore({ furniture, walls, doors });
+      const refPoints = furniture.map((f) => ({ x: f.x + f.width / 2, y: f.y + f.depth / 2 }));
+      const interiorPt =
+        findInteriorProvisionalPoint(canonicalBoundary, "intermediate", refPoints) ||
+        findInteriorProvisionalPoint(canonicalBoundary, "start");
+
+      const feasible = findFeasibleFootprintPlacement(
+        { width: def.w, depth: def.d },
+        canonicalBoundary,
+        obstacles,
+        interiorPt ? { preferredPoint: interiorPt } : undefined
+      );
+
+      if (!feasible) {
+        set({
+          placementError: "Cannot place item: insufficient space inside room boundary without colliding with obstacles.",
+          storageStatus: "error",
+          storageError: "Cannot place item: insufficient space inside room boundary without colliding with obstacles.",
+        });
+        return;
+      }
+
+      posX = feasible.position.x - def.w / 2;
+      posY = feasible.position.y - def.d / 2;
+      rot = feasible.rotationDeg;
+    }
+
     const newItem: SpatialFurniture = {
       id,
       name: def.name,
       category,
       roomId: canonicalBoundary ? "user-space" : rooms[0]?.id || "room-1",
-      x: 240,
-      y: 200,
+      x: posX,
+      y: posY,
       width: def.w,
       depth: def.d,
       height: def.h,
-      rotation: 0,
+      rotation: rot,
       isFixed: false,
       isConfirmed: false,
       isStableSupport: category === "handrail" || category === "desk",
@@ -497,6 +646,7 @@ export const useSafeSpaceStore = create<SafeSpaceState>((set, get) => ({
       history: newHistory,
       future: [],
       routeResult: newRouteResult,
+      placementError: null,
       ...invalidateOptimizationAndAppliedBaseline(updated),
     });
     persistUserMutation(get, set);
@@ -830,6 +980,14 @@ export const useSafeSpaceStore = create<SafeSpaceState>((set, get) => ({
 
     // P0 B: Commit durable user assessment first with error handling
     if (state.assessmentType === "user") {
+      let hasFloorplanImage = state.hasFloorplanImage;
+      if (typeof hasFloorplanImage !== "boolean") {
+        const existing = getPersistedAssessment();
+        if (existing && typeof existing.hasFloorplanImage === "boolean" && existing.metadata?.id === state.assessmentMetadata?.id) {
+          hasFloorplanImage = existing.hasFloorplanImage;
+        }
+      }
+
       const saveRes = savePersistedAssessment({
         schemaVersion: SAFESPACE_STORAGE_VERSION,
         assessmentType: "user",
@@ -843,6 +1001,7 @@ export const useSafeSpaceStore = create<SafeSpaceState>((set, get) => ({
         appliedLayoutBaseline: baseline,
         appliedCandidateId: candidate.id,
         appliedSceneFingerprint: appliedFingerprint,
+        hasFloorplanImage,
       });
 
       if (!saveRes.success) {
@@ -892,6 +1051,14 @@ export const useSafeSpaceStore = create<SafeSpaceState>((set, get) => ({
     );
 
     if (state.assessmentType === "user") {
+      let hasFloorplanImage = state.hasFloorplanImage;
+      if (typeof hasFloorplanImage !== "boolean") {
+        const existing = getPersistedAssessment();
+        if (existing && typeof existing.hasFloorplanImage === "boolean" && existing.metadata?.id === state.assessmentMetadata?.id) {
+          hasFloorplanImage = existing.hasFloorplanImage;
+        }
+      }
+
       const saveRes = savePersistedAssessment({
         schemaVersion: SAFESPACE_STORAGE_VERSION,
         assessmentType: "user",
@@ -905,6 +1072,7 @@ export const useSafeSpaceStore = create<SafeSpaceState>((set, get) => ({
         appliedLayoutBaseline: null,
         appliedCandidateId: null,
         appliedSceneFingerprint: null,
+        hasFloorplanImage,
       });
 
       if (!saveRes.success) {
@@ -983,6 +1151,10 @@ export const useSafeSpaceStore = create<SafeSpaceState>((set, get) => ({
   },
 
   resetToDemo: (initialStage?: unknown) => {
+    const currentUrl = get().floorplanImageBlobUrl;
+    if (currentUrl) {
+      try { URL.revokeObjectURL(currentUrl); } catch {}
+    }
     const savedWs = saveActiveWorkspace("demo");
     const defaultProfile = { ...MOBILITY_PROFILES[0] };
     const defaultFurniture = cloneFurniture(INITIAL_FURNITURE);
@@ -1010,6 +1182,8 @@ export const useSafeSpaceStore = create<SafeSpaceState>((set, get) => ({
       assessmentMetadata: null,
       canonicalBoundary: null,
       calibrationProvenance: null,
+      floorplanImageBlobUrl: null,
+      hasFloorplanImage: false,
       activeStage: targetStage,
       furniture: defaultFurniture,
       walls: INITIAL_WALLS,
@@ -1036,10 +1210,23 @@ export const useSafeSpaceStore = create<SafeSpaceState>((set, get) => ({
     });
   },
 
-  createAndLoadUserAssessment: (payload) => {
-    const { metadata, boundaryCm, calibration } = payload;
+  createAndLoadUserAssessment: async (payload) => {
+    const { metadata, boundaryCm, calibration, imageFile } = payload;
 
-    // Validate geometry and inputs
+    // 0. Pre-flight capture of persisted snapshot before ANY write
+    const previousPersisted = getPersistedAssessment();
+    const previousPersistedId = previousPersisted?.metadata?.id;
+    const previousActiveWs = loadActiveWorkspace();
+    const isReusingId = Boolean(previousPersistedId && previousPersistedId === metadata.id);
+
+    let previousImageRecord: PersistedFloorplanImage | null = null;
+    if (isReusingId && previousPersistedId) {
+      try {
+        previousImageRecord = await getFloorplanImage(previousPersistedId);
+      } catch {}
+    }
+
+    // 1. Validate geometry and metadata inputs
     if (!boundaryCm || !Array.isArray(boundaryCm) || boundaryCm.length < 3) {
       const err = "Boundary requires at least 3 vertices";
       set({ storageStatus: "error", storageError: err });
@@ -1062,6 +1249,7 @@ export const useSafeSpaceStore = create<SafeSpaceState>((set, get) => ({
       return { success: false, error: err };
     }
 
+    // 2. Prepare persisted assessment payload
     const defaultProfile = { ...MOBILITY_PROFILES[0] };
     const savePayload: PersistedAssessmentState = {
       schemaVersion: SAFESPACE_STORAGE_VERSION,
@@ -1073,33 +1261,171 @@ export const useSafeSpaceStore = create<SafeSpaceState>((set, get) => ({
       activeProfileSnapshot: defaultProfile,
       routeWaypoints: [],
       furniture: [],
+      hasFloorplanImage: Boolean(imageFile),
     };
 
+    // 3. Persist floorplan image to IndexedDB FIRST if provided
+    let imageCommitted = false;
+    if (imageFile) {
+      try {
+        const idbSuccess = await saveFloorplanImage({
+          assessmentId: metadata.id,
+          blob: imageFile,
+          mimeType: (imageFile as File).type || "image/png",
+          name: (imageFile as File).name || "floorplan",
+          size: imageFile.size,
+          canvasWidth: 800,
+          canvasHeight: 600,
+          updatedAt: new Date().toISOString(),
+        });
+        if (!idbSuccess) {
+          const err = "Failed to save floorplan image to local database. Assessment creation aborted to prevent media loss.";
+          set({ storageStatus: "error", storageError: err });
+          return { success: false, error: err };
+        }
+        imageCommitted = true;
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
+        const errStr = `IndexedDB storage error: ${msg}`;
+        set({ storageStatus: "error", storageError: errStr });
+        return { success: false, error: errStr };
+      }
+    }
+
+    // 4. Persist assessment state to localStorage
     const saveRes = savePersistedAssessment(savePayload);
     if (!saveRes.success) {
-      set({
-        storageStatus: "error",
-        storageError: saveRes.error,
-      });
-      return { success: false, error: saveRes.error };
+      // Rollback media if written
+      let rollbackOk = true;
+      if (imageCommitted) {
+        try {
+          if (!isReusingId) {
+            rollbackOk = await deleteFloorplanImage(metadata.id);
+          } else if (previousImageRecord) {
+            rollbackOk = await saveFloorplanImage(previousImageRecord);
+          }
+        } catch {
+          rollbackOk = false;
+        }
+      }
+
+      // Ensure previous assessment remains in localStorage
+      if (previousPersisted) {
+        try {
+          savePersistedAssessment(previousPersisted);
+        } catch {
+          rollbackOk = false;
+        }
+      }
+
+      const err = saveRes.error || "Failed to persist assessment layout to browser storage.";
+      const finalErr = rollbackOk
+        ? `${err} Previous assessment state preserved.`
+        : `${err} Warning: partial rollback failure; database may be in inconsistent state.`;
+      set({ storageStatus: "error", storageError: finalErr });
+      return { success: false, error: finalErr, rollbackFailed: !rollbackOk };
     }
 
+    // 5. Persist active workspace selection
     const savedWs = saveActiveWorkspace("user");
     if (!savedWs) {
-      const err = "Assessment saved, but failed to persist active workspace selection.";
-      set({
-        storageStatus: "error",
-        storageError: err,
-      });
-      return { success: false, error: err };
+      // ACTIVE WORKSPACE FAILED! ROLLBACK EVERYTHING TO PREVIOUS STATE!
+      let rollbackOk = true;
+
+      // 5a. Rollback localStorage
+      try {
+        if (previousPersisted) {
+          const restoreRes = savePersistedAssessment(previousPersisted);
+          if (!restoreRes.success) rollbackOk = false;
+        } else {
+          clearPersistedAssessment();
+        }
+      } catch {
+        rollbackOk = false;
+      }
+
+      // 5b. Rollback active workspace
+      try {
+        saveActiveWorkspace(previousActiveWs);
+      } catch {
+        rollbackOk = false;
+      }
+
+      // 5c. Rollback IndexedDB image
+      if (imageCommitted) {
+        try {
+          if (!isReusingId) {
+            const delOk = await deleteFloorplanImage(metadata.id);
+            if (!delOk) rollbackOk = false;
+          } else if (previousImageRecord) {
+            const restOk = await saveFloorplanImage(previousImageRecord);
+            if (!restOk) rollbackOk = false;
+          }
+        } catch {
+          rollbackOk = false;
+        }
+      }
+
+      // 5d. Verify rollback integrity
+      const currentPersistedAfterRollback = getPersistedAssessment();
+      const verifiedIntact = previousPersisted
+        ? currentPersistedAfterRollback?.metadata?.id === previousPersistedId
+        : currentPersistedAfterRollback === null;
+
+      if (!verifiedIntact) {
+        rollbackOk = false;
+      }
+
+      const err = rollbackOk
+        ? "Failed to persist active workspace selection. Previous assessment state has been preserved."
+        : "Failed to persist active workspace selection, and rollback of previous assessment failed. Storage may be in inconsistent state.";
+
+      set({ storageStatus: "error", storageError: err });
+      return { success: false, error: err, rollbackFailed: !rollbackOk };
     }
 
+    // 6. Safe commit point reached! Both stores acknowledged durable writes.
+    // Now clean up previous user assessment media if ID changed (derived from PERSISTED previous ID!)
+    let previousMediaCleanupFailed = false;
+    let cleanupWarning: string | undefined;
+    if (previousPersistedId && previousPersistedId !== metadata.id) {
+      try {
+        const deletedOld = await deleteFloorplanImage(previousPersistedId);
+        if (!deletedOld) {
+          previousMediaCleanupFailed = true;
+          cleanupWarning = `Previous assessment image (${previousPersistedId}) could not be cleaned up from IndexedDB.`;
+          console.warn(cleanupWarning);
+        }
+      } catch (err) {
+        previousMediaCleanupFailed = true;
+        cleanupWarning = `Previous assessment image (${previousPersistedId}) cleanup failed: ${err instanceof Error ? err.message : String(err)}`;
+        console.warn(cleanupWarning);
+      }
+    }
+
+    // Revoke old URL and create new URL
+    const currentUrl = get().floorplanImageBlobUrl;
+    if (currentUrl) {
+      try { URL.revokeObjectURL(currentUrl); } catch {}
+    }
+    let imageBlobUrl: string | null = null;
+    if (imageFile) {
+      try {
+        imageBlobUrl = URL.createObjectURL(imageFile);
+      } catch {
+        imageBlobUrl = null;
+      }
+    }
+
+    // Update in-memory state
     set({
       assessmentType: "user",
       assessmentId: metadata.id,
       assessmentMetadata: metadata,
       canonicalBoundary: boundaryCm,
       calibrationProvenance: calibration,
+      floorplanImageBlobUrl: imageBlobUrl,
+      hasFloorplanImage: Boolean(imageFile),
       activeProfileId: defaultProfile.id,
       activeProfile: defaultProfile,
       activeStage: "layout",
@@ -1124,9 +1450,16 @@ export const useSafeSpaceStore = create<SafeSpaceState>((set, get) => ({
       baselineFurnitureSnapshot: null,
       storageStatus: "saved",
       storageError: null,
+      placementError: null,
     });
 
-    return { success: true };
+    return {
+      success: true,
+      isSaved: true,
+      assessmentId: metadata.id,
+      previousMediaCleanupFailed,
+      cleanupWarning,
+    };
   },
 
   loadDemoAssessment: (initialStage?: unknown) => {
@@ -1137,9 +1470,30 @@ export const useSafeSpaceStore = create<SafeSpaceState>((set, get) => ({
     get().resetToDemo(initialStage);
   },
 
-  clearUserAssessment: () => {
-    clearPersistedAssessment();
+  clearUserAssessment: async () => {
+    const currentId = get().assessmentId;
+    const delRes = await coordinatedDeleteAssessment(currentId);
+    if (!delRes.success) {
+      set({
+        storageStatus: "error",
+        storageError: delRes.error || "Failed to completely delete assessment data from storage.",
+      });
+      return delRes;
+    }
+
+    const currentUrl = get().floorplanImageBlobUrl;
+    if (currentUrl) {
+      try { URL.revokeObjectURL(currentUrl); } catch {}
+    }
+
+    set({
+      floorplanImageBlobUrl: null,
+      storageStatus: "saved",
+      storageError: null,
+      placementError: null,
+    });
     get().loadDemoAssessment();
+    return delRes;
   },
 
   hydrateFromStorage: () => {
@@ -1187,12 +1541,18 @@ export const useSafeSpaceStore = create<SafeSpaceState>((set, get) => ({
         data.canonicalBoundary
       );
 
+      const hasImg =
+        typeof data.hasFloorplanImage === "boolean"
+          ? data.hasFloorplanImage
+          : undefined;
+
       set({
         assessmentType: "user",
         assessmentId: data.metadata?.id || `assessment-${Date.now()}`,
         assessmentMetadata: data.metadata,
         canonicalBoundary: data.canonicalBoundary,
         calibrationProvenance: data.calibration,
+        hasFloorplanImage: hasImg,
         activeProfileId: profile.id,
         activeProfile: profile,
         furniture: data.furniture || [],
@@ -1208,6 +1568,20 @@ export const useSafeSpaceStore = create<SafeSpaceState>((set, get) => ({
         storageStatus: "saved",
         storageError: null,
       });
+
+      if (data.metadata?.id) {
+        const targetId = data.metadata.id;
+        getFloorplanImage(targetId).then((imgRecord) => {
+          if (imgRecord && get().assessmentId === targetId) {
+            const oldUrl = get().floorplanImageBlobUrl;
+            if (oldUrl) {
+              try { URL.revokeObjectURL(oldUrl); } catch {}
+            }
+            const blobUrl = URL.createObjectURL(imgRecord.blob);
+            set({ floorplanImageBlobUrl: blobUrl, hasFloorplanImage: true });
+          }
+        }).catch(() => {});
+      }
     }
   },
 }));

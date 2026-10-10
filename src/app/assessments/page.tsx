@@ -5,30 +5,29 @@ import Link from "next/link";
 import { AppShell } from "@/components/shell";
 import {
   loadPersistedAssessment,
-  clearPersistedAssessment,
   saveActiveWorkspace,
   type PersistedAssessmentState,
 } from "@/lib/storage/persistence";
-import { useSafeSpaceStore, type WorkflowStage } from "@/store/safespace-store";
+import { useSafeSpaceStore } from "@/store/safespace-store";
 
 export default function AssessmentsPage() {
-  const { hydrateFromStorage, resetToDemo } = useSafeSpaceStore();
+  const { hydrateFromStorage, clearUserAssessment } = useSafeSpaceStore();
   const [savedAssessment, setSavedAssessment] = useState<PersistedAssessmentState | null>(null);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [deleteError, setDeleteError] = useState<string | null>(null);
   const [openError, setOpenError] = useState<string | null>(null);
 
   useEffect(() => {
-    const timer = setTimeout(() => {
-      const res = loadPersistedAssessment();
-      if (res.success && res.data.assessmentType === "user") {
-        setSavedAssessment(res.data);
-      } else {
-        setSavedAssessment(null);
-      }
-    }, 0);
-    return () => clearTimeout(timer);
+    const res = loadPersistedAssessment();
+    if (res.success && res.data.assessmentType === "user") {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
+      setSavedAssessment(res.data);
+    } else {
+      setSavedAssessment(null);
+    }
   }, []);
+
+  const [isDeleting, setIsDeleting] = useState(false);
 
   const handleOpenUserAssessment = (e: React.MouseEvent) => {
     setOpenError(null);
@@ -41,27 +40,23 @@ export default function AssessmentsPage() {
     hydrateFromStorage();
   };
 
-  const handleOpenDemoAssessment = (e: React.MouseEvent, stage: WorkflowStage = "layout") => {
-    setOpenError(null);
-    const ok = saveActiveWorkspace("demo");
-    if (!ok) {
-      e.preventDefault();
-      setOpenError("Failed to switch workspace: storage write failed. Your saved assessment remains safe.");
-      return;
-    }
-    resetToDemo(stage);
-  };
-
-  const handleConfirmDelete = () => {
+  const handleConfirmDelete = async () => {
     setDeleteError(null);
-    const res = clearPersistedAssessment();
-    if (!res.success) {
-      setDeleteError(res.error || "Failed to clear storage");
-      return;
+    setIsDeleting(true);
+    try {
+      const res = await clearUserAssessment();
+      if (!res.success) {
+        setDeleteError(res.error || "Failed to remove assessment data from this device.");
+        return;
+      }
+      setSavedAssessment(null);
+      setShowDeleteConfirm(false);
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      setDeleteError(`Deletion error: ${msg}`);
+    } finally {
+      setIsDeleting(false);
     }
-    saveActiveWorkspace("demo");
-    setSavedAssessment(null);
-    setShowDeleteConfirm(false);
   };
 
   return (
@@ -92,7 +87,7 @@ export default function AssessmentsPage() {
               Assessments & Spaces
             </h1>
             <p className="mt-1.5 text-xs text-[#64748b]">
-              Evaluate environmental fall risks, calibrate floorplans, and audit critical routes across living and care environments.
+              Evaluate pathway clearance, calibrate floorplans, and audit critical routes across living and care environments.
             </p>
           </div>
 
@@ -127,7 +122,7 @@ export default function AssessmentsPage() {
                       {savedAssessment.metadata?.facilityName || "Custom Facility"}
                     </span>
                     <span className="rounded bg-emerald-50 px-2 py-0.5 text-[10px] font-semibold text-emerald-800 border border-emerald-200">
-                      User Assessment
+                      Saved Assessment
                     </span>
                     <span className="text-slate-400 text-xs">·</span>
                     <span className="text-xs font-medium text-slate-600">
@@ -135,7 +130,7 @@ export default function AssessmentsPage() {
                     </span>
                   </div>
                   <p className="text-xs text-slate-600">
-                    Boundary: {savedAssessment.canonicalBoundary?.length ?? 0} vertices · Scale: {savedAssessment.calibration?.pixelsPerCm.toFixed(2)} px/cm
+                    Room perimeter: {savedAssessment.canonicalBoundary?.length ?? 0} boundary points · Calibrated ({savedAssessment.calibration?.realLength} {savedAssessment.calibration?.unit || "cm"} reference)
                   </p>
                   <p className="text-[11px] text-slate-400">
                     Saved: {savedAssessment.metadata?.updatedAt ? new Date(savedAssessment.metadata.updatedAt).toLocaleString() : "Recently"}
@@ -175,14 +170,17 @@ export default function AssessmentsPage() {
                 role="dialog"
                 aria-modal="true"
                 aria-labelledby="delete-dialog-title"
+                onKeyDown={(e) => {
+                  if (e.key === "Escape") setShowDeleteConfirm(false);
+                }}
                 className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-xs p-4"
               >
                 <div className="bg-white rounded-xl shadow-2xl border border-slate-200 max-w-md w-full p-6 space-y-4">
                   <h3 id="delete-dialog-title" className="text-base font-bold text-slate-900">
-                    Delete Confirmed Assessment?
+                    Delete Saved Assessment?
                   </h3>
                   <p className="text-xs text-slate-600 leading-relaxed">
-                    This will permanently delete your confirmed assessment from browser storage. This action cannot be undone.
+                    This will permanently delete this room assessment from your device. This action cannot be undone.
                   </p>
                   {deleteError && (
                     <div role="alert" className="p-2.5 rounded bg-red-50 border border-red-200 text-xs text-red-700">
@@ -192,17 +190,20 @@ export default function AssessmentsPage() {
                   <div className="flex items-center justify-end gap-2 pt-2">
                     <button
                       type="button"
+                      autoFocus
+                      disabled={isDeleting}
                       onClick={() => setShowDeleteConfirm(false)}
-                      className="px-3 py-1.5 rounded-lg border border-slate-300 text-xs font-semibold text-slate-700 hover:bg-slate-50 transition cursor-pointer"
+                      className="px-3 py-1.5 rounded-lg border border-slate-300 text-xs font-semibold text-slate-700 hover:bg-slate-50 transition cursor-pointer focus-visible:outline focus-visible:outline-2 focus-visible:outline-[#1e7168]"
                     >
                       Cancel
                     </button>
                     <button
                       type="button"
+                      disabled={isDeleting}
                       onClick={handleConfirmDelete}
-                      className="px-3.5 py-1.5 rounded-lg bg-red-600 hover:bg-red-700 text-xs font-semibold text-white transition cursor-pointer"
+                      className="px-3.5 py-1.5 rounded-lg bg-red-600 hover:bg-red-700 disabled:opacity-50 text-xs font-semibold text-white transition cursor-pointer focus-visible:outline focus-visible:outline-2 focus-visible:outline-red-600"
                     >
-                      Delete Assessment
+                      {isDeleting ? "Deleting..." : deleteError ? "Retry Deletion" : "Delete Assessment"}
                     </button>
                   </div>
                 </div>
@@ -228,80 +229,21 @@ export default function AssessmentsPage() {
               </svg>
             </div>
             <h2 className="mt-3 text-sm font-semibold text-[#192329]">
-              No assessments saved yet
+              No custom assessments saved yet
             </h2>
             <p className="mt-1 text-xs text-[#64748b] max-w-md mx-auto">
-              Intake drafts exist only while the intake session remains open (Session only); leaving or refreshing discards unsaved session state until canonical project storage is connected.
+              Draft assessments stay in memory until finalized. Start a new assessment to measure your space and save it to this device.
             </p>
             <div className="mt-4">
               <Link
                 href="/assessments/new"
                 className="inline-flex items-center justify-center rounded-lg border border-slate-300 bg-white px-3.5 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-50 transition"
               >
-                Start an assessment
+                + Start an assessment
               </Link>
             </div>
           </div>
         )}
-
-        {/* Labelled Demo Fixture Section */}
-        <section aria-labelledby="demo-fixtures-heading" className="space-y-3">
-          <div className="flex items-center justify-between">
-            <h2
-              id="demo-fixtures-heading"
-              className="text-xs font-semibold uppercase tracking-wider text-slate-400"
-            >
-              Pre-Configured Demo Fixture
-            </h2>
-            <span className="text-[11px] text-slate-500">
-              Interactive sample scenario
-            </span>
-          </div>
-
-          {openError && (
-            <div role="alert" className="p-3 rounded-lg bg-red-50 border border-red-200 text-xs text-red-700">
-              {openError}
-            </div>
-          )}
-
-          <div className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-xs">
-            <div className="p-5 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-              <div className="space-y-1">
-                <div className="flex items-center gap-2">
-                  <span className="font-semibold text-sm text-[#192329]">
-                    Queen Care Clinic
-                  </span>
-                  <span className="rounded bg-amber-50 px-2 py-0.5 text-[10px] font-semibold text-amber-800 border border-amber-200">
-                    Demo Fixture
-                  </span>
-                </div>
-                <p className="text-xs text-slate-600">
-                  Waiting Area & Consultation Corridor · Pre-scripted baseline floorplan
-                </p>
-                <p className="text-[11px] text-slate-400">
-                  Critical Route: Entrance &rarr; Reception &rarr; Waiting Seat &rarr; Consultation Room
-                </p>
-              </div>
-
-              <div className="flex items-center gap-3 shrink-0">
-                <Link
-                  href="/"
-                  onClick={(e) => handleOpenDemoAssessment(e, "analysis")}
-                  className="rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-50 transition cursor-pointer"
-                >
-                  View analysis demo
-                </Link>
-                <Link
-                  href="/"
-                  onClick={(e) => handleOpenDemoAssessment(e, "layout")}
-                  className="rounded-lg bg-[#1e7168] px-3.5 py-1.5 text-xs font-semibold text-white hover:bg-[#175b54] transition cursor-pointer"
-                >
-                  Open demo &rarr;
-                </Link>
-              </div>
-            </div>
-          </div>
-        </section>
       </div>
     </AppShell>
   );

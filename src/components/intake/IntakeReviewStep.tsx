@@ -57,7 +57,7 @@ export function IntakeReviewStep({
 
   const polygonPoints = boundary.vertices.map((v) => `${v.x},${v.y}`).join(" ");
 
-  const executeConfirmAndOpen = () => {
+  const executeConfirmAndOpen = async () => {
     setValidationError(null);
 
     const validation = validateIntakeBoundary(
@@ -84,7 +84,7 @@ export function IntakeReviewStep({
           ? computePixelDistance(calibration.p1, calibration.p2)
           : calibration.pixelsPerCm! * realLengthCm;
 
-      const res = createAndLoadUserAssessment({
+      const res = await createAndLoadUserAssessment({
         metadata: {
           id: `assessment-${Date.now()}`,
           name: details.assessmentName.trim(),
@@ -103,6 +103,7 @@ export function IntakeReviewStep({
           pixelDistance: pixelDist,
           originPolicy: INTAKE_ORIGIN_POLICY,
         },
+        imageFile: uploadedFile?.file,
       });
 
       if (!res.success) {
@@ -314,13 +315,13 @@ export function IntakeReviewStep({
             {/* Storage Lifecycle Disclosure */}
             <div className="rounded-lg border border-slate-200 bg-slate-50 p-3 text-[11px] text-slate-600 space-y-1">
               <div className="font-semibold text-slate-800">
-                Data Persistence & Source File Lifecycle
+                Saving Your Assessment
               </div>
               <p>
-                Your confirmed room boundary, scale calibration provenance, and assessment metadata will be saved permanently in browser storage.
+                Your confirmed room outline, scale calibration, and space details are saved to local browser storage on this device.
               </p>
               <p className="text-slate-500">
-                Uploaded floorplan images remain in browser memory for the active session and are never saved as durable blob URLs.
+                Floorplan background images are saved locally to IndexedDB so they persist across reloads.
               </p>
             </div>
           </div>
@@ -333,6 +334,9 @@ export function IntakeReviewStep({
           role="dialog"
           aria-modal="true"
           aria-labelledby="replace-modal-title"
+          onKeyDown={(e) => {
+            if (e.key === "Escape") setShowOverwriteModal(false);
+          }}
           className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-xs p-4"
         >
           <div className="bg-white rounded-xl shadow-2xl border border-slate-200 max-w-md w-full p-6 space-y-4">
@@ -340,13 +344,14 @@ export function IntakeReviewStep({
               Replace Existing Saved Assessment?
             </h3>
             <p className="text-xs text-slate-600 leading-relaxed">
-              A previously confirmed user assessment is already saved in this browser. Confirming will permanently replace that assessment with this new space.
+              A previously confirmed assessment is already saved on this device. Confirming will replace that assessment with this new space.
             </p>
             <div className="flex items-center justify-end gap-2 pt-2">
               <Button
                 type="button"
                 variant="secondary"
                 size="sm"
+                autoFocus
                 onClick={() => setShowOverwriteModal(false)}
               >
                 Cancel
