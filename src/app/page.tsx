@@ -30,6 +30,8 @@ export default function SafeSpaceApp() {
   const [persistedAssessment, setPersistedAssessment] = useState<PersistedAssessmentState | null>(null);
   const [isClientLoaded, setIsClientLoaded] = useState(false);
 
+  const [openSavedError, setOpenSavedError] = useState<string | null>(null);
+
   useEffect(() => {
     const active = loadActiveWorkspace();
     const stored = loadPersistedAssessment();
@@ -46,12 +48,18 @@ export default function SafeSpaceApp() {
   }, [hydrateFromStorage]);
 
   const handleOpenSaved = () => {
+    setOpenSavedError(null);
     const stored = loadPersistedAssessment();
     if (stored.success && stored.data.assessmentType === "user") {
-      saveActiveWorkspace("user");
+      const ok = saveActiveWorkspace("user");
+      if (!ok) {
+        setOpenSavedError("Failed to switch active workspace on this device.");
+        return;
+      }
       hydrateFromStorage();
     } else {
       setPersistedAssessment(null);
+      setOpenSavedError("No valid assessment found to open.");
     }
   };
 
@@ -157,6 +165,11 @@ export default function SafeSpaceApp() {
                 <span>Open saved assessment &rarr;</span>
               </button>
             </div>
+            {openSavedError && (
+              <div role="alert" className="mt-3 p-2.5 rounded bg-red-50 border border-red-200 text-xs text-red-700">
+                {openSavedError}
+              </div>
+            )}
           </div>
         )}
 
@@ -164,7 +177,7 @@ export default function SafeSpaceApp() {
         <div className="rounded-2xl border border-slate-200 bg-white p-8 sm:p-12 shadow-sm text-center">
           <div className="inline-flex items-center gap-2 rounded-full bg-teal-50 border border-teal-200/60 px-3 py-1 text-xs font-medium text-teal-800 mb-6">
             <ShieldCheck className="w-4 h-4 text-teal-700" />
-            <span>Standard Pathway Clearance Audit</span>
+            <span>Pathway Clearance Audit</span>
           </div>
 
           <h1 className="text-3xl sm:text-4xl font-extrabold tracking-tight text-slate-900 max-w-xl mx-auto">

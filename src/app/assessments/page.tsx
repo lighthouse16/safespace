@@ -5,14 +5,9 @@ import Link from "next/link";
 import { AppShell } from "@/components/shell";
 import {
   loadPersistedAssessment,
-  clearPersistedAssessment,
   saveActiveWorkspace,
   type PersistedAssessmentState,
 } from "@/lib/storage/persistence";
-import {
-  deleteFloorplanImage,
-  clearAllFloorplanImages,
-} from "@/lib/storage/image-db";
 import { useSafeSpaceStore } from "@/store/safespace-store";
 
 export default function AssessmentsPage() {
@@ -32,6 +27,8 @@ export default function AssessmentsPage() {
     }
   }, []);
 
+  const [isDeleting, setIsDeleting] = useState(false);
+
   const handleOpenUserAssessment = (e: React.MouseEvent) => {
     setOpenError(null);
     const ok = saveActiveWorkspace("user");
@@ -45,22 +42,21 @@ export default function AssessmentsPage() {
 
   const handleConfirmDelete = async () => {
     setDeleteError(null);
-    const id = savedAssessment?.metadata?.id;
-    if (id) {
-      try {
-        await deleteFloorplanImage(id);
-      } catch {}
-    }
+    setIsDeleting(true);
     try {
-      await clearAllFloorplanImages();
-    } catch {}
-    try {
-      await clearUserAssessment();
-    } catch {
-      clearPersistedAssessment();
+      const res = await clearUserAssessment();
+      if (!res.success) {
+        setDeleteError(res.error || "Failed to remove assessment data from this device.");
+        return;
+      }
+      setSavedAssessment(null);
+      setShowDeleteConfirm(false);
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      setDeleteError(`Deletion error: ${msg}`);
+    } finally {
+      setIsDeleting(false);
     }
-    setSavedAssessment(null);
-    setShowDeleteConfirm(false);
   };
 
   return (
@@ -195,6 +191,7 @@ export default function AssessmentsPage() {
                     <button
                       type="button"
                       autoFocus
+                      disabled={isDeleting}
                       onClick={() => setShowDeleteConfirm(false)}
                       className="px-3 py-1.5 rounded-lg border border-slate-300 text-xs font-semibold text-slate-700 hover:bg-slate-50 transition cursor-pointer focus-visible:outline focus-visible:outline-2 focus-visible:outline-[#1e7168]"
                     >
@@ -202,10 +199,11 @@ export default function AssessmentsPage() {
                     </button>
                     <button
                       type="button"
+                      disabled={isDeleting}
                       onClick={handleConfirmDelete}
-                      className="px-3.5 py-1.5 rounded-lg bg-red-600 hover:bg-red-700 text-xs font-semibold text-white transition cursor-pointer focus-visible:outline focus-visible:outline-2 focus-visible:outline-red-600"
+                      className="px-3.5 py-1.5 rounded-lg bg-red-600 hover:bg-red-700 disabled:opacity-50 text-xs font-semibold text-white transition cursor-pointer focus-visible:outline focus-visible:outline-2 focus-visible:outline-red-600"
                     >
-                      Delete Assessment
+                      {isDeleting ? "Deleting..." : deleteError ? "Retry Deletion" : "Delete Assessment"}
                     </button>
                   </div>
                 </div>

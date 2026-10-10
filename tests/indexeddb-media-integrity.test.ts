@@ -7,6 +7,8 @@ import {
   clearAllFloorplanImages,
   type PersistedFloorplanImage,
 } from '../src/lib/storage/image-db';
+import { coordinatedDeleteAssessment } from '../src/lib/storage/coordinated-storage';
+import { loadPersistedAssessment, SAFESPACE_STORAGE_KEY } from '../src/lib/storage/persistence';
 import { useSafeSpaceStore } from '../src/store/safespace-store';
 
 interface MockRecord {
@@ -43,6 +45,7 @@ class MockIDBDatabase {
   closed = false;
   closeCalls = 0;
   stores = new Map<string, Map<string, MockRecord>>();
+  failNextTx: 'error' | 'abort' | null = null;
 
   objectStoreNames = {
     contains: (name: string) => this.stores.has(name),
@@ -61,6 +64,43 @@ class MockIDBDatabase {
   }
 
   transaction(storeName: string): MockTransaction {
+    if (this.failNextTx) {
+      const mode = this.failNextTx;
+      this.failNextTx = null;
+      const tx: MockTransaction = {
+        oncomplete: null,
+        onerror: null,
+        onabort: null,
+        objectStore: () => ({
+          put: () => {
+            setTimeout(() => {
+              if (mode === 'abort') tx.onabort?.();
+              else tx.onerror?.();
+            }, 0);
+          },
+          get: () => {
+            const req: MockRequest<MockRecord | null> = { result: null, onsuccess: null, onerror: null };
+            setTimeout(() => {
+              req.onerror?.({});
+              tx.onerror?.();
+            }, 0);
+            return req;
+          },
+          delete: () => {
+            setTimeout(() => {
+              tx.onerror?.();
+            }, 0);
+          },
+          clear: () => {
+            setTimeout(() => {
+              tx.onerror?.();
+            }, 0);
+          },
+        }),
+      };
+      return tx;
+    }
+
     const dataStore = this.stores.get(storeName) || new Map<string, MockRecord>();
     const tx: MockTransaction = {
       oncomplete: null,
@@ -287,4 +327,168 @@ test('Store Assessment Lifecycle: replaces previous image on new assessment and 
   await store.clearUserAssessment();
   const storedBPost = await getFloorplanImage('space-b');
   assert.equal(storedBPost, null, 'User assessment clear purges all images');
+});
+
+test('Adversarial Storage: IDB save failure aborts creation, rejects operation, and preserves prior state', async () => {
+  const dummyFile = new File(['adv-bytes'], 'plan.png', { type: 'image/png' });
+  const store = useSafeSpaceStore.getState();
+  store.resetToDemo();
+  globalThis.localStorage.clear();
+
+  mockDbInstance.failNextTx = 'error';
+
+  const res = await store.createAndLoadUserAssessment({
+    metadata: {
+      id: 'adv-fail-idb',
+      name: 'Fail IDB Space',
+      facilityName: 'Test Facility',
+      spaceName: 'Room 1',
+      environmentType: 'clinic',
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    },
+    boundaryCm: [
+      { x: 0, y: 0 },
+      { x: 300, y: 0 },
+      { x: 300, y: 300 },
+      { x: 0, y: 300 },
+    ],
+    calibration: {
+      pixelsPerCm: 1.0,
+      realLength: 300,
+      unit: 'cm',
+      pixelDistance: 300,
+      originPolicy: 'canvas-origin-0-0',
+    },
+    imageFile: dummyFile,
+  });
+
+  assert.equal(res.success, false, 'Operation must report failure');
+  assert.match(res.error || '', /IndexedDB|local database/i);
+  assert.equal(useSafeSpaceStore.getState().storageStatus, 'error');
+  assert.equal(useSafeSpaceStore.getState().assessmentType, 'demo', 'Must not load unpersisted space');
+  assert.equal(await getFloorplanImage('adv-fail-idb'), null, 'No orphan image in IDB');
+  assert.equal(loadPersistedAssessment().success, false, 'localStorage must be untouched');
+});
+
+test('Adversarial Storage: localStorage save failure rolls back IndexedDB image', async () => {
+  const dummyFile = new File(['rollback-bytes'], 'plan.png', { type: 'image/png' });
+  const store = useSafeSpaceStore.getState();
+  store.resetToDemo();
+
+  const origSetItem = globalThis.localStorage.setItem;
+  globalThis.localStorage.setItem = () => {
+    throw new Error('QuotaExceededError: storage is full');
+  };
+
+  try {
+    const res = await store.createAndLoadUserAssessment({
+      metadata: {
+        id: 'adv-rollback-ls',
+        name: 'Rollback Space',
+        facilityName: 'Test Facility',
+        spaceName: 'Room 1',
+        environmentType: 'clinic',
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+      },
+      boundaryCm: [
+        { x: 0, y: 0 },
+        { x: 300, y: 0 },
+        { x: 300, y: 300 },
+        { x: 0, y: 300 },
+      ],
+      calibration: {
+        pixelsPerCm: 1.0,
+        realLength: 300,
+        unit: 'cm',
+        pixelDistance: 300,
+        originPolicy: 'canvas-origin-0-0',
+      },
+      imageFile: dummyFile,
+    });
+
+    assert.equal(res.success, false, 'Must report failure on localStorage exception');
+    assert.equal(useSafeSpaceStore.getState().storageStatus, 'error');
+
+    // Invariant: IDB image must be rolled back and cleaned up
+    const storedImg = await getFloorplanImage('adv-rollback-ls');
+    assert.equal(storedImg, null, 'IDB image must be rolled back after localStorage write failure');
+  } finally {
+    globalThis.localStorage.setItem = origSetItem;
+  }
+});
+
+test('Adversarial Storage: IDB delete failure prevents deceptive success in clearUserAssessment', async () => {
+  const dummyFile = new File(['del-fail-bytes'], 'plan.png', { type: 'image/png' });
+  const store = useSafeSpaceStore.getState();
+
+  const createRes = await store.createAndLoadUserAssessment({
+    metadata: {
+      id: 'adv-fail-del',
+      name: 'Delete Fail Space',
+      facilityName: 'Test Facility',
+      spaceName: 'Room 1',
+      environmentType: 'clinic',
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    },
+    boundaryCm: [
+      { x: 0, y: 0 },
+      { x: 300, y: 0 },
+      { x: 300, y: 300 },
+      { x: 0, y: 300 },
+    ],
+    calibration: {
+      pixelsPerCm: 1.0,
+      realLength: 300,
+      unit: 'cm',
+      pixelDistance: 300,
+      originPolicy: 'canvas-origin-0-0',
+    },
+    imageFile: dummyFile,
+  });
+  assert.equal(createRes.success, true);
+  assert.ok((await getFloorplanImage('adv-fail-del')) !== null, 'Image exists in IDB');
+
+  // Inject IDB error during delete
+  mockDbInstance.failNextTx = 'error';
+  const delRes = await store.clearUserAssessment();
+
+  assert.equal(delRes.success, false, 'clearUserAssessment must report failure when IDB delete fails');
+  assert.equal(useSafeSpaceStore.getState().storageStatus, 'error');
+  assert.equal(useSafeSpaceStore.getState().assessmentType, 'user', 'User state must be retained for retry');
+
+  // Retry when IDB is healthy succeeds
+  const retryRes = await store.clearUserAssessment();
+  assert.equal(retryRes.success, true, 'Retry must succeed once IDB error is resolved');
+  assert.equal(await getFloorplanImage('adv-fail-del'), null, 'IDB image is now cleared');
+  assert.equal(useSafeSpaceStore.getState().assessmentType, 'demo', 'Clean switch to demo');
+});
+
+test('Adversarial Storage: coordinatedDeleteAssessment verifies absence before returning success', async () => {
+  const dummyBlob = new Blob(['sample-content'], { type: 'image/png' });
+  await saveFloorplanImage({
+    assessmentId: 'coord-verify-space',
+    blob: dummyBlob,
+    mimeType: 'image/png',
+    name: 'coord.png',
+    size: dummyBlob.size,
+    canvasWidth: 800,
+    canvasHeight: 600,
+    updatedAt: new Date().toISOString(),
+  });
+  globalThis.localStorage.setItem(SAFESPACE_STORAGE_KEY, JSON.stringify({ metadata: { id: 'coord-verify-space' } }));
+
+  assert.ok((await getFloorplanImage('coord-verify-space')) !== null);
+  assert.ok(globalThis.localStorage.getItem(SAFESPACE_STORAGE_KEY) !== null);
+
+  const delRes = await coordinatedDeleteAssessment('coord-verify-space');
+  assert.equal(delRes.success, true);
+  assert.equal(delRes.localStorageCleared, true);
+  assert.equal(delRes.mediaCleared, true);
+
+  // Authoritative check
+  assert.equal(await getFloorplanImage('coord-verify-space'), null, 'IDB record must not exist');
+  assert.equal(globalThis.localStorage.getItem(SAFESPACE_STORAGE_KEY), null, 'localStorage key must not exist');
 });

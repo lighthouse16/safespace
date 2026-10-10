@@ -173,9 +173,9 @@ test('Feasible Placement Search: finds valid position or returns null when impos
   assert.equal(impossible, null);
 });
 
-test('Store Integration: moves and rotations outside boundary are rejected safely', () => {
+test('Store Integration: moves and rotations outside boundary are rejected safely', async () => {
   const store = useSafeSpaceStore.getState();
-  const createRes = store.createAndLoadUserAssessment({
+  const createRes = await store.createAndLoadUserAssessment({
     metadata: {
       id: 'placement-test-space',
       name: 'Placement Test Space',

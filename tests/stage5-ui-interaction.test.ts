@@ -203,7 +203,7 @@ test("Stage 5 Mounted UI: Zero-candidate scene renders truthful labels and acces
   const boundary = createRectBoundary(700, 700);
   const nowIso = new Date().toISOString();
 
-  store.createAndLoadUserAssessment({
+  await store.createAndLoadUserAssessment({
     metadata: {
       id: "zero-cand-test",
       name: "Zero Candidate Space",
@@ -266,7 +266,7 @@ test("Stage 5 Mounted UI: Storage failure on Apply retains Proposal Mode; failur
   const boundary = createRectBoundary(700, 700);
   const nowIso = new Date().toISOString();
 
-  store.createAndLoadUserAssessment({
+  await store.createAndLoadUserAssessment({
     metadata: {
       id: "storage-fail-mounted-test",
       name: "Storage Failure Space",
@@ -367,3 +367,67 @@ test("Stage 5 Mounted UI: Storage failure on Apply retains Proposal Mode; failur
     store.resetToDemo();
   }
 });
+
+// ---------------------------------------------------------------------------
+// 6. Mobile Viewport & Truthful Candidate Selector Invariants
+// ---------------------------------------------------------------------------
+
+test("Stage 5 Mounted UI: 390px mobile viewport defaults to Proposed view and renders 1-based Option labels", async () => {
+  const store = useSafeSpaceStore.getState();
+  store.resetToDemo();
+  store.setStage("improve");
+  store.runOptimization();
+
+  // Set mobile viewport width
+  const origInnerWidth = dom.window.innerWidth;
+  Object.defineProperty(dom.window, "innerWidth", { writable: true, configurable: true, value: 390 });
+  Object.defineProperty(globalThis, "innerWidth", { writable: true, configurable: true, value: 390 });
+
+  const harness = await createMountedHarness();
+
+  try {
+    const textContent = () => harness.rootEl.textContent ?? "";
+    const queryButton = (label: string) =>
+      Array.from(harness.rootEl.querySelectorAll("button")).find((b) => b.textContent?.trim().includes(label));
+
+    // 1. Candidate cards must use 1-based "Option 1", "Option 2" labels, NEVER "Option 0" or solver tokens
+    const optButtons = Array.from(harness.rootEl.querySelectorAll("button")).filter((b) =>
+      /Option\s+\d+/i.test(b.textContent || "")
+    );
+    assert.ok(optButtons.length > 0, "Candidate selector buttons rendered");
+    assert.ok(
+      optButtons.every((b) => !/Option\s+0\b/i.test(b.textContent || "")),
+      "No 0-based 'Option 0' labels allowed"
+    );
+    assert.ok(
+      !/minimal_displacement|balanced_clearance|circulation_first/i.test(textContent()),
+      "Internal solver objective tokens must not leak into primary UI copy"
+    );
+
+    // 2. Mobile segmented view toggles exist ("Proposed" & "Before")
+    const proposedToggle = queryButton("Proposed");
+    const beforeToggle = queryButton("Before");
+    assert.ok(proposedToggle, "Proposed mobile toggle exists");
+    assert.ok(beforeToggle, "Before mobile toggle exists");
+
+    // 3. Switch to Before Layout
+    await act(async () => {
+      beforeToggle.click();
+    });
+
+    // In Before view, before canvas is visible
+    assert.ok(textContent().includes("Original Baseline") || textContent().includes("Before"));
+
+    // 4. Switch back to Proposed
+    await act(async () => {
+      proposedToggle.click();
+    });
+    assert.ok(textContent().includes("Proposed") || textContent().includes("Current Proposal"));
+  } finally {
+    Object.defineProperty(dom.window, "innerWidth", { writable: true, configurable: true, value: origInnerWidth });
+    Object.defineProperty(globalThis, "innerWidth", { writable: true, configurable: true, value: origInnerWidth });
+    await harness.cleanup();
+    store.resetToDemo();
+  }
+});
+

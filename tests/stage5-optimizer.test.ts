@@ -356,7 +356,7 @@ test("Stage 5 Store: applying a layout candidate persists changes and allows cle
   store.resetToDemo();
 });
 
-test("Stage 5 Store: user assessment layout candidate application triggers durable persistence", () => {
+test("Stage 5 Store: user assessment layout candidate application triggers durable persistence", async () => {
   if (globalThis.localStorage && typeof globalThis.localStorage.clear === "function") {
     globalThis.localStorage.clear();
   }
@@ -365,7 +365,7 @@ test("Stage 5 Store: user assessment layout candidate application triggers durab
   const boundary = createRectBoundary(700, 700);
   const nowIso = new Date().toISOString();
 
-  store.createAndLoadUserAssessment({
+  await store.createAndLoadUserAssessment({
     metadata: {
       id: "user-stage5-test",
       name: "Stage 5 Suite Space",
@@ -479,12 +479,12 @@ test("Stage 5 Review Hardening: scene and profile mutations invalidate optimizat
 // 8. Gate 3 Review Hardening: P0 B - Storage Failure & Reload Revert Durability
 // ---------------------------------------------------------------------------
 
-test("Stage 5 Review Hardening: storage failure on Apply and Revert prevents deceptive success", () => {
+test("Stage 5 Review Hardening: storage failure on Apply and Revert prevents deceptive success", async () => {
   const store = useSafeSpaceStore.getState();
   const boundary = createRectBoundary(700, 700);
   const nowIso = new Date().toISOString();
 
-  store.createAndLoadUserAssessment({
+  await store.createAndLoadUserAssessment({
     metadata: {
       id: "storage-fail-test",
       name: "Storage Failure Space",
@@ -537,7 +537,7 @@ test("Stage 5 Review Hardening: storage failure on Apply and Revert prevents dec
   store.resetToDemo();
 });
 
-test("Stage 5 Review Hardening: reload restores accepted layout and baseline for durable revert", () => {
+test("Stage 5 Review Hardening: reload restores accepted layout and baseline for durable revert", async () => {
   if (globalThis.localStorage && typeof globalThis.localStorage.clear === "function") {
     globalThis.localStorage.clear();
   }
@@ -546,7 +546,7 @@ test("Stage 5 Review Hardening: reload restores accepted layout and baseline for
   const boundary = createRectBoundary(700, 700);
   const nowIso = new Date().toISOString();
 
-  store.createAndLoadUserAssessment({
+  await store.createAndLoadUserAssessment({
     metadata: {
       id: "durable-revert-test",
       name: "Durable Space",
@@ -817,7 +817,7 @@ test("Stage 5 Focused Hardening P1 4: moveProposedFurniture is preview-only and 
 // 13. Gate 3 Focused Hardening: P0 2 - Baseline Route & Findings from Snapshot
 // ---------------------------------------------------------------------------
 
-test("Stage 5 Focused Hardening P0 2: baseline route and findings derived truthfully from baseline snapshot after apply and reload", () => {
+test("Stage 5 Focused Hardening P0 2: baseline route and findings derived truthfully from baseline snapshot after apply and reload", async () => {
   if (globalThis.localStorage && typeof globalThis.localStorage.clear === "function") {
     globalThis.localStorage.clear();
   }
@@ -826,7 +826,7 @@ test("Stage 5 Focused Hardening P0 2: baseline route and findings derived truthf
   const boundary = createRectBoundary(700, 700);
   const nowIso = new Date().toISOString();
 
-  store.createAndLoadUserAssessment({
+  await store.createAndLoadUserAssessment({
     metadata: {
       id: "baseline-truth-test",
       name: "Baseline Truth Space",
@@ -1021,7 +1021,7 @@ test("Stage 5 Focused Hardening P0 3: intervening user edits after Apply invalid
   store.resetToDemo();
 });
 
-test("Stage 5 Focused Hardening P0 3: storage failure on revert preserves current furniture and rolls back state", () => {
+test("Stage 5 Focused Hardening P0 3: storage failure on revert preserves current furniture and rolls back state", async () => {
   if (globalThis.localStorage && typeof globalThis.localStorage.clear === "function") {
     globalThis.localStorage.clear();
   }
@@ -1030,7 +1030,7 @@ test("Stage 5 Focused Hardening P0 3: storage failure on revert preserves curren
   const boundary = createRectBoundary(700, 700);
   const nowIso = new Date().toISOString();
 
-  store.createAndLoadUserAssessment({
+  await store.createAndLoadUserAssessment({
     metadata: {
       id: "revert-storage-failure-test",
       name: "Revert Failure Space",

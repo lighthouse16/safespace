@@ -205,7 +205,7 @@ test("resolveCanonicalRoom without override falls back to legacy rooms or demo e
 });
 
 // 3. User Assessment Store & Routing Tests
-test("createAndLoadUserAssessment initializes honest 0 furniture, 0 doors, 0 hazards, and 0 route", () => {
+test("createAndLoadUserAssessment initializes honest 0 furniture, 0 doors, 0 hazards, and 0 route", async () => {
   const store = useSafeSpaceStore.getState();
 
   const userBoundaryCm: Polygon2D = [
@@ -215,7 +215,7 @@ test("createAndLoadUserAssessment initializes honest 0 furniture, 0 doors, 0 haz
     { x: 100, y: 400 },
   ];
 
-  store.createAndLoadUserAssessment({
+  await store.createAndLoadUserAssessment({
     metadata: {
       id: "test-assessment-01",
       name: "St. Jude Clinic",
@@ -254,7 +254,7 @@ test("createAndLoadUserAssessment initializes honest 0 furniture, 0 doors, 0 haz
   assert.equal(metrics.riskLevel, "Pending Review");
 });
 
-test("route generation: 0 or 1 waypoint produces null route; 2 waypoints computes valid path", () => {
+test("route generation: 0 or 1 waypoint produces null route; 2 waypoints computes valid path", async () => {
   const store = useSafeSpaceStore.getState();
 
   // Reset to empty user assessment
@@ -265,7 +265,7 @@ test("route generation: 0 or 1 waypoint produces null route; 2 waypoints compute
     { x: 50, y: 350 },
   ];
 
-  store.createAndLoadUserAssessment({
+  await store.createAndLoadUserAssessment({
     metadata: {
       id: "test-assessment-02",
       name: "Residential Bedroom",
@@ -446,7 +446,7 @@ test("demo clinic isolation: resetToDemo loads Queen Care Clinic without polluti
 
 // 6. Hardening Regression Tests for Reviewer Blockers A-F
 
-test("Blocker A: storage failure, quota, or SecurityError halts user assessment creation truthfully", () => {
+test("Blocker A: storage failure, quota, or SecurityError halts user assessment creation truthfully", async () => {
   const store = useSafeSpaceStore.getState();
   store.resetToDemo();
 
@@ -475,7 +475,7 @@ test("Blocker A: storage failure, quota, or SecurityError halts user assessment 
       { x: 0, y: 300 },
     ];
 
-    const result = store.createAndLoadUserAssessment({
+    const result = await store.createAndLoadUserAssessment({
       metadata: {
         id: "fail-test",
         name: "Fail Space",
@@ -513,7 +513,7 @@ test("Blocker A: storage failure, quota, or SecurityError halts user assessment 
   }
 });
 
-test("Blocker B: mobility profile custom dimensions persist via activeProfileSnapshot and restore on reload", () => {
+test("Blocker B: mobility profile custom dimensions persist via activeProfileSnapshot and restore on reload", async () => {
   const store = useSafeSpaceStore.getState();
   globalMockStorage.clear();
 
@@ -525,7 +525,7 @@ test("Blocker B: mobility profile custom dimensions persist via activeProfileSna
   ];
 
   // 1. Create user assessment
-  const createRes = store.createAndLoadUserAssessment({
+  const createRes = await store.createAndLoadUserAssessment({
     metadata: {
       id: "profile-test-suite",
       name: "Profile Durability Space",
@@ -631,7 +631,7 @@ test("Blocker C: corrupted, self-intersecting, and invalid boundary payloads fai
   assert.equal(useSafeSpaceStore.getState().storageStatus, "error");
 });
 
-test("Blocker D: active workspace selection persists across reload without deleting stored user assessment", () => {
+test("Blocker D: active workspace selection persists across reload without deleting stored user assessment", async () => {
   const store = useSafeSpaceStore.getState();
   globalMockStorage.clear();
 
@@ -643,7 +643,7 @@ test("Blocker D: active workspace selection persists across reload without delet
   ];
 
   // Create user assessment
-  store.createAndLoadUserAssessment({
+  await store.createAndLoadUserAssessment({
     metadata: {
       id: "active-workspace-test",
       name: "Workspace Selection Room",
@@ -691,7 +691,7 @@ test("Blocker D: active workspace selection persists across reload without delet
   assert.equal(useSafeSpaceStore.getState().assessmentType, "user");
 });
 
-test("Blocker E: live metrics for user assessment returns riskIndex: null and riskLevel: 'Pending Review'", () => {
+test("Blocker E: live metrics for user assessment returns riskIndex: null and riskLevel: 'Pending Review'", async () => {
   const store = useSafeSpaceStore.getState();
   const boundary: Polygon2D = [
     { x: 0, y: 0 },
@@ -700,7 +700,7 @@ test("Blocker E: live metrics for user assessment returns riskIndex: null and ri
     { x: 0, y: 300 },
   ];
 
-  store.createAndLoadUserAssessment({
+  await store.createAndLoadUserAssessment({
     metadata: {
       id: "metric-honesty-test",
       name: "Honest Metric Space",
@@ -727,7 +727,7 @@ test("Blocker E: live metrics for user assessment returns riskIndex: null and ri
   assert.equal(metrics.highPriorityHazardsCount, 0);
 });
 
-test("Blocker F: concave L-shaped rooms place waypoints strictly inside polygon, never in void cutout", () => {
+test("Blocker F: concave L-shaped rooms place waypoints strictly inside polygon, never in void cutout", async () => {
   // L-shaped polygon: [0, 200] x [0, 300] with cutout [100, 200] x [100, 300]
   const lShape: Polygon2D = [
     { x: 0, y: 0 },
@@ -757,7 +757,7 @@ test("Blocker F: concave L-shaped rooms place waypoints strictly inside polygon,
 
   // 2. Verify store.addRouteWaypoint placing default coordinates in an L-shaped room
   const store = useSafeSpaceStore.getState();
-  store.createAndLoadUserAssessment({
+  await store.createAndLoadUserAssessment({
     metadata: {
       id: "l-shape-test",
       name: "Concave L-Room",
@@ -796,7 +796,7 @@ test("Blocker F: concave L-shaped rooms place waypoints strictly inside polygon,
   assert.equal(wp3.x >= 100 && wp3.y >= 100, false);
 });
 
-test("Correctness: active workspace key write failure preserves assessment data and reports error truthfully", () => {
+test("Correctness: active workspace key write failure preserves assessment data and reports error truthfully", async () => {
   const store = useSafeSpaceStore.getState();
   globalMockStorage.clear();
 
@@ -817,7 +817,7 @@ test("Correctness: active workspace key write failure preserves assessment data 
   };
 
   try {
-    const res = store.createAndLoadUserAssessment({
+    const res = await store.createAndLoadUserAssessment({
       metadata: {
         id: "active-fail-test",
         name: "Failure Room",
@@ -1083,7 +1083,7 @@ test("Synthetic deterministic test fixture: 200px = 200cm calibration, coordinat
     updatedAt: new Date().toISOString(),
   };
 
-  store.createAndLoadUserAssessment({
+  await store.createAndLoadUserAssessment({
     boundaryCm: cmBoundary,
     calibration: {
       pixelsPerCm: 1.0,

@@ -80,6 +80,8 @@ export {
   isValidFootprintPlacement,
   findFeasibleFootprintPlacement,
   furnitureToWorldFootprint,
+  wallToObstacleFootprint,
+  doorToObstacleFootprint,
 } from "./geometry/placement";
 
 export type {

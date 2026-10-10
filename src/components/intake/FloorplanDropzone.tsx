@@ -192,7 +192,7 @@ export function FloorplanDropzone({
             Drag and drop floorplan here, or browse
           </div>
           <p className="mt-1 text-xs text-[#64748b]">
-            Supported formats: PNG, JPEG, SVG, PDF (up to 25 MB)
+            Supported formats: PNG, JPEG, SVG (visual drafting) or PDF (preview only) up to 25 MB
           </p>
 
           <Button

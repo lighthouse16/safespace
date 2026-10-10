@@ -35,6 +35,8 @@ export function Stage1Layout() {
     history,
     future,
     setStage,
+    placementError,
+    clearPlacementError,
   } = useSafeSpaceStore();
 
   const [showAddMenu, setShowAddMenu] = useState(false);
@@ -197,6 +199,22 @@ export function Stage1Layout() {
             mobileTab === "canvas" ? "flex" : "hidden lg:flex"
           }`}
         >
+          {placementError && (
+            <div
+              role="alert"
+              className="mb-2 px-3 py-1.5 rounded-lg bg-amber-50 border border-amber-200 text-xs text-amber-900 flex items-center justify-between shrink-0 shadow-2xs"
+            >
+              <span>{placementError}</span>
+              <button
+                type="button"
+                onClick={clearPlacementError}
+                className="text-amber-700 hover:text-amber-900 font-bold ml-2 text-xs cursor-pointer"
+                aria-label="Dismiss error"
+              >
+                ✕
+              </button>
+            </div>
+          )}
           <Floorplan2D className="flex-1" />
         </main>
 
@@ -208,10 +226,10 @@ export function Stage1Layout() {
           }`}
         >
           <div className="space-y-3.5">
-            {/* Detection Summary */}
+            {/* Room Fixtures Summary */}
             <div className="border-b border-slate-100 pb-2.5">
               <span className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider block">
-                Detection Summary
+                Room Fixtures Summary
               </span>
               <p className="text-xs font-semibold text-slate-800 mt-0.5">
                 {totalCount} objects ·{" "}

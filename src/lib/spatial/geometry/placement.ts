@@ -49,6 +49,60 @@ export function furnitureToWorldFootprint(f: {
 }
 
 /**
+ * Converts a SpatialWall into a rectangular obstacle footprint based on its line segment and thickness.
+ */
+export function wallToObstacleFootprint(wall: {
+  id?: string;
+  start: Point2D;
+  end: Point2D;
+  thickness: number;
+}): ObstacleFootprint {
+  const dx = wall.end.x - wall.start.x;
+  const dy = wall.end.y - wall.start.y;
+  const len = Math.hypot(dx, dy);
+  if (len < 1e-4) {
+    return {
+      id: wall.id,
+      footprint: [wall.start, wall.start, wall.start],
+    };
+  }
+  const halfT = Math.max(wall.thickness / 2, 2);
+  const nx = (-dy / len) * halfT;
+  const ny = (dx / len) * halfT;
+  return {
+    id: wall.id,
+    footprint: [
+      { x: wall.start.x + nx, y: wall.start.y + ny },
+      { x: wall.end.x + nx, y: wall.end.y + ny },
+      { x: wall.end.x - nx, y: wall.end.y - ny },
+      { x: wall.start.x - nx, y: wall.start.y - ny },
+    ],
+  };
+}
+
+/**
+ * Converts a SpatialDoor into an obstacle footprint accounting for its leaf and position.
+ */
+export function doorToObstacleFootprint(door: {
+  id?: string;
+  position: Point2D;
+  width: number;
+  swingDeg?: number;
+}): ObstacleFootprint {
+  const halfW = Math.max(door.width / 2, 10);
+  const depth = 15;
+  return {
+    id: door.id,
+    footprint: [
+      { x: door.position.x - halfW, y: door.position.y - depth / 2 },
+      { x: door.position.x + halfW, y: door.position.y - depth / 2 },
+      { x: door.position.x + halfW, y: door.position.y + depth / 2 },
+      { x: door.position.x - halfW, y: door.position.y + depth / 2 },
+    ],
+  };
+}
+
+/**
  * Validates whether a proposed furniture footprint is strictly contained within
  * the room boundary and does not collide with any existing furniture or physical obstacles.
  */
