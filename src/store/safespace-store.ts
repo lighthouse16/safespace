@@ -46,6 +46,11 @@ import {
   type CalibrationProvenance,
   type PersistedAssessmentState,
 } from "@/lib/storage/persistence";
+import {
+  saveFloorplanImage,
+  getFloorplanImage,
+  deleteFloorplanImage,
+} from "@/lib/storage/image-db";
 
 export type WorkflowStage = "layout" | "profile" | "routes" | "analysis" | "improve";
 
@@ -58,6 +63,8 @@ export interface SafeSpaceState {
   assessmentMetadata: AssessmentMetadata | null;
   canonicalBoundary: Polygon2D | null;
   calibrationProvenance: CalibrationProvenance | null;
+  floorplanImageBlobUrl: string | null;
+  setFloorplanImageBlobUrl: (url: string | null) => void;
   storageStatus: "idle" | "saved" | "error" | "quota_exceeded";
   storageError: string | null;
 
@@ -186,6 +193,7 @@ export interface SafeSpaceState {
     metadata: AssessmentMetadata;
     boundaryCm: Polygon2D;
     calibration: CalibrationProvenance;
+    imageFile?: File | Blob;
   }) => { success: boolean; error?: string };
   loadDemoAssessment: (initialStage?: unknown) => void;
   resetDemoAssessment: (initialStage?: unknown) => void;
@@ -321,6 +329,8 @@ export const useSafeSpaceStore = create<SafeSpaceState>((set, get) => ({
   assessmentMetadata: null,
   canonicalBoundary: null,
   calibrationProvenance: null,
+  floorplanImageBlobUrl: null,
+  setFloorplanImageBlobUrl: (url) => set({ floorplanImageBlobUrl: url }),
   storageStatus: "idle",
   storageError: null,
 
@@ -997,6 +1007,10 @@ export const useSafeSpaceStore = create<SafeSpaceState>((set, get) => ({
   },
 
   resetToDemo: (initialStage?: unknown) => {
+    const currentUrl = get().floorplanImageBlobUrl;
+    if (currentUrl) {
+      try { URL.revokeObjectURL(currentUrl); } catch {}
+    }
     const savedWs = saveActiveWorkspace("demo");
     const defaultProfile = { ...MOBILITY_PROFILES[0] };
     const defaultFurniture = cloneFurniture(INITIAL_FURNITURE);
@@ -1024,6 +1038,7 @@ export const useSafeSpaceStore = create<SafeSpaceState>((set, get) => ({
       assessmentMetadata: null,
       canonicalBoundary: null,
       calibrationProvenance: null,
+      floorplanImageBlobUrl: null,
       activeStage: targetStage,
       furniture: defaultFurniture,
       walls: INITIAL_WALLS,
@@ -1051,7 +1066,7 @@ export const useSafeSpaceStore = create<SafeSpaceState>((set, get) => ({
   },
 
   createAndLoadUserAssessment: (payload) => {
-    const { metadata, boundaryCm, calibration } = payload;
+    const { metadata, boundaryCm, calibration, imageFile } = payload;
 
     // Validate geometry and inputs
     if (!boundaryCm || !Array.isArray(boundaryCm) || boundaryCm.length < 3) {
@@ -1108,12 +1123,37 @@ export const useSafeSpaceStore = create<SafeSpaceState>((set, get) => ({
       return { success: false, error: err };
     }
 
+    // Manage floorplan image blob & IndexedDB storage
+    const currentUrl = get().floorplanImageBlobUrl;
+    if (currentUrl) {
+      try { URL.revokeObjectURL(currentUrl); } catch {}
+    }
+    let imageBlobUrl: string | null = null;
+    if (imageFile) {
+      try {
+        imageBlobUrl = URL.createObjectURL(imageFile);
+        saveFloorplanImage({
+          assessmentId: metadata.id,
+          blob: imageFile,
+          mimeType: (imageFile as File).type || "image/png",
+          name: (imageFile as File).name || "floorplan",
+          size: imageFile.size,
+          canvasWidth: 800,
+          canvasHeight: 600,
+          updatedAt: new Date().toISOString(),
+        }).catch(() => {});
+      } catch {
+        imageBlobUrl = null;
+      }
+    }
+
     set({
       assessmentType: "user",
       assessmentId: metadata.id,
       assessmentMetadata: metadata,
       canonicalBoundary: boundaryCm,
       calibrationProvenance: calibration,
+      floorplanImageBlobUrl: imageBlobUrl,
       activeProfileId: defaultProfile.id,
       activeProfile: defaultProfile,
       activeStage: "layout",
@@ -1152,7 +1192,16 @@ export const useSafeSpaceStore = create<SafeSpaceState>((set, get) => ({
   },
 
   clearUserAssessment: () => {
+    const currentUrl = get().floorplanImageBlobUrl;
+    if (currentUrl) {
+      try { URL.revokeObjectURL(currentUrl); } catch {}
+    }
+    const currentId = get().assessmentId;
+    if (currentId) {
+      deleteFloorplanImage(currentId).catch(() => {});
+    }
     clearPersistedAssessment();
+    set({ floorplanImageBlobUrl: null });
     get().loadDemoAssessment();
   },
 
@@ -1222,6 +1271,20 @@ export const useSafeSpaceStore = create<SafeSpaceState>((set, get) => ({
         storageStatus: "saved",
         storageError: null,
       });
+
+      if (data.metadata?.id) {
+        const targetId = data.metadata.id;
+        getFloorplanImage(targetId).then((imgRecord) => {
+          if (imgRecord && get().assessmentId === targetId) {
+            const oldUrl = get().floorplanImageBlobUrl;
+            if (oldUrl) {
+              try { URL.revokeObjectURL(oldUrl); } catch {}
+            }
+            const blobUrl = URL.createObjectURL(imgRecord.blob);
+            set({ floorplanImageBlobUrl: blobUrl });
+          }
+        }).catch(() => {});
+      }
     }
   },
 }));

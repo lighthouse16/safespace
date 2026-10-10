@@ -216,7 +216,7 @@ test("Adversarial QA: Zero imports of legacy components or mock workflows from r
   checkDir(appDir);
 });
 
-test("Adversarial QA: handleOpenDemoAssessment in AssessmentsPage fails closed when saveActiveWorkspace fails", async () => {
+test("Adversarial QA: handleOpenUserAssessment in AssessmentsPage fails closed when saveActiveWorkspace fails", async () => {
   dom.window.localStorage.clear();
   const userAssessment = createValidTestAssessment();
   const saveRes = savePersistedAssessment(userAssessment);
@@ -241,8 +241,8 @@ test("Adversarial QA: handleOpenDemoAssessment in AssessmentsPage fails closed w
 
   try {
     const links = Array.from(container.querySelectorAll("a"));
-    const demoLink = links.find((l) => l.textContent?.includes("Open demo") || l.textContent?.includes("Open example clinic"));
-    assert.ok(demoLink, "Demo link must exist in AssessmentsPage");
+    const userLink = links.find((l) => l.textContent?.includes("Open in workspace"));
+    assert.ok(userLink, "User workspace link must exist in AssessmentsPage when user assessment is saved");
 
     const clickEvent = new dom.window.MouseEvent("click", {
       bubbles: true,
@@ -250,7 +250,7 @@ test("Adversarial QA: handleOpenDemoAssessment in AssessmentsPage fails closed w
     });
 
     await act(async () => {
-      demoLink.dispatchEvent(clickEvent);
+      userLink.dispatchEvent(clickEvent);
     });
 
     // 1. Navigation must be prevented
@@ -259,7 +259,7 @@ test("Adversarial QA: handleOpenDemoAssessment in AssessmentsPage fails closed w
     // 2. Visible error must be rendered in role=alert
     const alerts = Array.from(container.querySelectorAll("[role='alert']"));
     const hasExpectedError = alerts.some((a) =>
-      a.textContent?.includes("Failed to switch workspace: storage write failed")
+      a.textContent?.includes("Failed to persist active workspace selection")
     );
     assert.ok(hasExpectedError, "Error alert must be visible on storage failure");
 
@@ -278,7 +278,7 @@ test("Adversarial QA: handleOpenDemoAssessment in AssessmentsPage fails closed w
   }
 });
 
-test("Adversarial QA: handleOpenDemoAssessment in AssessmentsPage switches active workspace when storage succeeds", async () => {
+test("Adversarial QA: handleOpenUserAssessment in AssessmentsPage switches active workspace when storage succeeds", async () => {
   dom.window.localStorage.clear();
   const userAssessment = createValidTestAssessment();
   savePersistedAssessment(userAssessment);
@@ -294,8 +294,8 @@ test("Adversarial QA: handleOpenDemoAssessment in AssessmentsPage switches activ
 
   try {
     const links = Array.from(container.querySelectorAll("a"));
-    const demoLink = links.find((l) => l.textContent?.includes("Open demo") || l.textContent?.includes("Open example clinic"));
-    assert.ok(demoLink, "Demo link must exist in AssessmentsPage");
+    const userLink = links.find((l) => l.textContent?.includes("Open in workspace"));
+    assert.ok(userLink, "User workspace link must exist in AssessmentsPage");
 
     const clickEvent = new dom.window.MouseEvent("click", {
       bubbles: true,
@@ -303,12 +303,12 @@ test("Adversarial QA: handleOpenDemoAssessment in AssessmentsPage switches activ
     });
 
     await act(async () => {
-      demoLink.dispatchEvent(clickEvent);
+      userLink.dispatchEvent(clickEvent);
     });
 
     assert.equal(clickEvent.defaultPrevented, false, "clickEvent must NOT be defaultPrevented on success");
-    assert.equal(loadActiveWorkspace(), "demo", "Active workspace must switch to demo");
-    assert.equal(useSafeSpaceStore.getState().assessmentType, "demo");
+    assert.equal(loadActiveWorkspace(), "user", "Active workspace must be user");
+    assert.equal(useSafeSpaceStore.getState().assessmentType, "user");
 
     const stored = loadPersistedAssessment();
     assert.equal(stored.success, true);

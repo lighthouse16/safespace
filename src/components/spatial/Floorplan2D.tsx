@@ -20,6 +20,7 @@ interface Floorplan2DProps {
   isBeforeCondition?: boolean;
   showDiffGhost?: boolean;
   showChangedOnly?: boolean;
+  hideControls?: boolean;
   className?: string;
 }
 
@@ -32,6 +33,7 @@ export function Floorplan2D({
   overrideStage,
   isBeforeCondition = false,
   showChangedOnly = false,
+  hideControls = false,
   className = "",
 }: Floorplan2DProps) {
   const {
@@ -69,6 +71,8 @@ export function Floorplan2D({
     routeResult: storeRouteResult,
     activeProfile,
     canonicalBoundary,
+    calibrationProvenance,
+    floorplanImageBlobUrl,
     getSpatialFindings,
   } = useSafeSpaceStore();
 
@@ -352,86 +356,92 @@ export function Floorplan2D({
       onMouseUp={handleMouseUp}
     >
       {/* Floating Canvas Controls */}
-      <div className="absolute top-2.5 left-2.5 z-10 flex items-center gap-1.5 bg-white/95 backdrop-blur-sm border border-[#e2e8e4] px-2 py-1 rounded text-xs text-[#2c3d3a]">
-        <span className="font-semibold text-[#1e7168]">
-          {isBefore ? "BEFORE PLAN" : "2D PLAN"}
-        </span>
-        <span className="text-[#a4b2ad]">|</span>
-        <button
-          type="button"
-          aria-label="Toggle grid visibility"
-          onClick={() => setShowGrid((v) => !v)}
-          className={`min-h-[28px] px-2 py-0.5 rounded transition flex items-center text-xs ${
-            showGrid ? "bg-[#e8f3f1] text-[#1e7168] font-medium" : "text-[#627571] hover:bg-slate-100"
-          }`}
-        >
-          Grid
-        </button>
-        <button
-          type="button"
-          aria-label="Toggle snap to grid"
-          onClick={() => setSnapToGrid((v) => !v)}
-          className={`min-h-[28px] px-2 py-0.5 rounded transition flex items-center text-xs ${
-            snapToGrid ? "bg-[#e8f3f1] text-[#1e7168] font-medium" : "text-[#627571] hover:bg-slate-100"
-          }`}
-        >
-          Snap
-        </button>
-        <button
-          type="button"
-          aria-label="Toggle dimension indicators"
-          onClick={() => setShowDimensions((v) => !v)}
-          className={`min-h-[28px] px-2 py-0.5 rounded transition flex items-center text-xs ${
-            showDimensions ? "bg-[#e8f3f1] text-[#1e7168] font-medium" : "text-[#627571] hover:bg-slate-100"
-          }`}
-        >
-          Dim
-        </button>
-      </div>
+      {!hideControls && (
+        <div className="absolute top-2.5 left-2.5 z-10 flex items-center gap-1.5 bg-white/95 backdrop-blur-sm border border-[#e2e8e4] px-2 py-1 rounded text-xs text-[#2c3d3a]">
+          <span className="font-semibold text-[#1e7168]">
+            {isBefore ? "BEFORE PLAN" : "2D PLAN"}
+          </span>
+          <span className="text-[#a4b2ad]">|</span>
+          <button
+            type="button"
+            aria-label="Toggle grid visibility"
+            onClick={() => setShowGrid((v) => !v)}
+            className={`min-h-[28px] px-2 py-0.5 rounded transition flex items-center text-xs ${
+              showGrid ? "bg-[#e8f3f1] text-[#1e7168] font-medium" : "text-[#627571] hover:bg-slate-100"
+            }`}
+          >
+            Grid
+          </button>
+          <button
+            type="button"
+            aria-label="Toggle snap to grid"
+            onClick={() => setSnapToGrid((v) => !v)}
+            className={`min-h-[28px] px-2 py-0.5 rounded transition flex items-center text-xs ${
+              snapToGrid ? "bg-[#e8f3f1] text-[#1e7168] font-medium" : "text-[#627571] hover:bg-slate-100"
+            }`}
+          >
+            Snap
+          </button>
+          <button
+            type="button"
+            aria-label="Toggle dimension indicators"
+            onClick={() => setShowDimensions((v) => !v)}
+            className={`min-h-[28px] px-2 py-0.5 rounded transition flex items-center text-xs ${
+              showDimensions ? "bg-[#e8f3f1] text-[#1e7168] font-medium" : "text-[#627571] hover:bg-slate-100"
+            }`}
+          >
+            Dim
+          </button>
+        </div>
+      )}
 
       {/* Floating Zoom / Fit Controls */}
-      <div className="absolute bottom-2.5 right-2.5 z-10 flex items-center gap-1 bg-white/95 backdrop-blur-sm border border-[#e2e8e4] p-1 rounded">
-        <button
-          type="button"
-          onClick={handleZoomIn}
-          aria-label="Zoom in"
-          className="min-h-[28px] min-w-[28px] flex items-center justify-center p-1 text-[#4a5e59] hover:text-[#1e7168] hover:bg-slate-100 rounded transition"
-        >
-          <ZoomIn className="w-3.5 h-3.5" />
-        </button>
-        <span className="text-[10px] font-mono text-[#4a5e59] px-0.5">
-          {Math.round(zoom * 100)}%
-        </span>
-        <button
-          type="button"
-          onClick={handleZoomOut}
-          aria-label="Zoom out"
-          className="min-h-[28px] min-w-[28px] flex items-center justify-center p-1 text-[#4a5e59] hover:text-[#1e7168] hover:bg-slate-100 rounded transition"
-        >
-          <ZoomOut className="w-3.5 h-3.5" />
-        </button>
-        <button
-          type="button"
-          onClick={handleFitView}
-          aria-label="Fit view to room"
-          className="min-h-[28px] min-w-[28px] flex items-center justify-center p-1 text-[#4a5e59] hover:text-[#1e7168] hover:bg-slate-100 rounded transition"
-        >
-          <Maximize2 className="w-3.5 h-3.5" />
-        </button>
-      </div>
+      {!hideControls && (
+        <div className="absolute bottom-2.5 right-2.5 z-10 flex items-center gap-1 bg-white/95 backdrop-blur-sm border border-[#e2e8e4] p-1 rounded">
+          <button
+            type="button"
+            onClick={handleZoomIn}
+            aria-label="Zoom in"
+            className="min-h-[28px] min-w-[28px] flex items-center justify-center p-1 text-[#4a5e59] hover:text-[#1e7168] hover:bg-slate-100 rounded transition"
+          >
+            <ZoomIn className="w-3.5 h-3.5" />
+          </button>
+          <span className="text-[10px] font-mono text-[#4a5e59] px-0.5">
+            {Math.round(zoom * 100)}%
+          </span>
+          <button
+            type="button"
+            onClick={handleZoomOut}
+            aria-label="Zoom out"
+            className="min-h-[28px] min-w-[28px] flex items-center justify-center p-1 text-[#4a5e59] hover:text-[#1e7168] hover:bg-slate-100 rounded transition"
+          >
+            <ZoomOut className="w-3.5 h-3.5" />
+          </button>
+          <button
+            type="button"
+            onClick={handleFitView}
+            aria-label="Fit view to room"
+            className="min-h-[28px] min-w-[28px] flex items-center justify-center p-1 text-[#4a5e59] hover:text-[#1e7168] hover:bg-slate-100 rounded transition"
+          >
+            <Maximize2 className="w-3.5 h-3.5" />
+          </button>
+        </div>
+      )}
 
       {/* Scale bar indicator */}
-      <div className="absolute bottom-2.5 left-2.5 z-10 flex items-center gap-2 bg-white/90 border border-[#e2e8e4] px-2 py-0.5 rounded text-[9px] text-[#556964] font-mono">
-        <div className="flex flex-col items-center">
-          <div className="flex items-center">
-            <span className="w-px h-1 bg-[#556964]"></span>
-            <div className="w-[40px] h-0.5 bg-[#556964]"></div>
-            <span className="w-px h-1 bg-[#556964]"></span>
+      {!hideControls && (
+        <div className="absolute bottom-2.5 left-2.5 z-10 flex items-center gap-2 bg-white/90 border border-[#e2e8e4] px-2 py-0.5 rounded text-[9px] text-[#556964] font-mono">
+          <div className="flex flex-col items-center">
+            <div className="flex items-center">
+              <span className="w-px h-1 bg-[#556964]"></span>
+              <div className="w-[40px] h-0.5 bg-[#556964]"></div>
+              <span className="w-px h-1 bg-[#556964]"></span>
+            </div>
+            <span>1.0 m</span>
           </div>
-          <span>1.0 m</span>
+          <span>Scale 1:50</span>
         </div>
-        <span>Scale 1:50</span>
-      </div>
+      )}
 
       {/* SVG Canvas Area */}
       <svg
@@ -478,6 +488,20 @@ export function Floorplan2D({
 
         {/* 1. Grid */}
         {showGrid && <rect x={vbX} y={vbY} width={vbW} height={vbH} fill="url(#grid-major)" />}
+
+        {/* 1b. Floorplan Background Image (User-imported floorplan raster/SVG) */}
+        {floorplanImageBlobUrl && calibrationProvenance && calibrationProvenance.pixelsPerCm > 0 && (
+          <image
+            href={floorplanImageBlobUrl}
+            x={0}
+            y={0}
+            width={800 / calibrationProvenance.pixelsPerCm}
+            height={600 / calibrationProvenance.pixelsPerCm}
+            preserveAspectRatio="xMidYMid meet"
+            opacity={0.35}
+            className="pointer-events-none select-none"
+          />
+        )}
 
         {/* 2. Room Zones / Canonical Boundary */}
         <g id="rooms-layer">

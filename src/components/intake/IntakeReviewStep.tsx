@@ -103,6 +103,7 @@ export function IntakeReviewStep({
           pixelDistance: pixelDist,
           originPolicy: INTAKE_ORIGIN_POLICY,
         },
+        imageFile: uploadedFile?.file,
       });
 
       if (!res.success) {

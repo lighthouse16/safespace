@@ -6,7 +6,6 @@ import { useSafeSpaceStore, type WorkflowStage } from "@/store/safespace-store";
 import {
   Check,
   ChevronRight,
-  RotateCcw,
 } from "lucide-react";
 import { Tooltip } from "@/components/ui";
 
@@ -25,8 +24,6 @@ export function TopAppBar() {
     assessmentType,
     assessmentMetadata,
     storageStatus,
-    resetToDemo,
-    loadDemoAssessment,
   } = useSafeSpaceStore();
 
   const currentStageIndex = STAGES.findIndex((s) => s.id === activeStage);
@@ -49,54 +46,38 @@ export function TopAppBar() {
 
         <div className="flex items-center gap-2">
           <span className="text-xs font-semibold text-[#1e293b]">
-            {isUserAssessment
-              ? assessmentMetadata?.facilityName || "Custom Assessment"
-              : "Queen Care Clinic"}
+            {assessmentMetadata?.facilityName || "Custom Assessment"}
           </span>
-          <span
-            className={`rounded px-1.5 py-0.5 text-[10px] font-medium border ${
-              isUserAssessment
-                ? "bg-emerald-50 text-emerald-800 border-emerald-200"
-                : "bg-slate-100 text-slate-600 border-slate-200"
-            }`}
-          >
-            {isUserAssessment ? "Saved Assessment" : "Example Clinic"}
+          <span className="rounded px-1.5 py-0.5 text-[10px] font-medium border bg-emerald-50 text-emerald-800 border-emerald-200">
+            {isUserAssessment ? "Saved Assessment" : "Workspace"}
           </span>
           <span className="text-[#94a3b8] text-xs hidden lg:inline">·</span>
           <span className="text-xs text-[#64748b] hidden lg:inline">
-            {isUserAssessment
-              ? assessmentMetadata?.spaceName || "Calibrated Room"
-              : "Waiting Area & Consultation Corridor"}
+            {assessmentMetadata?.spaceName || "Calibrated Room"}
           </span>
         </div>
 
         <Tooltip
           position="bottom"
           label={
-            isUserAssessment
+            storageStatus === "saved"
               ? "Saved locally on this device. Retained if you refresh."
-              : "Sample clinic room for practice. Create a new assessment to measure your space."
+              : "Changes stay in memory. Finish assessment or edit to save."
           }
         >
           <div className="hidden lg:flex items-center gap-1.5 ml-2 px-2 py-0.5 rounded-full bg-[#f1f5f3] border border-[#e2e8e4] text-[11px] text-[#475569] cursor-help">
             <span
               className={`w-1.5 h-1.5 rounded-full ${
-                isUserAssessment
-                  ? storageStatus === "saved"
-                    ? "bg-emerald-600"
-                    : storageStatus === "error" || storageStatus === "quota_exceeded"
-                    ? "bg-red-600"
-                    : "bg-amber-500"
-                  : "bg-teal-600"
+                storageStatus === "saved"
+                  ? "bg-emerald-600"
+                  : storageStatus === "error" || storageStatus === "quota_exceeded"
+                  ? "bg-red-600"
+                  : "bg-amber-500"
               }`}
               aria-hidden="true"
             />
             <span className="font-medium">
-              {isUserAssessment
-                ? storageStatus === "saved"
-                  ? "Saved on device"
-                  : "Unsaved changes"
-                : "Example clinic"}
+              {storageStatus === "saved" ? "Saved on device" : "Unsaved changes"}
             </span>
           </div>
         </Tooltip>
@@ -151,25 +132,12 @@ export function TopAppBar() {
           <span>+ New Assessment</span>
         </Link>
 
-        {isUserAssessment ? (
-          <button
-            onClick={loadDemoAssessment}
-            className="text-xs text-[#64748b] hover:text-[#1e7168] px-2.5 py-1 rounded-md border border-transparent hover:border-[#cbd5e1] hover:bg-slate-50 transition flex items-center gap-1.5 cursor-pointer focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-[#1e7168]"
-            title="View example clinic room"
-          >
-            <RotateCcw className="w-3.5 h-3.5" />
-            <span className="hidden sm:inline">View Example Clinic</span>
-          </button>
-        ) : (
-          <button
-            onClick={resetToDemo}
-            className="text-xs text-[#64748b] hover:text-[#1e7168] px-2.5 py-1 rounded-md border border-transparent hover:border-[#cbd5e1] hover:bg-slate-50 transition flex items-center gap-1.5 cursor-pointer focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-[#1e7168]"
-            title="Reset example room to starting layout"
-          >
-            <RotateCcw className="w-3.5 h-3.5" />
-            <span className="hidden sm:inline">Reset Example</span>
-          </button>
-        )}
+        <Link
+          href="/assessments"
+          className="text-xs text-[#64748b] hover:text-[#1e7168] px-2.5 py-1 rounded-md border border-transparent hover:border-[#cbd5e1] hover:bg-slate-50 transition flex items-center gap-1 cursor-pointer"
+        >
+          <span>All assessments</span>
+        </Link>
       </div>
     </header>
   );

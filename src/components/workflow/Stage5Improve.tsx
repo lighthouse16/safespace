@@ -17,6 +17,27 @@ import {
 } from "lucide-react";
 import type { LayoutCandidate } from "@/lib/spatial";
 
+function formatMovePlainLanguage(move: {
+  furnitureName: string;
+  fromPosition: { x: number; y: number };
+  toPosition: { x: number; y: number };
+  distanceCm: number;
+  rotationDelta?: number;
+}): string {
+  const dx = Math.round(move.toPosition.x - move.fromPosition.x);
+  const dy = Math.round(move.toPosition.y - move.fromPosition.y);
+  const parts: string[] = [];
+  if (Math.abs(dx) >= 5) {
+    parts.push(dx > 0 ? `${Math.abs(dx)} cm right` : `${Math.abs(dx)} cm left`);
+  }
+  if (Math.abs(dy) >= 5) {
+    parts.push(dy > 0 ? `${Math.abs(dy)} cm down` : `${Math.abs(dy)} cm up`);
+  }
+  const moveStr = parts.length > 0 ? parts.join(", ") : `${move.distanceCm} cm`;
+  const rotStr = move.rotationDelta ? ` and rotate ${move.rotationDelta}°` : "";
+  return `Move ${move.furnitureName} ${moveStr}${rotStr}`;
+}
+
 export function Stage5Improve() {
   const {
     assessmentType,
@@ -36,11 +57,12 @@ export function Stage5Improve() {
     activeOptimizationResult,
     selectedCandidateId,
     selectCandidate,
+    showGrid,
+    setShowGrid,
     setReportModalOpen,
     setStage,
   } = useSafeSpaceStore();
 
-  const isUserAssessment = assessmentType === "user";
   const [viewMode, setViewMode] = useState<"side-by-side" | "before" | "proposed">("side-by-side");
   const [actionFeedback, setActionFeedback] = useState<{ type: "success" | "error"; message: string } | null>(null);
   const feedbackTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -200,13 +222,24 @@ export function Stage5Improve() {
           <span className="text-xs text-slate-500">
             {isAppliedReviewMode
               ? "Reviewing Applied Alternative"
-              : isUserAssessment
-              ? assessmentMetadata?.facilityName || "Custom Assessment"
-              : "Example Clinic"}
+              : assessmentMetadata?.facilityName || "Custom Space"}
           </span>
         </div>
 
         <div className="flex items-center gap-2">
+          {/* Grid Toggle */}
+          <button
+            type="button"
+            onClick={() => setShowGrid((v) => !v)}
+            className={`px-2 py-0.5 text-[11px] font-medium rounded border transition cursor-pointer ${
+              showGrid
+                ? "bg-[#e8f3f1] text-[#1e7168] border-[#1e7168]/30 font-semibold"
+                : "bg-white text-slate-600 border-slate-200 hover:bg-slate-50"
+            }`}
+          >
+            Grid
+          </button>
+
           {/* View Mode Toggle */}
           <div className="hidden sm:flex items-center bg-slate-100 rounded p-0.5 border border-slate-200">
             <button
@@ -214,7 +247,7 @@ export function Stage5Improve() {
               onClick={() => setViewMode("side-by-side")}
               className={`px-2 py-0.5 text-[11px] font-medium rounded transition cursor-pointer ${
                 viewMode === "side-by-side"
-                  ? "bg-white text-slate-800 shadow-2xs"
+                  ? "bg-white text-slate-800 shadow-2xs font-semibold"
                   : "text-slate-600 hover:text-slate-900"
               }`}
             >
@@ -225,7 +258,7 @@ export function Stage5Improve() {
               onClick={() => setViewMode("before")}
               className={`px-2 py-0.5 text-[11px] font-medium rounded transition cursor-pointer ${
                 viewMode === "before"
-                  ? "bg-white text-slate-800 shadow-2xs"
+                  ? "bg-white text-slate-800 shadow-2xs font-semibold"
                   : "text-slate-600 hover:text-slate-900"
               }`}
             >
@@ -236,7 +269,7 @@ export function Stage5Improve() {
               onClick={() => setViewMode("proposed")}
               className={`px-2 py-0.5 text-[11px] font-medium rounded transition cursor-pointer ${
                 viewMode === "proposed"
-                  ? "bg-white text-slate-800 shadow-2xs"
+                  ? "bg-white text-slate-800 shadow-2xs font-semibold"
                   : "text-slate-600 hover:text-slate-900"
               }`}
             >
@@ -301,6 +334,12 @@ export function Stage5Improve() {
               ) : (
                 candidates.map((cand) => {
                   const isSelected = activeCandidate?.id === cand.id;
+                  const optionLabel =
+                    cand.strategy === "minimal_displacement"
+                      ? "Option 1: Fewest Changes"
+                      : cand.strategy === "deficit_elimination"
+                      ? "Option 2: Clear Walkway"
+                      : "Option 3: Balanced Adjustment";
                   return (
                     <button
                       key={cand.id}
@@ -313,7 +352,8 @@ export function Stage5Improve() {
                     >
                       <div className="flex flex-col">
                         <div className="flex items-center gap-1.5">
-                          <span className="font-semibold text-slate-900">{cand.name}</span>
+                          <span className="font-semibold text-slate-900">{optionLabel}</span>
+                          <span className="text-[11px] text-slate-400 font-normal">({cand.name})</span>
                           <span
                             className={`px-1.5 py-0.2 rounded text-[10px] font-bold uppercase tracking-wider ${
                               cand.strategy === "minimal_displacement"
@@ -338,14 +378,21 @@ export function Stage5Improve() {
                               ? "Route became feasible"
                               : "Deficit count maintained"}
                           </span>
-                          {cand.metrics.clearanceGainCm !== null && cand.metrics.clearanceGainCm > 0 && (
+                          {cand.metrics.clearanceGainCm !== null && cand.metrics.clearanceGainCm > 0 ? (
                             <>
                               <span>·</span>
                               <span className="text-emerald-700 font-medium">
                                 +{cand.metrics.clearanceGainCm} cm clearance
                               </span>
                             </>
-                          )}
+                          ) : beforeEval.summary.minimumClearanceCm === null ? (
+                            <>
+                              <span>·</span>
+                              <span className="text-slate-500 font-medium">
+                                Baseline clearance: not measured
+                              </span>
+                            </>
+                          ) : null}
                         </div>
                       </div>
                     </button>
@@ -435,7 +482,7 @@ export function Stage5Improve() {
                 </span>
                 <span className="text-slate-300">|</span>
                 <span className="text-slate-600">
-                  Clr: {beforeEval.summary.minimumClearanceCm ? `${beforeEval.summary.minimumClearanceCm} cm` : "—"}
+                  Clr: {beforeEval.summary.minimumClearanceCm !== null ? `${beforeEval.summary.minimumClearanceCm} cm` : "not measured"}
                 </span>
               </div>
             </div>
@@ -446,6 +493,7 @@ export function Stage5Improve() {
                 customFurniture={beforeFurniture}
                 customRouteResult={beforeRoute}
                 customEvaluation={beforeEval}
+                hideControls={true}
                 className="w-full h-full"
               />
             </div>
@@ -487,7 +535,7 @@ export function Stage5Improve() {
                   </span>
                   <span className="text-slate-300">|</span>
                   <span className="text-slate-700">
-                    Clr: {currentFindings.summary.minimumClearanceCm ? `${currentFindings.summary.minimumClearanceCm} cm` : "—"}
+                    Clr: {currentFindings.summary.minimumClearanceCm !== null ? `${currentFindings.summary.minimumClearanceCm} cm` : "not measured"}
                   </span>
                 </div>
               ) : activeCandidate ? (
@@ -503,7 +551,7 @@ export function Stage5Improve() {
                   </span>
                   <span className="text-slate-300">|</span>
                   <span className="text-slate-700">
-                    Clr: {activeCandidate.metrics.minimumClearanceCm ? `${activeCandidate.metrics.minimumClearanceCm} cm` : "—"}
+                    Clr: {activeCandidate.metrics.minimumClearanceCm !== null ? `${activeCandidate.metrics.minimumClearanceCm} cm` : "not measured"}
                   </span>
                 </div>
               ) : (
@@ -518,6 +566,7 @@ export function Stage5Improve() {
                   customFurniture={furniture}
                   customRouteResult={routeResult}
                   customEvaluation={currentFindings}
+                  hideControls={true}
                   className="w-full h-full"
                 />
               ) : activeCandidate ? (
@@ -526,6 +575,7 @@ export function Stage5Improve() {
                   customFurniture={activeCandidate.furniture}
                   customRouteResult={activeCandidate.routeResult}
                   customEvaluation={activeCandidate.evaluation}
+                  hideControls={true}
                   className="w-full h-full"
                 />
               ) : (
@@ -604,15 +654,17 @@ export function Stage5Improve() {
                 {activeCandidate.moves.map((move, i) => (
                   <div
                     key={i}
-                    className="flex items-center gap-1.5 bg-slate-50 border border-slate-200 rounded px-2 py-0.5 text-xs text-slate-700 font-mono"
+                    className="flex items-center gap-1.5 bg-slate-50 border border-slate-200 rounded px-2.5 py-1 text-xs text-slate-700"
                   >
-                    <Move className="w-3 h-3 text-[#1e7168]" />
-                    <span className="font-semibold text-slate-900 font-sans">{move.furnitureName}:</span>
-                    <span>
+                    <Move className="w-3 h-3 text-[#1e7168] shrink-0" />
+                    <span className="font-semibold text-slate-900 font-sans">
+                      {formatMovePlainLanguage(move)}
+                    </span>
+                    <span className="text-slate-400 font-mono text-[10px] ml-1">
                       ({move.fromPosition.x}, {move.fromPosition.y})
                     </span>
-                    <ArrowRight className="w-3 h-3 text-slate-400" />
-                    <span className="text-[#1e7168] font-bold">
+                    <ArrowRight className="w-2.5 h-2.5 text-slate-400 shrink-0" />
+                    <span className="text-[#1e7168] font-bold font-mono text-[10px]">
                       ({move.toPosition.x}, {move.toPosition.y})
                     </span>
                     <span className="text-slate-400 font-sans text-[11px]">

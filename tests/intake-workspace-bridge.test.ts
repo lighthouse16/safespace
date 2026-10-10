@@ -1032,3 +1032,92 @@ test("Correctness: interior checkpoint fallback returns null and addRouteWaypoin
   // Waypoints count must remain 0 - no bogus waypoint added, no crash
   assert.equal(useSafeSpaceStore.getState().routeWaypoints.length, 0);
 });
+
+test("Synthetic deterministic test fixture: 200px = 200cm calibration, coordinate registration, spatial analysis and durable persistence", async () => {
+  // 1. Known scale: 200px line representing 200cm wall -> pixelsPerCm = 1.0 exactly
+  const lineDistancePx = 200.0;
+  const realLengthCm = 200.0;
+  const pixelsPerCm = lineDistancePx / realLengthCm;
+  assert.equal(pixelsPerCm, 1.0, "Scale must be exactly 1.0 px/cm");
+
+  // 2. Drafted boundary in intake canvas coordinates (800x600 canvas)
+  const pixelBoundary: Polygon2D = [
+    { x: 0, y: 0 },
+    { x: 200, y: 0 },
+    { x: 200, y: 200 },
+    { x: 0, y: 200 },
+  ];
+
+  // 3. Pixel-to-centimeter transformation
+  const cmBoundary = convertPixelPolygonToCm(pixelBoundary, pixelsPerCm);
+  assert.deepEqual(
+    cmBoundary,
+    [
+      { x: 0, y: 0 },
+      { x: 200, y: 0 },
+      { x: 200, y: 200 },
+      { x: 0, y: 200 },
+    ],
+    "Boundary coordinates in cm must match exact 1:1 scale"
+  );
+
+  // 4. Background floorplan canvas registration dimensions in workspace SVG
+  const intakeCanvasWidth = 800;
+  const intakeCanvasHeight = 600;
+  const backgroundSvgWidthCm = intakeCanvasWidth / pixelsPerCm;
+  const backgroundSvgHeightCm = intakeCanvasHeight / pixelsPerCm;
+  assert.equal(backgroundSvgWidthCm, 800, "Background SVG width must be 800 cm under 1.0 scale");
+  assert.equal(backgroundSvgHeightCm, 600, "Background SVG height must be 600 cm under 1.0 scale");
+
+  // 5. Store integration with user assessment
+  const store = useSafeSpaceStore.getState();
+  store.clearUserAssessment();
+
+  const metadata = {
+    id: "test-assessment-deterministic-01",
+    name: "Deterministic Benchmark Space",
+    facilityName: "Deterministic Benchmark Space",
+    spaceName: "Test Suite Alpha",
+    environmentType: "commercial" as const,
+    createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString(),
+  };
+
+  store.createAndLoadUserAssessment({
+    boundaryCm: cmBoundary,
+    calibration: {
+      pixelsPerCm: 1.0,
+      realLength: 200,
+      unit: "cm",
+      pixelDistance: 200,
+      originPolicy: INTAKE_ORIGIN_POLICY,
+    },
+    metadata,
+  });
+
+  const state = useSafeSpaceStore.getState();
+  assert.equal(state.assessmentType, "user");
+  assert.equal(state.assessmentMetadata?.facilityName, "Deterministic Benchmark Space");
+  assert.equal(state.calibrationProvenance?.pixelsPerCm, 1.0);
+  assert.deepEqual(state.canonicalBoundary, cmBoundary);
+
+  // 6. Furniture placement and spatial evaluation
+  store.addFurniture("chair");
+
+  const furnitureList = useSafeSpaceStore.getState().furniture;
+  assert.equal(furnitureList.length, 1);
+  assert.equal(furnitureList[0].category, "chair");
+
+  // 7. Durable persistence roundtrip
+  const loaded = loadPersistedAssessment();
+  assert.equal(loaded.success, true);
+  if (loaded.success) {
+    assert.equal(loaded.data.metadata?.facilityName, "Deterministic Benchmark Space");
+    assert.equal(loaded.data.calibration?.pixelsPerCm, 1.0);
+    assert.deepEqual(loaded.data.canonicalBoundary, cmBoundary);
+    assert.equal(loaded.data.furniture.length, 1);
+  }
+
+  // Cleanup
+  store.clearUserAssessment();
+});

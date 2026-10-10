@@ -297,18 +297,17 @@ test("validateAssessmentDetails checks required fields without server calls", ()
 });
 
 // 5. Dashboard truthfulness tests
-test("assessments dashboard renders Queen Care Clinic as Demo Fixture with truthful session draft copy", () => {
+test("assessments dashboard renders truthful empty state without legacy clinic presets", () => {
   const html = renderToStaticMarkup(React.createElement(AssessmentsPage));
 
-  // Must label Queen Care Clinic as Example Clinic or Demo Fixture
-  assert.match(html, /Queen Care Clinic/);
-  assert.match(html, /(Demo Fixture|Example Clinic)/);
-  assert.match(html, /(Open demo|Open example clinic)/);
+  // Must NOT render Queen Care Clinic or sample clinic presets on real user dashboard
+  assert.doesNotMatch(html, /Queen Care Clinic/);
+  assert.doesNotMatch(html, /Example Clinic Scenario/);
 
   // Must contain honest empty state for real assessments
   assert.match(html, /(No assessments saved yet|No custom assessments saved yet)/);
   assert.match(html, /(Intake drafts exist only while the intake session remains open|Draft assessments stay in memory until finalized)/);
-  assert.match(html, /(Session only|Draft assessment|Saved on this device)/);
+  assert.match(html, /\+ Start an assessment/);
 
   // Must NOT claim local memory persistence on dashboard
   assert.doesNotMatch(html, /held in local memory/);
