@@ -1,2 +1,33 @@
-import Link from "next/link"; import {AppShell} from "@/components/shell";
-export default function Reviews(){return <AppShell activePath="/reviews"><div className="mx-auto max-w-5xl"><h1 className="text-3xl font-semibold">Professional reviews</h1><p className="mt-2 text-slate-600">Review verified snapshots before teams implement changes.</p><div className="mt-7 overflow-hidden rounded-xl border border-slate-200 bg-white"><Link href="/reviews/queen-care-clinic" className="grid gap-3 p-5 hover:bg-slate-50 md:grid-cols-[1fr_10rem_10rem]"><span><b>Harmony Elder Care Centre — Activity Room</b><small className="block text-slate-500">Balanced option · Revision 4</small></span><span className="text-sm font-semibold text-amber-800">Review pending</span><span className="text-sm text-slate-500">Due 29 Sep</span></Link></div></div></AppShell>}
+import Link from "next/link";
+
+export default function RetiredReviewsPage() {
+  return (
+    <main className="flex min-h-screen items-center justify-center bg-slate-50 px-4 py-16 text-slate-900">
+      <div className="w-full max-w-xl rounded-2xl border border-slate-200 bg-white p-8 text-center shadow-sm">
+        <div className="mx-auto mb-4 inline-flex items-center rounded-full border border-amber-200 bg-amber-50 px-3 py-1 text-xs font-semibold text-amber-800">
+          Legacy Route Retired
+        </div>
+        <h1 className="text-xl font-bold tracking-tight text-slate-950 sm:text-2xl">
+          Legacy Demonstration Route Decommissioned: Professional Reviews Directory
+        </h1>
+        <p className="mt-4 text-sm leading-relaxed text-slate-600">
+          SafeSpace uses the canonical workspace with client-persistent assessments and deterministic spatial evaluations.
+        </p>
+        <div className="mt-8 flex flex-col justify-center gap-3 sm:flex-row">
+          <Link
+            href="/"
+            className="inline-flex h-11 items-center justify-center rounded-lg bg-teal-700 px-5 text-sm font-semibold text-white shadow-sm hover:bg-teal-800 focus-visible:outline focus-visible:outline-2 focus-visible:outline-teal-700"
+          >
+            Open Canonical Workspace
+          </Link>
+          <Link
+            href="/assessments"
+            className="inline-flex h-11 items-center justify-center rounded-lg border border-slate-300 bg-white px-5 text-sm font-semibold text-slate-700 shadow-sm hover:bg-slate-50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-slate-400"
+          >
+            Return to Assessments
+          </Link>
+        </div>
+      </div>
+    </main>
+  );
+}

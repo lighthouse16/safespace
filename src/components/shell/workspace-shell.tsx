@@ -1,13 +1,15 @@
 import Link from "next/link";
 import type { ReactNode } from "react";
 import type { WorkflowStep } from "@/lib/types";
+
 const steps: readonly { id: WorkflowStep; label: string; href: string }[] = [
   { id: "model", label: "1. Space Model (2D/3D)", href: "/assessments/queen-care-clinic/model" },
   { id: "analysis", label: "2. Risk Analysis", href: "/assessments/queen-care-clinic/analysis" },
   { id: "options", label: "3. Layout Options", href: "/assessments/queen-care-clinic/options" },
   { id: "report", label: "4. Implementation Report", href: "/assessments/queen-care-clinic/report" },
 ];
-export function WorkspaceShell({ children, activeStep, status = "Session only" }: { children: ReactNode; activeStep: WorkflowStep; status?: string }) {
+
+export function WorkspaceShell({ children, activeStep, status = "Decommissioned fixture" }: { children: ReactNode; activeStep: WorkflowStep; status?: string }) {
   const activeIndex = Math.max(0, steps.findIndex((step) => step.id === activeStep));
   return (
     <div className="min-h-dvh bg-slate-100 text-slate-950">
@@ -16,30 +18,30 @@ export function WorkspaceShell({ children, activeStep, status = "Session only" }
           <Link href="/assessments" className="text-sm font-medium text-slate-600 hover:text-slate-950">&larr; Assessments</Link>
           <span className="text-slate-300">/</span>
           <strong className="truncate text-sm font-semibold text-slate-900">Queen Care Clinic</strong>
-          <span className="rounded bg-slate-100 px-1.5 py-0.5 text-[10px] font-medium text-slate-500 border border-slate-200 shrink-0">Demo Fixture</span>
-          <span className="text-slate-300 hidden md:inline">·</span>
-          <span className="text-xs text-slate-500 hidden md:inline truncate">Waiting Area & Consultation Corridor</span>
+          <span className="shrink-0 rounded border border-amber-200 bg-amber-50 px-1.5 py-0.5 text-[10px] font-medium text-amber-800">Legacy Fixture (Decommissioned)</span>
+          <span className="hidden text-slate-300 md:inline">·</span>
+          <span className="hidden truncate text-xs text-slate-500 md:inline">Waiting Area & Consultation Corridor</span>
         </div>
         <div className="flex items-center gap-3">
-          <Link href="/reviews/queen-care-clinic" className="hidden sm:inline-block rounded-md border border-slate-300 bg-white px-2.5 py-1 text-xs font-semibold text-slate-700 hover:bg-slate-50">
-            OT Review &rarr;
+          <Link href="/" className="hidden rounded-md border border-slate-300 bg-white px-2.5 py-1 text-xs font-semibold text-slate-700 hover:bg-slate-50 sm:inline-block">
+            Canonical Workspace &rarr;
           </Link>
-          <span role="status" className="rounded-full bg-slate-100 px-2.5 py-1 text-xs font-medium text-slate-600 border border-slate-200">{status}</span>
+          <span role="status" className="rounded-full border border-slate-200 bg-slate-100 px-2.5 py-1 text-xs font-medium text-slate-600">{status}</span>
         </div>
       </header>
       <div className="grid lg:grid-cols-[15.5rem_minmax(0,1fr)]">
-        <aside className="border-b border-slate-200 bg-white p-3 lg:min-h-[calc(100dvh-4rem)] lg:border-b-0 lg:border-r overflow-x-hidden">
-          <p className="px-3 py-2 text-[11px] font-bold uppercase tracking-wider text-slate-400">Assessment Workflow</p>
-          <ol className="flex gap-1 overflow-x-auto lg:overflow-x-visible lg:grid lg:gap-1" aria-label="Assessment progress">
+        <aside className="overflow-x-hidden border-b border-slate-200 bg-white p-3 lg:min-h-[calc(100dvh-4rem)] lg:border-b-0 lg:border-r">
+          <p className="px-3 py-2 text-[11px] font-bold uppercase tracking-wider text-slate-400">Legacy Workflow</p>
+          <ol className="flex gap-1 overflow-x-auto lg:grid lg:gap-1 lg:overflow-x-visible" aria-label="Assessment progress">
             {steps.map((step, index) => (
               <li key={step.id}>
                 <Link
                   href={step.href}
                   aria-current={step.id === activeStep ? "step" : undefined}
-                  className="flex min-w-max lg:min-w-0 lg:w-full items-center gap-2.5 rounded-lg px-3 py-2.5 text-xs font-medium text-slate-600 hover:bg-slate-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-teal-700 aria-[current=step]:bg-teal-50 aria-[current=step]:font-semibold aria-[current=step]:text-teal-800"
+                  className="flex min-w-max items-center gap-2.5 rounded-lg px-3 py-2.5 text-xs font-medium text-slate-600 hover:bg-slate-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-teal-700 aria-[current=step]:bg-teal-50 aria-[current=step]:font-semibold aria-[current=step]:text-teal-800 lg:w-full lg:min-w-0"
                 >
                   <span
-                    className={`grid size-5 place-items-center rounded-full text-[11px] font-semibold shrink-0 ${
+                    className={`grid size-5 shrink-0 place-items-center rounded-full text-[11px] font-semibold ${
                       index < activeIndex
                         ? "bg-teal-700 text-white"
                         : index === activeIndex
@@ -49,7 +51,7 @@ export function WorkspaceShell({ children, activeStep, status = "Session only" }
                   >
                     {index + 1}
                   </span>
-                  <span className="truncate lg:whitespace-normal">{step.label.replace(/^\d+\.\s*/, '')}</span>
+                  <span className="truncate lg:whitespace-normal">{step.label.replace(/^\d+\.\s*/, "")}</span>
                 </Link>
               </li>
             ))}

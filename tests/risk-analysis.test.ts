@@ -14,3 +14,10 @@ test("Queen Care Clinic route findings use canonical measurements", () => {
   assert.equal(hazards[0].required, "90 cm");
   assert.equal(hazards[0].objectId, "chair-1");
 });
+
+test("Queen Care Clinic route findings contain no fabricated photometer readings", () => {
+  for (const hazard of hazards) {
+    assert.doesNotMatch(hazard.measured, /85\s*lux/i);
+    assert.doesNotMatch(hazard.required, /200\s*lux/i);
+  }
+});

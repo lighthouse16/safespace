@@ -54,18 +54,18 @@ export const hazards: Hazard[] = [
   {
     id: "HZ-003",
     severity: "Medium",
-    title: "Poor lighting near doorway",
+    title: "Low doorway illumination check",
     location: "Consultation corridor threshold",
     objectId: null,
-    reason: "Ambient illuminance drops significantly below recommended levels for older adults with reduced contrast sensitivity.",
+    reason: "Visual contrast requires evaluation for older adults with reduced contrast sensitivity.",
     affectedProfiles: ["Low-vision user", "Older adult using walker"],
-    measured: "85 lux",
-    required: "200 lux",
-    gap: "115 lux below standard",
-    evidence: "Calibrated site photometer records 85 lux ambient light at doorway threshold.",
-    suggestedFix: "Install high-efficiency diffuse LED fixture at the corridor doorway.",
+    measured: "Visual check only",
+    required: "On-site photometer check",
+    gap: "Pending physical lux audit",
+    evidence: "Threshold illuminance requires physical site survey with calibrated lux meter.",
+    suggestedFix: "Perform on-site photometric survey at corridor threshold.",
     confidence: 88,
-    provenance: "Site photo set · Photometric assessment",
+    provenance: "Visual inspection notes · Physical photometer survey required",
   },
   {
     id: "HZ-004",
@@ -130,7 +130,7 @@ export function RiskAnalysis() {
                   Critical route clearance compromised
                 </h2>
                 <span className="rounded-full border border-red-200 bg-red-50 px-2.5 py-1 text-xs font-semibold text-red-800">
-                  High Risk (68/100)
+                  Clearance Deficit
                 </span>
               </div>
               <p className="mt-1 max-w-3xl text-sm leading-6 text-slate-600">
@@ -140,14 +140,14 @@ export function RiskAnalysis() {
           </div>
           <div className="flex items-center gap-4 rounded-xl bg-slate-50 px-4 py-3">
             <div>
-              <p className="text-xs font-medium text-slate-500">Environmental Risk Index</p>
-              <p className="text-2xl font-semibold tabular-nums text-slate-950">
-                68<span className="text-sm font-medium text-slate-500"> / 100</span>
+              <p className="text-xs font-medium text-slate-500">Route Clearance Evaluation</p>
+              <p className="text-2xl font-semibold tabular-nums text-red-700">
+                54 cm<span className="text-sm font-medium text-slate-500"> (min 90 cm)</span>
               </p>
             </div>
             <div className="h-9 w-px bg-slate-200" />
             <p className="max-w-32 text-xs leading-5 text-slate-500">
-              Lower is safer. Baseline assessment before layout modifications.
+              Deterministic spatial evaluation. SafeSpace reports physical geometry, not synthetic risk scores.
             </p>
           </div>
         </div>
