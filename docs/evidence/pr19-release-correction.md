@@ -4,36 +4,36 @@
 - **Repository**: `lighthouse16/safespace`
 - **Branch**: `feat/user-first-ux-core-flow`
 - **PR**: [#19](https://github.com/lighthouse16/safespace/pull/19)
-- **Reviewed HEAD**: `d90784c38ed3ca067b2b8efe95adeb31e7033425`
-- **Review Target**: Technical Lead Review Comment [issuecomment-6095730932](https://github.com/lighthouse16/safespace/pull/19#issuecomment-6095730932)
+- **Reviewed HEAD**: `6217d79eb5fc34904355bcd4ffd92ac532287422`
+- **Review Target**: Technical Lead Review Comment [issuecomment-6096170871](https://github.com/lighthouse16/safespace/pull/19#issuecomment-6096170871)
 
 ---
 
 ## 2. Verified Technical Corrections
 
-### P0 — Media Provenance Regression Resolution
-1. **Authoritative In-Memory & Persisted Media Provenance**:
-   - Added `hasFloorplanImage?: boolean` to `SafeSpaceState` in [`src/store/safespace-store.ts`](file:///d:/projects/Hack/hack4sdg/src/store/safespace-store.ts).
-   - Set `hasFloorplanImage: Boolean(imageFile)` in `createAndLoadUserAssessment`.
-   - Preserved `hasFloorplanImage` across `hydrateFromStorage`, `resetToDemo` (`false`), and all store mutations.
-   - Audited every `savePersistedAssessment()` call path:
-     - `persistUserMutation`: authoritatively resolves `hasFloorplanImage` from store state or matched-ID persisted snapshot before saving.
-     - `applyLayoutCandidate`: authoritatively resolves and passes `hasFloorplanImage`.
-     - `revertLayoutCandidate`: authoritatively resolves and passes `hasFloorplanImage`.
+### P0 — Orphan-Media Boundary & Durable Cleanup Debt Resolution
+1. **Durable Media Cleanup Debt Tracking**:
+   - Added durable queue key `safespace_pending_media_cleanup_v1` and helper functions (`getPendingMediaCleanups`, `addPendingMediaCleanup`, `removePendingMediaCleanup`, `clearPendingMediaCleanups`) in [`src/lib/storage/persistence.ts`](file:///d:/projects/Hack/hack4sdg/src/lib/storage/persistence.ts).
+   - Added optional `pendingMediaCleanupIds?: string[]` to `PersistedAssessmentState`.
+   - On replacement where old-image cleanup fails in [`src/store/safespace-store.ts`](file:///d:/projects/Hack/hack4sdg/src/store/safespace-store.ts) (`createAndLoadUserAssessment`), the failed ID is added to durable queue and persisted state.
+   - On hydration (`hydrateFromStorage`), pending debts trigger store warning banner and non-blocking background retry.
 
-2. **Persistence Guard Against False Defaults**:
-   - In [`src/lib/storage/persistence.ts`](file:///d:/projects/Hack/hack4sdg/src/lib/storage/persistence.ts) (`savePersistedAssessment`):
-     - If `state.hasFloorplanImage` is omitted or not boolean, attempts recovery from existing persisted assessment matching the same ID.
-     - Never defaults omitted/undefined field to `false` on serialize.
-     - If provenance is unknown (`undefined`), the field is omitted from JSON serialization, preserving `undefined` (unknown provenance) upon load.
+2. **Operator-Visible Cleanup Warnings & Retry**:
+   - Store exposes `mediaCleanupWarning`, `retryPendingMediaCleanup()`, and `clearMediaCleanupWarning()`.
+   - [`src/components/intake/IntakeReviewStep.tsx`](file:///d:/projects/Hack/hack4sdg/src/components/intake/IntakeReviewStep.tsx) halts silent transition when cleanup fails, displaying an accessible warning banner with "Retry Cleanup" and "Continue to Workspace".
+   - [`src/components/workflow/TopAppBar.tsx`](file:///d:/projects/Hack/hack4sdg/src/components/workflow/TopAppBar.tsx) displays sticky storage notice banner when cleanup debts are pending with "Retry Cleanup" and "Dismiss".
 
-3. **Truthful Coordinated Deletion & Orphan Guard**:
+3. **Total Store Evacuation on Coordinated Delete**:
    - In [`src/lib/storage/coordinated-storage.ts`](file:///d:/projects/Hack/hack4sdg/src/lib/storage/coordinated-storage.ts) (`coordinatedDeleteAssessment`):
-     - Only an explicit `hasFloorplanImage === false` is treated as confirmed manual-only. Unknown provenance (`undefined`) and imported image (`true`) strictly require IndexedDB media deletion and double absence verification before `localStorage` can be removed.
-     - On a confirmed manual-only assessment, if IndexedDB is accessible, it checks for and deletes any unexpected orphan record. If IndexedDB is inaccessible/blocked, it allows manual layout deletion but includes an explicit truthful `warning`.
+     - Gathers all pending debts from localStorage queue and persisted state.
+     - Pure manual space with 0 debts: checks target ID. If IDB is unavailable, deletes layout from localStorage and returns truthful `warning` without asserting unverified media clearance. If IDB is healthy, deletes target ID, executes `clearAllFloorplanImages()`, verifies count 0, and returns `mediaCleared: true`.
+     - Imported space, unknown provenance, or active debts: requires deletion of target ID + all pending debts, runs `clearAllFloorplanImages()`, and confirms store count is 0. If any step fails or media remains, deletion fails closed and preserves localStorage.
 
-4. **Actionable Old Image Cleanup Warning Upon Replacement**:
-   - In `createAndLoadUserAssessment`, if deleting the previous assessment media fails, the operation returns `{ success: true, isSaved: true, previousMediaCleanupFailed: true, cleanupWarning: "..." }` instead of silently ignoring the failure.
+4. **Typed Media Inspection API**:
+   - In [`src/lib/storage/image-db.ts`](file:///d:/projects/Hack/hack4sdg/src/lib/storage/image-db.ts):
+     - Added `MediaInspectResult` distinguishing `found`, `not_found`, and `error`.
+     - Implemented `inspectFloorplanImage(assessmentId)` and `countFloorplanImages()`.
+     - Replaced ambiguous `null` checks across callers.
 
 ---
 
@@ -41,6 +41,8 @@
 
 | Verification Dimension | Status | Evidence / Result |
 | :--- | :---: | :--- |
+| **Orphan Media Debt Boundary** | **PASS** | `tests/indexeddb-media-integrity.test.ts` (Test 17: imported A replaced by manual B with failed cleanup of A; verifies durable debt, UI warning, fail-closed delete of B, and successful retry). |
+| **IDB Inaccessible Manual Delete** | **PASS** | `tests/indexeddb-media-integrity.test.ts` (Test 18: IDB truly unavailable and manual-only B deletes layout with truthful warning and `mediaCleared: false`). |
 | **Media Provenance Full Journey** | **PASS** | `tests/indexeddb-media-integrity.test.ts` (upload → edit furniture → edit profile → edit route → apply → revert → reload → blocked IDB retains localStorage → healthy IDB deletes both). |
 | **Media Provenance Guard** | **PASS** | `tests/indexeddb-media-integrity.test.ts` (`savePersistedAssessment` preserves existing boolean provenance when omitted from caller payload). |
 | **Unknown Provenance Fail-Closed** | **PASS** | `tests/indexeddb-media-integrity.test.ts` (undefined `hasFloorplanImage` fails closed when IDB blocked, preserving localStorage). |
@@ -50,7 +52,7 @@
 | **P0-3 Recoverable Deletion** | **PASS** | `tests/indexeddb-media-integrity.test.ts` (IDB delete failure leaves localStorage intact; manual-only space deletes cleanly without IDB). |
 | **P1-4 Stage 5 Single Actions** | **PASS** | `tests/stage5-ui-interaction.test.ts` (single Apply in proposal, single Revert in review). |
 | **P1-4 Stage 5 Responsive < 1024px** | **PASS** | DevTools resized to 900px (tablet) and 390px (mobile): side-by-side hidden, exactly one floorplan pane rendered, live Revert succeeds. |
-| **Automated Unit & Adversarial Tests** | **PASS** | **228/228 tests passing** (0 failures, 0 skipped, 0 cancelled across all test files). |
+| **Automated Unit & Adversarial Tests** | **PASS** | **230/230 tests passing** (0 failures, 0 skipped, 0 cancelled across all test files). |
 | **TypeScript Typecheck** | **PASS** | **0 errors** (`npm run typecheck`). |
 | **ESLint Validation** | **PASS** | **0 errors, 0 warnings** (`npm run lint`). |
 | **Next.js Static Export (basePath="")** | **PASS** | 13 static HTML pages exported, 8 retired routes verified (`npm run build && npm run verify:export`). |
@@ -64,14 +66,14 @@
 ## 4. Test Suite Execution Summary (Raw Node TAP Runner)
 
 ```
-# tests 228
+# tests 230
 # suites 0
-# pass 228
+# pass 230
 # fail 0
 # cancelled 0
 # skipped 0
 # todo 0
-# duration_ms 10478.2397
+# duration_ms 103024.6664
 ```
 
 ---
@@ -92,3 +94,4 @@ npm run build && npm run verify:export
 # 4. Verify static export under GitHub Pages basePath
 EXPORT_GH_PAGES=true npm run build && npm run verify:export
 ```
+

@@ -44,6 +44,9 @@ import {
   clearPersistedAssessment,
   saveActiveWorkspace,
   loadActiveWorkspace,
+  addPendingMediaCleanup,
+  getPendingMediaCleanups,
+  removePendingMediaCleanup,
   type AssessmentMetadata,
   type CalibrationProvenance,
   type PersistedAssessmentState,
@@ -212,6 +215,11 @@ export interface SafeSpaceState {
   // Placement & Interaction Feedback
   placementError: string | null;
   clearPlacementError: () => void;
+
+  // Media Cleanup Warning & Retry
+  mediaCleanupWarning: string | null;
+  retryPendingMediaCleanup: () => Promise<{ success: boolean; remainingCount: number }>;
+  clearMediaCleanupWarning: () => void;
 
   // Computed helper
   getSpatialFindings: () => SpatialEvaluationResult;
@@ -396,6 +404,36 @@ export const useSafeSpaceStore = create<SafeSpaceState>((set, get) => ({
   setFloorplanImageBlobUrl: (url) => set({ floorplanImageBlobUrl: url }),
   storageStatus: "idle",
   storageError: null,
+  mediaCleanupWarning: null,
+  clearMediaCleanupWarning: () => set({ mediaCleanupWarning: null }),
+  retryPendingMediaCleanup: async () => {
+    const pending = getPendingMediaCleanups();
+    if (pending.length === 0) {
+      set({ mediaCleanupWarning: null });
+      return { success: true, remainingCount: 0 };
+    }
+    let allCleaned = true;
+    for (const id of pending) {
+      try {
+        const ok = await deleteFloorplanImage(id);
+        if (ok) {
+          removePendingMediaCleanup(id);
+        } else {
+          allCleaned = false;
+        }
+      } catch {
+        allCleaned = false;
+      }
+    }
+    const remaining = getPendingMediaCleanups();
+    if (allCleaned && remaining.length === 0) {
+      set({ mediaCleanupWarning: null });
+      return { success: true, remainingCount: 0 };
+    }
+    const warn = `Cleanup retry failed. ${remaining.length} floorplan image record(s) still pending deletion in local database.`;
+    set({ mediaCleanupWarning: warn });
+    return { success: false, remainingCount: remaining.length };
+  },
 
   // Workflow stage
   activeStage: "layout",
@@ -1207,6 +1245,7 @@ export const useSafeSpaceStore = create<SafeSpaceState>((set, get) => ({
       baselineFurnitureSnapshot: null,
       storageStatus: savedWs ? "idle" : "error",
       storageError: savedWs ? null : "Failed to persist active workspace selection.",
+      mediaCleanupWarning: null,
     });
   },
 
@@ -1393,13 +1432,27 @@ export const useSafeSpaceStore = create<SafeSpaceState>((set, get) => ({
         const deletedOld = await deleteFloorplanImage(previousPersistedId);
         if (!deletedOld) {
           previousMediaCleanupFailed = true;
-          cleanupWarning = `Previous assessment image (${previousPersistedId}) could not be cleaned up from IndexedDB.`;
+          cleanupWarning = `Previous assessment image (${previousPersistedId}) could not be cleaned up from IndexedDB. Personal data may remain in browser storage.`;
+          addPendingMediaCleanup(previousPersistedId);
           console.warn(cleanupWarning);
+        } else {
+          removePendingMediaCleanup(previousPersistedId);
         }
       } catch (err) {
         previousMediaCleanupFailed = true;
         cleanupWarning = `Previous assessment image (${previousPersistedId}) cleanup failed: ${err instanceof Error ? err.message : String(err)}`;
+        addPendingMediaCleanup(previousPersistedId);
         console.warn(cleanupWarning);
+      }
+    }
+
+    if (previousMediaCleanupFailed && previousPersistedId) {
+      const persistedNow = getPersistedAssessment();
+      if (persistedNow) {
+        savePersistedAssessment({
+          ...persistedNow,
+          pendingMediaCleanupIds: getPendingMediaCleanups(),
+        });
       }
     }
 
@@ -1451,6 +1504,9 @@ export const useSafeSpaceStore = create<SafeSpaceState>((set, get) => ({
       storageStatus: "saved",
       storageError: null,
       placementError: null,
+      mediaCleanupWarning: previousMediaCleanupFailed
+        ? (cleanupWarning || "Previous floorplan image could not be cleaned up from browser storage.")
+        : null,
     });
 
     return {
@@ -1491,6 +1547,7 @@ export const useSafeSpaceStore = create<SafeSpaceState>((set, get) => ({
       storageStatus: "saved",
       storageError: null,
       placementError: null,
+      mediaCleanupWarning: null,
     });
     get().loadDemoAssessment();
     return delRes;
@@ -1546,6 +1603,14 @@ export const useSafeSpaceStore = create<SafeSpaceState>((set, get) => ({
           ? data.hasFloorplanImage
           : undefined;
 
+      // Check for pending media cleanup debts that survived reload:
+      const pendingCleanups = Array.from(
+        new Set([...getPendingMediaCleanups(), ...(data.pendingMediaCleanupIds || [])])
+      );
+      const pendingWarning = pendingCleanups.length > 0
+        ? `Notice: ${pendingCleanups.length} previous floorplan image record(s) could not be removed from browser storage. Personal data may remain locally.`
+        : null;
+
       set({
         assessmentType: "user",
         assessmentId: data.metadata?.id || `assessment-${Date.now()}`,
@@ -1567,7 +1632,29 @@ export const useSafeSpaceStore = create<SafeSpaceState>((set, get) => ({
         appliedSceneFingerprint: data.appliedSceneFingerprint || null,
         storageStatus: "saved",
         storageError: null,
+        mediaCleanupWarning: pendingWarning,
       });
+
+      if (pendingCleanups.length > 0) {
+        (async () => {
+          let anyCleaned = false;
+          for (const pendingId of pendingCleanups) {
+            try {
+              const ok = await deleteFloorplanImage(pendingId);
+              if (ok) {
+                removePendingMediaCleanup(pendingId);
+                anyCleaned = true;
+              }
+            } catch {}
+          }
+          if (anyCleaned) {
+            const remaining = getPendingMediaCleanups();
+            if (remaining.length === 0) {
+              set({ mediaCleanupWarning: null });
+            }
+          }
+        })();
+      }
 
       if (data.metadata?.id) {
         const targetId = data.metadata.id;

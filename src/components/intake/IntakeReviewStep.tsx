@@ -44,7 +44,10 @@ export function IntakeReviewStep({
 }: IntakeReviewStepProps) {
   const router = useRouter();
   const createAndLoadUserAssessment = useSafeSpaceStore((s) => s.createAndLoadUserAssessment);
+  const retryPendingMediaCleanup = useSafeSpaceStore((s) => s.retryPendingMediaCleanup);
   const [validationError, setValidationError] = useState<string | null>(null);
+  const [cleanupWarning, setCleanupWarning] = useState<string | null>(null);
+  const [isRetryingCleanup, setIsRetryingCleanup] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [showOverwriteModal, setShowOverwriteModal] = useState(false);
 
@@ -112,6 +115,15 @@ export function IntakeReviewStep({
         return;
       }
 
+      if (res.previousMediaCleanupFailed) {
+        setIsSubmitting(false);
+        setCleanupWarning(
+          res.cleanupWarning ||
+          "Assessment created, but the previous floorplan image could not be cleaned up from browser storage. Personal data may remain locally."
+        );
+        return;
+      }
+
       router.push("/");
     } catch (err) {
       setIsSubmitting(false);
@@ -156,6 +168,48 @@ export function IntakeReviewStep({
           >
             <div className="font-semibold text-sm">Cannot Confirm Assessment</div>
             <p>{validationError}</p>
+          </div>
+        )}
+
+        {/* Media Cleanup Warning Banner */}
+        {cleanupWarning && (
+          <div
+            role="alert"
+            className="rounded-lg border border-amber-300 bg-amber-50 p-4 text-xs text-amber-900 space-y-3"
+          >
+            <div className="font-semibold text-sm text-amber-800">
+              Previous Floorplan Cleanup Warning
+            </div>
+            <p className="leading-relaxed">{cleanupWarning}</p>
+            <div className="flex flex-wrap items-center gap-2 pt-1">
+              <button
+                type="button"
+                disabled={isRetryingCleanup}
+                onClick={async () => {
+                  setIsRetryingCleanup(true);
+                  const retryRes = await retryPendingMediaCleanup();
+                  setIsRetryingCleanup(false);
+                  if (retryRes.success) {
+                    setCleanupWarning(null);
+                    router.push("/");
+                  } else {
+                    setCleanupWarning(
+                      `Retry failed. ${retryRes.remainingCount} previous floorplan image(s) still could not be deleted from browser storage.`
+                    );
+                  }
+                }}
+                className="px-3 py-1.5 rounded-lg bg-amber-700 hover:bg-amber-800 text-white font-semibold transition cursor-pointer text-xs"
+              >
+                {isRetryingCleanup ? "Retrying..." : "Retry Cleanup"}
+              </button>
+              <button
+                type="button"
+                onClick={() => router.push("/")}
+                className="px-3 py-1.5 rounded-lg border border-amber-300 bg-white hover:bg-amber-100 font-semibold text-amber-900 transition cursor-pointer text-xs"
+              >
+                Continue to Workspace
+              </button>
+            </div>
           </div>
         )}
 

@@ -14,6 +14,8 @@ import {
   getPersistedAssessment,
   loadActiveWorkspace,
   saveActiveWorkspace,
+  getPendingMediaCleanups,
+  clearPendingMediaCleanups,
   SAFESPACE_STORAGE_KEY,
   SAFESPACE_ACTIVE_WORKSPACE_KEY,
 } from '../src/lib/storage/persistence';
@@ -1228,5 +1230,130 @@ test('Media Provenance: replacement old-image cleanup failure reports actionable
   assert.equal(resB.previousMediaCleanupFailed, true, 'Must report previousMediaCleanupFailed === true');
   assert.ok(typeof resB.cleanupWarning === 'string', 'Must provide actionable cleanupWarning');
   assert.equal(mockDbInstance.failOnDeleteId, null, 'Delete failure was intercepted');
+});
+
+test('Orphan-Media Boundary: imported A replaced by manual B with failed cleanup of A, checks durable cleanup debt + UI warning, then delete B purges all IDB media', async () => {
+  const dummyFileA = new File(['image-content-a'], 'floorplan-a.png', { type: 'image/png' });
+  const store = useSafeSpaceStore.getState();
+
+  // 1. Create imported assessment A (with image)
+  const resA = await store.createAndLoadUserAssessment({
+    metadata: {
+      id: 'space-orphan-a',
+      name: 'Imported Space A',
+      facilityName: 'Clinic A',
+      spaceName: 'Room A',
+      environmentType: 'clinic',
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    },
+    boundaryCm: [{ x: 0, y: 0 }, { x: 300, y: 0 }, { x: 300, y: 300 }, { x: 0, y: 300 }],
+    calibration: { pixelsPerCm: 1.0, realLength: 300, unit: 'cm', pixelDistance: 300, originPolicy: 'canvas-origin-0-0' },
+    imageFile: dummyFileA,
+  });
+  assert.equal(resA.success, true);
+  assert.ok((await getFloorplanImage('space-orphan-a')) !== null, 'Image A committed in IndexedDB');
+
+  // 2. Inject failure on deleting 'space-orphan-a' during replacement
+  mockDbInstance.failOnDeleteId = 'space-orphan-a';
+
+  // 3. Create manual-only assessment B (no imageFile)
+  const resB = await store.createAndLoadUserAssessment({
+    metadata: {
+      id: 'space-orphan-b',
+      name: 'Manual Space B',
+      facilityName: 'Clinic B',
+      spaceName: 'Room B',
+      environmentType: 'clinic',
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    },
+    boundaryCm: [{ x: 0, y: 0 }, { x: 250, y: 0 }, { x: 250, y: 250 }, { x: 0, y: 250 }],
+    calibration: { pixelsPerCm: 1.0, realLength: 250, unit: 'cm', pixelDistance: 250, originPolicy: 'canvas-origin-0-0' },
+    // no imageFile -> manual-only
+  });
+
+  assert.equal(resB.success, true, 'Creation of B succeeds');
+  assert.equal(resB.previousMediaCleanupFailed, true, 'Reports previous cleanup failure');
+
+  // Check durable cleanup debt
+  const pendingDebts = getPendingMediaCleanups();
+  assert.ok(pendingDebts.includes('space-orphan-a'), 'Durable cleanup debt queue must track space-orphan-a');
+
+  const persistedB = getPersistedAssessment();
+  assert.equal(persistedB?.metadata?.id, 'space-orphan-b');
+  assert.equal(persistedB?.hasFloorplanImage, false, 'Assessment B is manual-only');
+  assert.ok(persistedB?.pendingMediaCleanupIds?.includes('space-orphan-a'), 'Persisted state retains pending cleanup debt');
+
+  // Check actual UI warning in store
+  const storeState = useSafeSpaceStore.getState();
+  assert.ok(typeof storeState.mediaCleanupWarning === 'string', 'Store must expose user-facing mediaCleanupWarning');
+  assert.ok(storeState.mediaCleanupWarning.includes('space-orphan-a'), 'Warning explicitly identifies uncleaned media');
+
+  // 4. Attempt deleting B while IDB deletion of A is still blocked
+  mockDbInstance.failOnDeleteId = 'space-orphan-a';
+  const delBlockedRes = await coordinatedDeleteAssessment('space-orphan-b');
+
+  // Must fail closed: cannot claim complete deletion while A remains unpurged!
+  assert.equal(delBlockedRes.success, false, 'Delete B must fail while orphan media A cannot be deleted');
+  assert.equal(delBlockedRes.localStorageCleared, false, 'localStorage must be retained for retry');
+  assert.equal(delBlockedRes.mediaCleared, false, 'mediaCleared must be false');
+  assert.ok((await getFloorplanImage('space-orphan-a')) !== null, 'Image A still in IDB');
+  assert.ok(getPersistedAssessment() !== null, 'Assessment B still in localStorage');
+
+  // 5. Unblock IDB and retry delete of B
+  mockDbInstance.failOnDeleteId = null;
+  const delRetryRes = await coordinatedDeleteAssessment('space-orphan-b');
+
+  assert.equal(delRetryRes.success, true, 'Retry deletion must succeed');
+  assert.equal(delRetryRes.localStorageCleared, true, 'localStorage cleared');
+  assert.equal(delRetryRes.mediaCleared, true, 'mediaCleared verified true');
+
+  // Verify all IDB media and pending debts are purged
+  assert.equal(await getFloorplanImage('space-orphan-a'), null, 'Orphan image A must be completely erased from IDB');
+  assert.equal(await getFloorplanImage('space-orphan-b'), null, 'Image B must be absent');
+  assert.equal(getPendingMediaCleanups().length, 0, 'Pending cleanup debts must be cleared');
+  assert.equal(getPersistedAssessment(), null, 'localStorage assessment must be cleared');
+});
+
+test('Media Integrity: IDB truly unavailable and manual-only B confirms truthful warning without claiming unverified deletion', async () => {
+  // Clear any existing debts
+  clearPendingMediaCleanups();
+
+  savePersistedAssessment({
+    schemaVersion: 1,
+    assessmentType: 'user',
+    metadata: {
+      id: 'manual-space-truthful',
+      name: 'Manual Truthful Space',
+      facilityName: 'Health Center',
+      spaceName: 'Room H',
+      environmentType: 'clinic',
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    },
+    canonicalBoundary: [{ x: 0, y: 0 }, { x: 200, y: 0 }, { x: 200, y: 200 }, { x: 0, y: 200 }],
+    calibration: { pixelsPerCm: 1.0, realLength: 200, unit: 'cm', pixelDistance: 200, originPolicy: 'canvas-origin-0-0' },
+    activeProfileId: 'walker',
+    routeWaypoints: [],
+    furniture: [],
+    hasFloorplanImage: false,
+  });
+
+  assert.equal(getPersistedAssessment()?.hasFloorplanImage, false);
+  assert.equal(getPendingMediaCleanups().length, 0, 'No pending media debts');
+
+  // Inject IDB error so database inspection fails
+  mockDbInstance.failNextTx = 'error';
+
+  const delRes = await coordinatedDeleteAssessment('manual-space-truthful');
+
+  // Manual layout deletion succeeds
+  assert.equal(delRes.success, true, 'Manual layout deletion succeeds without blocking on unavailable IDB');
+  assert.equal(delRes.localStorageCleared, true, 'localStorage is cleared');
+  // Truthful reporting: warning is present, confirming media store absence could not be verified
+  assert.ok(typeof delRes.warning === 'string', 'Warning must be present when IDB is unavailable');
+  assert.ok(delRes.warning.includes('IndexedDB was inaccessible'), 'Must disclose IndexedDB was inaccessible');
+  assert.ok(delRes.warning.includes('could not be verified'), 'Must truthfully report media absence was not verified');
 });
 

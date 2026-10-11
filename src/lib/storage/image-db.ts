@@ -88,39 +88,151 @@ export async function saveFloorplanImage(record: PersistedFloorplanImage): Promi
   });
 }
 
+export type MediaInspectResult =
+  | { status: "found"; record: PersistedFloorplanImage }
+  | { status: "not_found" }
+  | { status: "error"; error: string };
+
+export type MediaCountResult =
+  | { ok: true; count: number }
+  | { ok: false; error: string };
+
+/**
+ * Inspects a persisted floorplan image record by assessment ID.
+ * Distinguishes confirmed absent (not_found) from database access/read failure (error).
+ */
+export async function inspectFloorplanImage(
+  assessmentId: string
+): Promise<MediaInspectResult> {
+  if (!isIndexedDBAvailable()) {
+    return { status: "error", error: "IndexedDB is unavailable in this environment" };
+  }
+
+  return new Promise((resolve) => {
+    try {
+      const request = window.indexedDB.open(DB_NAME, DB_VERSION);
+
+      request.onupgradeneeded = (event) => {
+        const db = (event.target as IDBOpenDBRequest).result;
+        if (!db.objectStoreNames.contains(STORE_NAME)) {
+          db.createObjectStore(STORE_NAME, { keyPath: "assessmentId" });
+        }
+      };
+
+      request.onsuccess = () => {
+        const db = request.result;
+        try {
+          const tx = db.transaction(STORE_NAME, "readonly");
+          const store = tx.objectStore(STORE_NAME);
+          const req = store.get(assessmentId);
+
+          req.onsuccess = () => {
+            const result = req.result as PersistedFloorplanImage | undefined;
+            db.close();
+            if (result) {
+              resolve({ status: "found", record: result });
+            } else {
+              resolve({ status: "not_found" });
+            }
+          };
+
+          req.onerror = (ev) => {
+            const msg = (ev.target as IDBRequest)?.error?.message || "Error reading from IndexedDB";
+            db.close();
+            resolve({ status: "error", error: msg });
+          };
+
+          tx.onabort = () => {
+            db.close();
+            resolve({ status: "error", error: "IndexedDB transaction aborted" });
+          };
+        } catch (err) {
+          db.close();
+          resolve({ status: "error", error: err instanceof Error ? err.message : String(err) });
+        }
+      };
+
+      request.onerror = (ev) => {
+        const msg = (ev.target as IDBOpenDBRequest)?.error?.message || "Failed to open IndexedDB";
+        resolve({ status: "error", error: msg });
+      };
+    } catch (err) {
+      resolve({ status: "error", error: err instanceof Error ? err.message : String(err) });
+    }
+  });
+}
+
+/**
+ * Counts total floorplan image records in IndexedDB.
+ */
+export async function countFloorplanImages(): Promise<MediaCountResult> {
+  if (!isIndexedDBAvailable()) {
+    return { ok: false, error: "IndexedDB is unavailable in this environment" };
+  }
+
+  return new Promise((resolve) => {
+    try {
+      const request = window.indexedDB.open(DB_NAME, DB_VERSION);
+
+      request.onupgradeneeded = (event) => {
+        const db = (event.target as IDBOpenDBRequest).result;
+        if (!db.objectStoreNames.contains(STORE_NAME)) {
+          db.createObjectStore(STORE_NAME, { keyPath: "assessmentId" });
+        }
+      };
+
+      request.onsuccess = () => {
+        const db = request.result;
+        try {
+          const tx = db.transaction(STORE_NAME, "readonly");
+          const store = tx.objectStore(STORE_NAME);
+          if (typeof store.count !== "function") {
+            db.close();
+            resolve({ ok: true, count: 0 });
+            return;
+          }
+          const req = store.count();
+
+          req.onsuccess = () => {
+            const count = typeof req.result === "number" ? req.result : 0;
+            db.close();
+            resolve({ ok: true, count });
+          };
+
+          req.onerror = (ev) => {
+            const msg = (ev.target as IDBRequest)?.error?.message || "Failed to count IndexedDB records";
+            db.close();
+            resolve({ ok: false, error: msg });
+          };
+
+          tx.onabort = () => {
+            db.close();
+            resolve({ ok: false, error: "Transaction aborted" });
+          };
+        } catch (err) {
+          db.close();
+          resolve({ ok: false, error: err instanceof Error ? err.message : String(err) });
+        }
+      };
+
+      request.onerror = (ev) => {
+        const msg = (ev.target as IDBOpenDBRequest)?.error?.message || "Failed to open IndexedDB";
+        resolve({ ok: false, error: msg });
+      };
+    } catch (err) {
+      resolve({ ok: false, error: err instanceof Error ? err.message : String(err) });
+    }
+  });
+}
+
 /**
  * Retrieves a persisted floorplan image record by assessment ID.
  */
 export async function getFloorplanImage(
   assessmentId: string
 ): Promise<PersistedFloorplanImage | null> {
-  const db = await openDatabase();
-  if (!db) return null;
-
-  return new Promise((resolve) => {
-    try {
-      const tx = db.transaction(STORE_NAME, "readonly");
-      const store = tx.objectStore(STORE_NAME);
-      const req = store.get(assessmentId);
-
-      req.onsuccess = () => {
-        const result = req.result as PersistedFloorplanImage | undefined;
-        db.close();
-        resolve(result || null);
-      };
-      req.onerror = () => {
-        db.close();
-        resolve(null);
-      };
-      tx.onabort = () => {
-        db.close();
-        resolve(null);
-      };
-    } catch {
-      db.close();
-      resolve(null);
-    }
-  });
+  const inspected = await inspectFloorplanImage(assessmentId);
+  return inspected.status === "found" ? inspected.record : null;
 }
 
 /**
