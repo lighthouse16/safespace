@@ -141,18 +141,22 @@ export function getPendingMediaCleanups(): string[] {
 
 /**
  * Adds an assessment ID to the durable pending media cleanup queue.
+ * Returns true if successfully acknowledged in durable storage.
  */
-export function addPendingMediaCleanup(assessmentId: string): void {
-  if (!assessmentId || typeof assessmentId !== "string") return;
+export function addPendingMediaCleanup(assessmentId: string): boolean {
+  if (!assessmentId || typeof assessmentId !== "string") return false;
   const storage = getLocalStorage();
-  if (!storage || !isStorageAvailable()) return;
+  if (!storage || !isStorageAvailable()) return false;
   try {
     const list = getPendingMediaCleanups();
     if (!list.includes(assessmentId.trim())) {
       list.push(assessmentId.trim());
       storage.setItem(SAFESPACE_PENDING_MEDIA_CLEANUP_KEY, JSON.stringify(list));
     }
-  } catch {}
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 /**

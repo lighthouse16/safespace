@@ -188,15 +188,19 @@ export async function countFloorplanImages(): Promise<MediaCountResult> {
           const store = tx.objectStore(STORE_NAME);
           if (typeof store.count !== "function") {
             db.close();
-            resolve({ ok: true, count: 0 });
+            resolve({ ok: false, error: "IndexedDB objectStore.count is not supported in this environment" });
             return;
           }
           const req = store.count();
 
           req.onsuccess = () => {
-            const count = typeof req.result === "number" ? req.result : 0;
+            const count = typeof req.result === "number" ? req.result : -1;
             db.close();
-            resolve({ ok: true, count });
+            if (count >= 0) {
+              resolve({ ok: true, count });
+            } else {
+              resolve({ ok: false, error: "Invalid count result returned from IndexedDB" });
+            }
           };
 
           req.onerror = (ev) => {

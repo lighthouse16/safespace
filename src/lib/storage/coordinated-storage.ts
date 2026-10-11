@@ -19,6 +19,8 @@ export interface DeletionResult {
   warning?: string;
   localStorageCleared: boolean;
   mediaCleared: boolean;
+  layoutCleared: boolean;
+  mediaClearanceVerified: boolean;
 }
 
 function getLocalStorage(): Storage | null {
@@ -58,6 +60,7 @@ export async function coordinatedDeleteAssessment(assessmentId?: string): Promis
   const hasPendingDebt = pendingCleanups.length > 0;
 
   let mediaCleared = false;
+  let mediaClearanceVerified = false;
   let warning: string | undefined;
 
   // 1. Delete IndexedDB floorplan media if applicable
@@ -69,7 +72,8 @@ export async function coordinatedDeleteAssessment(assessmentId?: string): Promis
     if (inspTarget.status === "error") {
       // IndexedDB is blocked or disabled on device.
       // Allow manual-only layout deletion from localStorage, but truthfully report unverified residual state.
-      mediaCleared = true;
+      mediaCleared = false;
+      mediaClearanceVerified = false;
       warning = "IndexedDB was inaccessible to verify media store absence during manual-only removal. Assessment layout was cleared from browser storage, but media store absence could not be verified.";
     } else {
       // IndexedDB is accessible
@@ -79,13 +83,15 @@ export async function coordinatedDeleteAssessment(assessmentId?: string): Promis
       }
       const clearAllOk = await clearAllFloorplanImages();
       const countRes = await countFloorplanImages();
-      const finalCountZero = countRes.ok ? countRes.count === 0 : true;
+      const finalCountZero = countRes.ok && countRes.count === 0;
 
       if (unexpectedRecordDeleted && clearAllOk && finalCountZero) {
         mediaCleared = true;
+        mediaClearanceVerified = true;
         clearPendingMediaCleanups();
       } else {
         mediaCleared = false;
+        mediaClearanceVerified = false;
       }
     }
   } else {
@@ -126,7 +132,7 @@ export async function coordinatedDeleteAssessment(assessmentId?: string): Promis
 
       // 5. Verify total count
       const countRes = await countFloorplanImages();
-      const finalCountZero = countRes.ok ? countRes.count === 0 : true;
+      const finalCountZero = countRes.ok && countRes.count === 0;
 
       mediaCleared =
         idDeleteOk &&
@@ -135,27 +141,33 @@ export async function coordinatedDeleteAssessment(assessmentId?: string): Promis
         targetAbsent &&
         allPendingAbsent &&
         finalCountZero;
+      mediaClearanceVerified = mediaCleared;
 
       if (mediaCleared) {
         clearPendingMediaCleanups();
       }
     } catch {
       mediaCleared = false;
+      mediaClearanceVerified = false;
     }
   }
 
   // STOP: If media cleanup was required but could not be verified, DO NOT delete localStorage!
   // Exception: Pure manual-only assessment with NO pending debts where IDB is unavailable allows
   // deleting localStorage layout while truthfully returning mediaCleared: false and warning.
-  const allowLocalStorageDelete =
-    mediaCleared || (isConfirmedManualOnly && !hasPendingDebt);
+  const isUnavailableManualException =
+    isConfirmedManualOnly && !hasPendingDebt && Boolean(warning && !mediaCleared);
+
+  const allowLocalStorageDelete = mediaCleared || isUnavailableManualException;
 
   if (!allowLocalStorageDelete) {
     return {
       success: false,
       error: "Floorplan image could not be verified deleted from local database. Assessment retained in browser storage so you can retry deletion.",
       localStorageCleared: false,
+      layoutCleared: false,
       mediaCleared: false,
+      mediaClearanceVerified: false,
     };
   }
 
@@ -184,7 +196,9 @@ export async function coordinatedDeleteAssessment(assessmentId?: string): Promis
     return {
       success: true,
       localStorageCleared: true,
+      layoutCleared: true,
       mediaCleared,
+      mediaClearanceVerified,
       ...(warning ? { warning } : {}),
     };
   }
@@ -193,6 +207,8 @@ export async function coordinatedDeleteAssessment(assessmentId?: string): Promis
     success: false,
     error: "Assessment layout could not be cleared from browser storage",
     localStorageCleared: false,
+    layoutCleared: false,
     mediaCleared,
+    mediaClearanceVerified,
   };
 }

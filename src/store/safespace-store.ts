@@ -82,6 +82,7 @@ export type AssessmentCreationResult = {
   rollbackFailed?: boolean;
   previousMediaCleanupFailed?: boolean;
   cleanupWarning?: string;
+  cleanupDebtDurable?: boolean;
 };
 
 export interface SafeSpaceState {
@@ -1427,32 +1428,45 @@ export const useSafeSpaceStore = create<SafeSpaceState>((set, get) => ({
     // Now clean up previous user assessment media if ID changed (derived from PERSISTED previous ID!)
     let previousMediaCleanupFailed = false;
     let cleanupWarning: string | undefined;
+    let cleanupDebtDurable = true;
     if (previousPersistedId && previousPersistedId !== metadata.id) {
       try {
         const deletedOld = await deleteFloorplanImage(previousPersistedId);
         if (!deletedOld) {
           previousMediaCleanupFailed = true;
           cleanupWarning = `Previous assessment image (${previousPersistedId}) could not be cleaned up from IndexedDB. Personal data may remain in browser storage.`;
-          addPendingMediaCleanup(previousPersistedId);
+          const queueOk = addPendingMediaCleanup(previousPersistedId);
           console.warn(cleanupWarning);
+          if (!queueOk) cleanupDebtDurable = false;
         } else {
           removePendingMediaCleanup(previousPersistedId);
         }
       } catch (err) {
         previousMediaCleanupFailed = true;
         cleanupWarning = `Previous assessment image (${previousPersistedId}) cleanup failed: ${err instanceof Error ? err.message : String(err)}`;
-        addPendingMediaCleanup(previousPersistedId);
+        const queueOk = addPendingMediaCleanup(previousPersistedId);
         console.warn(cleanupWarning);
+        if (!queueOk) cleanupDebtDurable = false;
       }
     }
 
     if (previousMediaCleanupFailed && previousPersistedId) {
       const persistedNow = getPersistedAssessment();
+      let recordSaved = false;
       if (persistedNow) {
-        savePersistedAssessment({
+        const queueIds = getPendingMediaCleanups();
+        const combinedIds = Array.from(new Set([...queueIds, previousPersistedId]));
+        const saveRes = savePersistedAssessment({
           ...persistedNow,
-          pendingMediaCleanupIds: getPendingMediaCleanups(),
+          pendingMediaCleanupIds: combinedIds,
         });
+        recordSaved = saveRes.success;
+      }
+      const queueIds = getPendingMediaCleanups();
+      const verifiedDurable = queueIds.includes(previousPersistedId) || recordSaved;
+      if (!verifiedDurable) {
+        cleanupDebtDurable = false;
+        cleanupWarning = `CRITICAL: Previous assessment image (${previousPersistedId}) could not be cleaned up, and recording cleanup liability to browser storage failed. Personal data may remain in IndexedDB without durable reference across reload.`;
       }
     }
 
@@ -1515,6 +1529,7 @@ export const useSafeSpaceStore = create<SafeSpaceState>((set, get) => ({
       assessmentId: metadata.id,
       previousMediaCleanupFailed,
       cleanupWarning,
+      cleanupDebtDurable,
     };
   },
 
@@ -1547,9 +1562,12 @@ export const useSafeSpaceStore = create<SafeSpaceState>((set, get) => ({
       storageStatus: "saved",
       storageError: null,
       placementError: null,
-      mediaCleanupWarning: null,
+      mediaCleanupWarning: delRes.warning || null,
     });
     get().loadDemoAssessment();
+    if (delRes.warning) {
+      set({ mediaCleanupWarning: delRes.warning });
+    }
     return delRes;
   },
 

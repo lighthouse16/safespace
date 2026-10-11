@@ -11,10 +11,11 @@ import {
 import { useSafeSpaceStore } from "@/store/safespace-store";
 
 export default function AssessmentsPage() {
-  const { hydrateFromStorage, clearUserAssessment } = useSafeSpaceStore();
+  const { hydrateFromStorage, clearUserAssessment, mediaCleanupWarning } = useSafeSpaceStore();
   const [savedAssessment, setSavedAssessment] = useState<PersistedAssessmentState | null>(null);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [deleteError, setDeleteError] = useState<string | null>(null);
+  const [deletionWarning, setDeletionWarning] = useState<string | null>(null);
   const [openError, setOpenError] = useState<string | null>(null);
 
   useEffect(() => {
@@ -51,6 +52,9 @@ export default function AssessmentsPage() {
       }
       setSavedAssessment(null);
       setShowDeleteConfirm(false);
+      if (res.warning) {
+        setDeletionWarning(res.warning);
+      }
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
       setDeleteError(`Deletion error: ${msg}`);
@@ -98,6 +102,35 @@ export default function AssessmentsPage() {
             + New assessment
           </Link>
         </header>
+
+        {/* Deletion Warning Banner */}
+        {(deletionWarning || mediaCleanupWarning) && (
+          <div
+            role="status"
+            aria-live="polite"
+            data-testid="deletion-warning-banner"
+            className="rounded-xl border border-amber-300 bg-amber-50 p-4 text-amber-900 shadow-xs"
+          >
+            <div className="flex items-start justify-between gap-3">
+              <div className="space-y-1">
+                <p className="text-xs font-semibold uppercase tracking-wider text-amber-800">
+                  Storage Notice: Media Absence Unverified
+                </p>
+                <p className="text-xs text-amber-900 leading-relaxed">
+                  {deletionWarning || mediaCleanupWarning}
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setDeletionWarning(null)}
+                className="shrink-0 rounded px-2 py-1 text-xs font-medium text-amber-800 hover:bg-amber-100 transition cursor-pointer"
+                aria-label="Dismiss deletion warning"
+              >
+                Dismiss
+              </button>
+            </div>
+          </div>
+        )}
 
         {/* Real User Assessment or Empty State */}
         {savedAssessment ? (

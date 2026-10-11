@@ -1,5 +1,9 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { JSDOM } from 'jsdom';
+import React, { act } from 'react';
+import { createRoot } from 'react-dom/client';
+import AssessmentsPage from '../src/app/assessments/page';
 import {
   saveFloorplanImage,
   getFloorplanImage,
@@ -18,6 +22,7 @@ import {
   clearPendingMediaCleanups,
   SAFESPACE_STORAGE_KEY,
   SAFESPACE_ACTIVE_WORKSPACE_KEY,
+  SAFESPACE_PENDING_MEDIA_CLEANUP_KEY,
 } from '../src/lib/storage/persistence';
 import { useSafeSpaceStore } from '../src/store/safespace-store';
 import { computeSceneFingerprint } from '../src/lib/spatial/optimization/optimizer';
@@ -48,6 +53,7 @@ interface MockTransaction {
     get: (key: string) => MockRequest<MockRecord | null>;
     delete: (key: string) => void;
     clear: () => void;
+    count?: () => MockRequest<number>;
   };
 }
 
@@ -58,6 +64,8 @@ class MockIDBDatabase {
   stores = new Map<string, Map<string, MockRecord>>();
   failNextTx: 'error' | 'abort' | null = null;
   failOnDeleteId: string | null = null;
+  failNextCount = false;
+  omitCountFunction = false;
 
   objectStoreNames = {
     contains: (name: string) => this.stores.has(name),
@@ -108,6 +116,17 @@ class MockIDBDatabase {
               tx.onerror?.();
             }, 0);
           },
+          count: () => {
+            const req: MockRequest<number> = { result: 0, onsuccess: null, onerror: null };
+            setTimeout(() => {
+              if (mode === 'abort') tx.onabort?.();
+              else {
+                req.onerror?.({});
+                tx.onerror?.();
+              }
+            }, 0);
+            return req;
+          },
         }),
       };
       return tx;
@@ -118,33 +137,63 @@ class MockIDBDatabase {
       oncomplete: null,
       onerror: null,
       onabort: null,
-      objectStore: () => ({
-        put: (item: MockRecord) => {
-          dataStore.set(item.assessmentId, item);
-          setTimeout(() => tx.oncomplete?.(), 0);
-        },
-        get: (key: string) => {
-          const req: MockRequest<MockRecord | null> = { result: dataStore.get(key) || null, onsuccess: null, onerror: null };
-          setTimeout(() => {
-            req.onsuccess?.({ target: req });
-            tx.oncomplete?.();
-          }, 0);
-          return req;
-        },
-        delete: (key: string) => {
-          if (this.failOnDeleteId && key === this.failOnDeleteId) {
-            this.failOnDeleteId = null;
-            setTimeout(() => tx.onerror?.(), 0);
-            return;
-          }
-          dataStore.delete(key);
-          setTimeout(() => tx.oncomplete?.(), 0);
-        },
-        clear: () => {
-          dataStore.clear();
-          setTimeout(() => tx.oncomplete?.(), 0);
-        },
-      }),
+      objectStore: () => {
+        const storeObj: {
+          put: (item: MockRecord) => void;
+          get: (key: string) => MockRequest<MockRecord | null>;
+          delete: (key: string) => void;
+          clear: () => void;
+          count?: () => MockRequest<number>;
+        } = {
+          put: (item: MockRecord) => {
+            dataStore.set(item.assessmentId, item);
+            setTimeout(() => tx.oncomplete?.(), 0);
+          },
+          get: (key: string) => {
+            const req: MockRequest<MockRecord | null> = { result: dataStore.get(key) || null, onsuccess: null, onerror: null };
+            setTimeout(() => {
+              req.onsuccess?.({ target: req });
+              tx.oncomplete?.();
+            }, 0);
+            return req;
+          },
+          delete: (key: string) => {
+            if (this.failOnDeleteId && key === this.failOnDeleteId) {
+              this.failOnDeleteId = null;
+              setTimeout(() => tx.onerror?.(), 0);
+              return;
+            }
+            dataStore.delete(key);
+            setTimeout(() => tx.oncomplete?.(), 0);
+          },
+          clear: () => {
+            dataStore.clear();
+            setTimeout(() => tx.oncomplete?.(), 0);
+          },
+        };
+
+        if (!this.omitCountFunction) {
+          storeObj.count = () => {
+            if (this.failNextCount) {
+              this.failNextCount = false;
+              const req: MockRequest<number> = { result: 0, onsuccess: null, onerror: null };
+              setTimeout(() => {
+                req.onerror?.({});
+                tx.onerror?.();
+              }, 0);
+              return req;
+            }
+            const req: MockRequest<number> = { result: dataStore.size, onsuccess: null, onerror: null };
+            setTimeout(() => {
+              req.onsuccess?.({ target: req });
+              tx.oncomplete?.();
+            }, 0);
+            return req;
+          };
+        }
+
+        return storeObj;
+      },
     };
     return tx;
   }
@@ -174,12 +223,6 @@ const mockIndexedDB = {
   },
 };
 
-Object.defineProperty(globalThis, 'window', {
-  value: { indexedDB: mockIndexedDB },
-  writable: true,
-  configurable: true,
-});
-
 class MockLocalStorage {
   private store = new Map<string, string>();
   getItem(key: string): string | null {
@@ -196,11 +239,69 @@ class MockLocalStorage {
   }
 }
 
-Object.defineProperty(globalThis, 'localStorage', {
-  value: new MockLocalStorage(),
+const mockLs = new MockLocalStorage();
+
+const dom = new JSDOM("<!DOCTYPE html><html><body><div id='root'></div></body></html>", {
+  url: "http://localhost:3000",
+});
+
+Object.defineProperty(dom.window, 'localStorage', {
+  get() { return mockLs; },
+  configurable: true,
+});
+Object.defineProperty(dom.window, 'indexedDB', {
+  get() { return mockIndexedDB; },
+  configurable: true,
+});
+
+Object.defineProperty(globalThis, 'window', {
+  value: dom.window,
   writable: true,
   configurable: true,
 });
+Object.defineProperty(globalThis, 'document', {
+  value: dom.window.document,
+  writable: true,
+  configurable: true,
+});
+Object.defineProperty(globalThis, 'localStorage', {
+  get() { return mockLs; },
+  configurable: true,
+});
+Object.defineProperty(globalThis, 'HTMLElement', {
+  value: dom.window.HTMLElement,
+  writable: true,
+  configurable: true,
+});
+Object.defineProperty(globalThis, 'SVGElement', {
+  value: dom.window.SVGElement,
+  writable: true,
+  configurable: true,
+});
+Object.defineProperty(globalThis, 'self', {
+  value: globalThis,
+  writable: true,
+  configurable: true,
+});
+class MockIntersectionObserver {
+  observe() {}
+  unobserve() {}
+  disconnect() {}
+}
+Object.defineProperty(globalThis, 'IntersectionObserver', {
+  value: MockIntersectionObserver,
+  writable: true,
+  configurable: true,
+});
+Object.defineProperty(dom.window, 'IntersectionObserver', {
+  value: MockIntersectionObserver,
+  writable: true,
+  configurable: true,
+});
+
+(globalThis as unknown as Record<string, unknown>).requestAnimationFrame = (cb: () => void) => setTimeout(cb, 0);
+(globalThis as unknown as Record<string, unknown>).cancelAnimationFrame = (id: NodeJS.Timeout) => clearTimeout(id);
+(globalThis as unknown as Record<string, unknown>).IS_REACT_ACT_ENVIRONMENT = true;
 
 test('IndexedDB Storage: save, retrieve, delete lifecycle with connection closing', async () => {
   const dummyBlob = new Blob(['sample-svg-content'], { type: 'image/svg+xml' });
@@ -943,10 +1044,13 @@ test('Adversarial Storage P0-3: honest support for manual-only data when Indexed
   // 3. Execute coordinated deletion on manual-only space
   const delRes = await coordinatedDeleteAssessment('manual-only-space');
 
-  // Must honestly succeed: there was no personal media to delete
+  // Must honestly succeed: layout was cleared from browser storage, but media clearance is unverified
   assert.equal(delRes.success, true, 'Manual-only assessment deletion succeeds honestly without IDB media');
   assert.equal(delRes.localStorageCleared, true);
-  assert.equal(delRes.mediaCleared, true);
+  assert.equal(delRes.layoutCleared, true);
+  assert.equal(delRes.mediaCleared, false, 'mediaCleared must be false when IDB is unavailable');
+  assert.equal(delRes.mediaClearanceVerified, false, 'mediaClearanceVerified must be false when IDB is unavailable');
+  assert.ok(typeof delRes.warning === 'string', 'Warning must be present when IDB is unavailable');
   assert.equal(globalThis.localStorage.getItem(SAFESPACE_STORAGE_KEY), null);
 });
 
@@ -1351,9 +1455,244 @@ test('Media Integrity: IDB truly unavailable and manual-only B confirms truthful
   // Manual layout deletion succeeds
   assert.equal(delRes.success, true, 'Manual layout deletion succeeds without blocking on unavailable IDB');
   assert.equal(delRes.localStorageCleared, true, 'localStorage is cleared');
+  assert.equal(delRes.layoutCleared, true, 'layoutCleared must be true');
+  assert.equal(delRes.mediaCleared, false, 'mediaCleared must be false when IDB is unavailable');
+  assert.equal(delRes.mediaClearanceVerified, false, 'mediaClearanceVerified must be false when IDB is unavailable');
   // Truthful reporting: warning is present, confirming media store absence could not be verified
   assert.ok(typeof delRes.warning === 'string', 'Warning must be present when IDB is unavailable');
   assert.ok(delRes.warning.includes('IndexedDB was inaccessible'), 'Must disclose IndexedDB was inaccessible');
   assert.ok(delRes.warning.includes('could not be verified'), 'Must truthfully report media absence was not verified');
+});
+
+test('Media Integrity: failed IDB count verification does not assume zero and preserves layout for retry', async () => {
+  clearPendingMediaCleanups();
+
+  // Part A: Imported space with floorplan image
+  const imageBlob = new Blob(['sample-imported-image'], { type: 'image/png' });
+  await saveFloorplanImage({
+    assessmentId: 'imported-count-fail-space',
+    blob: imageBlob,
+    mimeType: 'image/png',
+    name: 'plan.png',
+    size: imageBlob.size,
+    canvasWidth: 800,
+    canvasHeight: 600,
+    updatedAt: new Date().toISOString(),
+  });
+
+  savePersistedAssessment({
+    schemaVersion: 1,
+    assessmentType: 'user',
+    metadata: {
+      id: 'imported-count-fail-space',
+      name: 'Imported Count Fail Space',
+      facilityName: 'Clinic A',
+      spaceName: 'Room 1',
+      environmentType: 'clinic',
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    },
+    canonicalBoundary: [{ x: 0, y: 0 }, { x: 300, y: 0 }, { x: 300, y: 300 }, { x: 0, y: 300 }],
+    calibration: { pixelsPerCm: 1.0, realLength: 300, unit: 'cm', pixelDistance: 300, originPolicy: 'canvas-origin-0-0' },
+    activeProfileId: 'walker',
+    routeWaypoints: [],
+    furniture: [],
+    hasFloorplanImage: true,
+  });
+
+  // Inject count failure so total verification fails
+  mockDbInstance.failNextCount = true;
+
+  const delResImported = await coordinatedDeleteAssessment('imported-count-fail-space');
+
+  // Must not claim success or verified media clearance!
+  assert.equal(delResImported.success, false, 'Deletion must fail when count verification fails');
+  assert.equal(delResImported.mediaCleared, false, 'mediaCleared must not be true when count fails');
+  assert.equal(delResImported.mediaClearanceVerified, false, 'mediaClearanceVerified must be false');
+  assert.equal(delResImported.localStorageCleared, false, 'localStorage must be preserved for retry');
+  assert.ok(getPersistedAssessment() !== null, 'Persisted record must remain intact for retry');
+
+  // Part B: Manual-only assessment with accessible IDB but count failure
+  savePersistedAssessment({
+    schemaVersion: 1,
+    assessmentType: 'user',
+    metadata: {
+      id: 'manual-count-fail-space',
+      name: 'Manual Count Fail Space',
+      facilityName: 'Clinic B',
+      spaceName: 'Room 2',
+      environmentType: 'clinic',
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    },
+    canonicalBoundary: [{ x: 0, y: 0 }, { x: 300, y: 0 }, { x: 300, y: 300 }, { x: 0, y: 300 }],
+    calibration: { pixelsPerCm: 1.0, realLength: 300, unit: 'cm', pixelDistance: 300, originPolicy: 'canvas-origin-0-0' },
+    activeProfileId: 'walker',
+    routeWaypoints: [],
+    furniture: [],
+    hasFloorplanImage: false,
+  });
+
+  // Clean up image from Part A so store is empty
+  await deleteFloorplanImage('imported-count-fail-space');
+
+  // Inject count failure when deleting manual assessment
+  mockDbInstance.failNextCount = true;
+
+  const delResManual = await coordinatedDeleteAssessment('manual-count-fail-space');
+
+  assert.equal(delResManual.success, false, 'Manual space delete must fail when accessible IDB count verification fails');
+  assert.equal(delResManual.mediaCleared, false, 'mediaCleared must be false when count fails');
+  assert.equal(delResManual.mediaClearanceVerified, false, 'mediaClearanceVerified must be false');
+  assert.equal(delResManual.localStorageCleared, false, 'localStorage must be preserved for retry');
+});
+
+test('Privacy Hardening: failed durable cleanup debt recording surfaces unacknowledged liability and does not silently lose orphaned media reference', async () => {
+  const store = useSafeSpaceStore.getState();
+  clearPendingMediaCleanups();
+
+  // 1. Seed existing imported assessment A
+  const imgA = new Blob(['image-a'], { type: 'image/png' });
+  await saveFloorplanImage({
+    assessmentId: 'debt-space-a',
+    blob: imgA,
+    mimeType: 'image/png',
+    name: 'a.png',
+    size: imgA.size,
+    canvasWidth: 800,
+    canvasHeight: 600,
+    updatedAt: new Date().toISOString(),
+  });
+
+  savePersistedAssessment({
+    schemaVersion: 1,
+    assessmentType: 'user',
+    metadata: {
+      id: 'debt-space-a',
+      name: 'Space A',
+      facilityName: 'Facility',
+      spaceName: 'Room A',
+      environmentType: 'clinic',
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    },
+    canonicalBoundary: [{ x: 0, y: 0 }, { x: 200, y: 0 }, { x: 200, y: 200 }, { x: 0, y: 200 }],
+    calibration: { pixelsPerCm: 1.0, realLength: 200, unit: 'cm', pixelDistance: 200, originPolicy: 'canvas-origin-0-0' },
+    activeProfileId: 'walker',
+    routeWaypoints: [],
+    furniture: [],
+    hasFloorplanImage: true,
+  });
+
+  // 2. Configure mock to fail deletion of space A's image during replacement
+  mockDbInstance.failOnDeleteId = 'debt-space-a';
+
+  // 3. Inject storage failure for debt queue key
+  const origSetItem = globalThis.localStorage.setItem;
+  globalThis.localStorage.setItem = (key: string, val: string) => {
+    if (key === SAFESPACE_PENDING_MEDIA_CLEANUP_KEY) {
+      throw new Error('QuotaExceededError: storage full');
+    }
+    return origSetItem.call(globalThis.localStorage, key, val);
+  };
+
+  try {
+    const res = await store.createAndLoadUserAssessment({
+      metadata: {
+        id: 'debt-space-b',
+        name: 'Space B (Manual)',
+        facilityName: 'Facility',
+        spaceName: 'Room B',
+        environmentType: 'clinic',
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+      },
+      boundaryCm: [{ x: 0, y: 0 }, { x: 200, y: 0 }, { x: 200, y: 200 }, { x: 0, y: 200 }],
+      calibration: { pixelsPerCm: 1.0, realLength: 200, unit: 'cm', pixelDistance: 200, originPolicy: 'canvas-origin-0-0' },
+    });
+
+    assert.equal(res.previousMediaCleanupFailed, true, 'Old image cleanup failed');
+    assert.ok(typeof res.cleanupWarning === 'string', 'Must return cleanup warning');
+    assert.ok(res.cleanupWarning.includes('Previous assessment image'), 'Discloses previous image failure');
+  } finally {
+    globalThis.localStorage.setItem = origSetItem;
+    // Clean up space A image
+    await deleteFloorplanImage('debt-space-a');
+  }
+});
+
+test('Mounted UI: AssessmentsPage renders visible warning notice when IDB is unavailable during manual-only delete', async () => {
+  clearPendingMediaCleanups();
+
+  // 1. Seed manual-only assessment in localStorage
+  savePersistedAssessment({
+    schemaVersion: 1,
+    assessmentType: 'user',
+    metadata: {
+      id: 'manual-ui-delete-space',
+      name: 'Manual UI Space',
+      facilityName: 'Care Home',
+      spaceName: 'Room 101',
+      environmentType: 'clinic',
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    },
+    canonicalBoundary: [{ x: 0, y: 0 }, { x: 200, y: 0 }, { x: 200, y: 200 }, { x: 0, y: 200 }],
+    calibration: { pixelsPerCm: 1.0, realLength: 200, unit: 'cm', pixelDistance: 200, originPolicy: 'canvas-origin-0-0' },
+    activeProfileId: 'walker',
+    routeWaypoints: [],
+    furniture: [],
+    hasFloorplanImage: false,
+  });
+
+  // 2. Mount AssessmentsPage in JSDOM
+  const rootEl = dom.window.document.getElementById('root')!;
+  rootEl.innerHTML = '';
+  const root = createRoot(rootEl);
+
+  await act(async () => {
+    root.render(React.createElement(AssessmentsPage));
+  });
+
+  // Verify assessment card is rendered with "Delete" button
+  const deleteBtn = Array.from(rootEl.querySelectorAll('button')).find((b) => b.textContent?.trim() === 'Delete');
+  assert.ok(deleteBtn, 'Delete button must be present in assessment card');
+
+  // Click Delete button to open confirm modal
+  await act(async () => {
+    deleteBtn.click();
+  });
+
+  // Verify modal is open
+  const confirmBtn = Array.from(rootEl.querySelectorAll('button')).find(
+    (b) => b.textContent?.trim() === 'Delete Assessment'
+  );
+  assert.ok(confirmBtn, 'Delete Assessment confirmation button must be present in dialog');
+
+  // Inject IDB error so database inspection fails during deletion
+  mockDbInstance.failNextTx = 'error';
+
+  // Click confirmation button to execute deletion
+  await act(async () => {
+    confirmBtn.click();
+    await new Promise((r) => setTimeout(r, 60));
+  });
+
+  // Invariant: Modal must be closed after successful layout removal
+  const dialogStillOpen = rootEl.querySelector('[role="dialog"]');
+  assert.equal(dialogStillOpen, null, 'Delete dialog must close on completion');
+
+  // Invariant: Deletion warning notice banner must be visibly displayed to operator
+  const warningBanner = rootEl.querySelector('[data-testid="deletion-warning-banner"]') || rootEl.querySelector('[role="status"]');
+  assert.ok(warningBanner !== null, 'Warning banner must be visibly rendered in DOM');
+  const bannerText = warningBanner.textContent || '';
+  assert.ok(bannerText.includes('IndexedDB was inaccessible'), 'Banner must state IndexedDB was inaccessible');
+  assert.ok(bannerText.includes('could not be verified'), 'Banner must state media absence could not be verified');
+
+  // Cleanup mounted root
+  await act(async () => {
+    root.unmount();
+  });
+  rootEl.innerHTML = '';
 });
 
