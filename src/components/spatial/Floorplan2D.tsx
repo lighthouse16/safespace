@@ -20,6 +20,7 @@ interface Floorplan2DProps {
   isBeforeCondition?: boolean;
   showDiffGhost?: boolean;
   showChangedOnly?: boolean;
+  hideControls?: boolean;
   className?: string;
 }
 
@@ -32,6 +33,7 @@ export function Floorplan2D({
   overrideStage,
   isBeforeCondition = false,
   showChangedOnly = false,
+  hideControls = false,
   className = "",
 }: Floorplan2DProps) {
   const {
@@ -69,6 +71,8 @@ export function Floorplan2D({
     routeResult: storeRouteResult,
     activeProfile,
     canonicalBoundary,
+    calibrationProvenance,
+    floorplanImageBlobUrl,
     getSpatialFindings,
   } = useSafeSpaceStore();
 
@@ -313,11 +317,37 @@ export function Floorplan2D({
         }
       } else if (e.key.toLowerCase() === "r" && selectedFurnitureId && !readOnly) {
         rotateFurniture(selectedFurnitureId);
+      } else if (selectedFurnitureId && !readOnly && ["ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight"].includes(e.key)) {
+        const item = furniture.find((f) => f.id === selectedFurnitureId);
+        if (item && !item.isFixed) {
+          e.preventDefault();
+          const step = e.shiftKey ? 10 : 2;
+          let dx = 0;
+          let dy = 0;
+          if (e.key === "ArrowUp") dy = -step;
+          if (e.key === "ArrowDown") dy = step;
+          if (e.key === "ArrowLeft") dx = -step;
+          if (e.key === "ArrowRight") dx = step;
+          handleMove(selectedFurnitureId, Math.round(item.x + dx), Math.round(item.y + dy));
+        }
+      } else if (selectedWaypointId && stage === "routes" && !readOnly && ["ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight"].includes(e.key)) {
+        const pt = routeWaypoints.find((w) => w.id === selectedWaypointId);
+        if (pt) {
+          e.preventDefault();
+          const step = e.shiftKey ? 10 : 2;
+          let dx = 0;
+          let dy = 0;
+          if (e.key === "ArrowUp") dy = -step;
+          if (e.key === "ArrowDown") dy = step;
+          if (e.key === "ArrowLeft") dx = -step;
+          if (e.key === "ArrowRight") dx = step;
+          moveRouteWaypoint(selectedWaypointId, Math.round(pt.x + dx), Math.round(pt.y + dy));
+        }
       }
     };
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [selectedFurnitureId, furniture, readOnly, rotateFurniture, deleteFurniture, selectFurniture, selectHazard, selectWaypoint]);
+  }, [selectedFurnitureId, furniture, readOnly, rotateFurniture, deleteFurniture, selectFurniture, selectHazard, selectWaypoint, selectedWaypointId, stage, routeWaypoints, moveRouteWaypoint, handleMove]);
 
   return (
     <div
@@ -326,74 +356,92 @@ export function Floorplan2D({
       onMouseUp={handleMouseUp}
     >
       {/* Floating Canvas Controls */}
-      <div className="absolute top-2.5 left-2.5 z-10 flex items-center gap-1.5 bg-white/95 backdrop-blur-sm border border-[#e2e8e4] px-2 py-1 rounded text-xs text-[#2c3d3a]">
-        <span className="font-semibold text-[#1e7168]">
-          {isBefore ? "BEFORE PLAN" : "2D PLAN"}
-        </span>
-        <span className="text-[#a4b2ad]">|</span>
-        <button
-          onClick={() => setShowGrid((v) => !v)}
-          className={`px-1.5 py-0.5 rounded transition ${
-            showGrid ? "bg-[#e8f3f1] text-[#1e7168] font-medium" : "text-[#627571] hover:bg-slate-100"
-          }`}
-        >
-          Grid
-        </button>
-        <button
-          onClick={() => setSnapToGrid((v) => !v)}
-          className={`px-1.5 py-0.5 rounded transition ${
-            snapToGrid ? "bg-[#e8f3f1] text-[#1e7168] font-medium" : "text-[#627571] hover:bg-slate-100"
-          }`}
-        >
-          Snap
-        </button>
-        <button
-          onClick={() => setShowDimensions((v) => !v)}
-          className={`px-1.5 py-0.5 rounded transition ${
-            showDimensions ? "bg-[#e8f3f1] text-[#1e7168] font-medium" : "text-[#627571] hover:bg-slate-100"
-          }`}
-        >
-          Dim
-        </button>
-      </div>
+      {!hideControls && (
+        <div className="absolute top-2.5 left-2.5 z-10 flex items-center gap-1.5 bg-white/95 backdrop-blur-sm border border-[#e2e8e4] px-2 py-1 rounded text-xs text-[#2c3d3a]">
+          <span className="font-semibold text-[#1e7168]">
+            {isBefore ? "BEFORE PLAN" : "2D PLAN"}
+          </span>
+          <span className="text-[#a4b2ad]">|</span>
+          <button
+            type="button"
+            aria-label="Toggle grid visibility"
+            onClick={() => setShowGrid((v) => !v)}
+            className={`min-h-[28px] px-2 py-0.5 rounded transition flex items-center text-xs ${
+              showGrid ? "bg-[#e8f3f1] text-[#1e7168] font-medium" : "text-[#627571] hover:bg-slate-100"
+            }`}
+          >
+            Grid
+          </button>
+          <button
+            type="button"
+            aria-label="Toggle snap to grid"
+            onClick={() => setSnapToGrid((v) => !v)}
+            className={`min-h-[28px] px-2 py-0.5 rounded transition flex items-center text-xs ${
+              snapToGrid ? "bg-[#e8f3f1] text-[#1e7168] font-medium" : "text-[#627571] hover:bg-slate-100"
+            }`}
+          >
+            Snap
+          </button>
+          <button
+            type="button"
+            aria-label="Toggle dimension indicators"
+            onClick={() => setShowDimensions((v) => !v)}
+            className={`min-h-[28px] px-2 py-0.5 rounded transition flex items-center text-xs ${
+              showDimensions ? "bg-[#e8f3f1] text-[#1e7168] font-medium" : "text-[#627571] hover:bg-slate-100"
+            }`}
+          >
+            Dim
+          </button>
+        </div>
+      )}
 
       {/* Floating Zoom / Fit Controls */}
-      <div className="absolute bottom-2.5 right-2.5 z-10 flex items-center gap-1 bg-white/95 backdrop-blur-sm border border-[#e2e8e4] p-1 rounded">
-        <button
-          onClick={handleZoomIn}
-          className="p-1 text-[#4a5e59] hover:text-[#1e7168] hover:bg-slate-100 rounded transition"
-        >
-          <ZoomIn className="w-3.5 h-3.5" />
-        </button>
-        <span className="text-[10px] font-mono text-[#4a5e59] px-0.5">
-          {Math.round(zoom * 100)}%
-        </span>
-        <button
-          onClick={handleZoomOut}
-          className="p-1 text-[#4a5e59] hover:text-[#1e7168] hover:bg-slate-100 rounded transition"
-        >
-          <ZoomOut className="w-3.5 h-3.5" />
-        </button>
-        <button
-          onClick={handleFitView}
-          className="p-1 text-[#4a5e59] hover:text-[#1e7168] hover:bg-slate-100 rounded transition"
-        >
-          <Maximize2 className="w-3.5 h-3.5" />
-        </button>
-      </div>
+      {!hideControls && (
+        <div className="absolute bottom-2.5 right-2.5 z-10 flex items-center gap-1 bg-white/95 backdrop-blur-sm border border-[#e2e8e4] p-1 rounded">
+          <button
+            type="button"
+            onClick={handleZoomIn}
+            aria-label="Zoom in"
+            className="min-h-[28px] min-w-[28px] flex items-center justify-center p-1 text-[#4a5e59] hover:text-[#1e7168] hover:bg-slate-100 rounded transition"
+          >
+            <ZoomIn className="w-3.5 h-3.5" />
+          </button>
+          <span className="text-[10px] font-mono text-[#4a5e59] px-0.5">
+            {Math.round(zoom * 100)}%
+          </span>
+          <button
+            type="button"
+            onClick={handleZoomOut}
+            aria-label="Zoom out"
+            className="min-h-[28px] min-w-[28px] flex items-center justify-center p-1 text-[#4a5e59] hover:text-[#1e7168] hover:bg-slate-100 rounded transition"
+          >
+            <ZoomOut className="w-3.5 h-3.5" />
+          </button>
+          <button
+            type="button"
+            onClick={handleFitView}
+            aria-label="Fit view to room"
+            className="min-h-[28px] min-w-[28px] flex items-center justify-center p-1 text-[#4a5e59] hover:text-[#1e7168] hover:bg-slate-100 rounded transition"
+          >
+            <Maximize2 className="w-3.5 h-3.5" />
+          </button>
+        </div>
+      )}
 
       {/* Scale bar indicator */}
-      <div className="absolute bottom-2.5 left-2.5 z-10 flex items-center gap-2 bg-white/90 border border-[#e2e8e4] px-2 py-0.5 rounded text-[9px] text-[#556964] font-mono">
-        <div className="flex flex-col items-center">
-          <div className="flex items-center">
-            <span className="w-px h-1 bg-[#556964]"></span>
-            <div className="w-[40px] h-0.5 bg-[#556964]"></div>
-            <span className="w-px h-1 bg-[#556964]"></span>
+      {!hideControls && (
+        <div className="absolute bottom-2.5 left-2.5 z-10 flex items-center gap-2 bg-white/90 border border-[#e2e8e4] px-2 py-0.5 rounded text-[9px] text-[#556964] font-mono">
+          <div className="flex flex-col items-center">
+            <div className="flex items-center">
+              <span className="w-px h-1 bg-[#556964]"></span>
+              <div className="w-[40px] h-0.5 bg-[#556964]"></div>
+              <span className="w-px h-1 bg-[#556964]"></span>
+            </div>
+            <span>1.0 m</span>
           </div>
-          <span>1.0 m</span>
+          <span>Scale 1:50</span>
         </div>
-        <span>Scale 1:50</span>
-      </div>
+      )}
 
       {/* SVG Canvas Area */}
       <svg
@@ -441,13 +489,27 @@ export function Floorplan2D({
         {/* 1. Grid */}
         {showGrid && <rect x={vbX} y={vbY} width={vbW} height={vbH} fill="url(#grid-major)" />}
 
+        {/* 1b. Floorplan Background Image (User-imported floorplan raster/SVG) */}
+        {floorplanImageBlobUrl && calibrationProvenance && calibrationProvenance.pixelsPerCm > 0 && (
+          <image
+            href={floorplanImageBlobUrl}
+            x={0}
+            y={0}
+            width={800 / calibrationProvenance.pixelsPerCm}
+            height={600 / calibrationProvenance.pixelsPerCm}
+            preserveAspectRatio="xMidYMid meet"
+            opacity={0.8}
+            className="pointer-events-none select-none"
+          />
+        )}
+
         {/* 2. Room Zones / Canonical Boundary */}
         <g id="rooms-layer">
           {canonicalBoundary && canonicalBoundary.length >= 3 ? (
             <g id="user-canonical-boundary">
               <polygon
                 points={canonicalBoundary.map((p) => `${p.x},${p.y}`).join(" ")}
-                fill="#f4f8f6"
+                fill={floorplanImageBlobUrl ? "none" : "#f4f8f6"}
                 stroke="#0f766e"
                 strokeWidth="2.5"
                 strokeLinejoin="round"
@@ -625,7 +687,12 @@ export function Floorplan2D({
                 return (
                   <g
                     key={`wp-${pt.id}`}
-                    className={stage === "routes" ? "cursor-move" : "cursor-pointer"}
+                    tabIndex={stage === "routes" && !readOnly ? 0 : undefined}
+                    role={stage === "routes" ? "button" : undefined}
+                    aria-label={`Route checkpoint ${i + 1}: ${pt.name}${isSelected ? ", selected" : ""}`}
+                    aria-pressed={stage === "routes" ? isSelected : undefined}
+                    onFocus={() => selectWaypoint(pt.id)}
+                    className={stage === "routes" ? "cursor-move outline-none" : "cursor-pointer"}
                     onMouseDown={(e) => startDragWaypoint(e, pt)}
                     onMouseEnter={() => setHoveredWaypointId(pt.id)}
                     onMouseLeave={() => setHoveredWaypointId(null)}
@@ -779,8 +846,13 @@ export function Floorplan2D({
             return (
               <g
                 key={item.id}
+                tabIndex={readOnly ? undefined : 0}
+                role="button"
+                aria-label={`${item.name} (${item.code || item.id}), ${item.width} by ${item.depth} centimeters${isSelected ? ", selected" : ""}`}
+                aria-pressed={isSelected}
+                onFocus={() => selectFurniture(item.id)}
                 transform={`translate(${item.x}, ${item.y}) rotate(${item.rotation || 0}, ${item.width / 2}, ${item.depth / 2})`}
-                className={`transition-all duration-100 ${
+                className={`transition-all duration-100 outline-none focus:outline-none ${
                   item.isFixed ? "cursor-not-allowed" : "cursor-move"
                 }`}
                 opacity={opacity}

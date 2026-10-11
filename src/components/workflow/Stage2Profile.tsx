@@ -25,14 +25,14 @@ export function Stage2Profile() {
         {/* Header */}
         <div className="border-b border-[#e2e8e4] pb-3">
           <p className="text-xs font-semibold uppercase tracking-wider text-[#1e7168]">
-            Stage 2 · Mobility Profile
+            Mobility Profile
           </p>
           <div className="flex flex-wrap items-center justify-between gap-2 mt-0.5">
             <h1 className="text-xl font-bold text-[#192329] tracking-tight">
               Select Mobility Profile
             </h1>
             <span className="text-[11px] font-medium text-amber-800 bg-amber-50 border border-amber-200 px-2 py-0.5 rounded">
-              Demo Fixture · Unverified Inputs (Not statutory or clinical standards)
+              Starting clearance values · Confirm for your space (Not statutory certification)
             </span>
           </div>
         </div>
@@ -44,8 +44,10 @@ export function Stage2Profile() {
 
             return (
               <button
+                type="button"
                 key={p.id}
                 onClick={() => setProfile(p.id)}
+                aria-pressed={isSelected}
                 className={`p-3 rounded-lg border text-left transition cursor-pointer flex flex-col justify-between min-h-[90px] ${
                   isSelected
                     ? "border-[#1e7168] bg-[#f0f7f5] ring-1 ring-[#1e7168]"
@@ -75,11 +77,11 @@ export function Stage2Profile() {
             <div className="flex items-center gap-2">
               <Sliders className="w-4 h-4 text-[#1e7168]" />
               <h2 className="font-semibold text-xs text-slate-900 uppercase tracking-wide">
-                Safety Thresholds · {activeProfile.name}
+                Clearance Targets · {activeProfile.name}
               </h2>
             </div>
-            <span className="text-[10px] text-slate-400">
-              Reference: DEMO-PRESET-{activeProfile.id.toUpperCase()} · Unverified
+            <span className="text-[10px] text-slate-500">
+              Configured target for clearance calculations
             </span>
           </div>
 
@@ -87,18 +89,23 @@ export function Stage2Profile() {
             {/* Minimum preferred clearance */}
             <div className="space-y-1.5">
               <div className="flex justify-between items-center text-xs">
-                <span className="font-medium text-slate-700">
+                <label htmlFor="min-clearance-slider" className="font-medium text-slate-700 cursor-pointer">
                   Minimum Clearance
-                </span>
+                </label>
                 <span className="font-mono font-bold text-[#1e7168]">
                   {activeProfile.minClearanceCm} cm
                 </span>
               </div>
               <input
+                id="min-clearance-slider"
                 type="range"
                 min="60"
                 max="140"
                 step="5"
+                aria-label="Minimum clearance in cm"
+                aria-valuemin={60}
+                aria-valuemax={140}
+                aria-valuenow={activeProfile.minClearanceCm}
                 value={activeProfile.minClearanceCm}
                 onChange={(e) =>
                   updateProfile({ minClearanceCm: Number(e.target.value) })
@@ -110,18 +117,23 @@ export function Stage2Profile() {
             {/* Turning space */}
             <div className="space-y-1.5">
               <div className="flex justify-between items-center text-xs">
-                <span className="font-medium text-slate-700">
+                <label htmlFor="turning-space-slider" className="font-medium text-slate-700 cursor-pointer">
                   Turning Space
-                </span>
+                </label>
                 <span className="font-mono font-bold text-[#1e7168]">
                   {activeProfile.turningSpaceCm} cm
                 </span>
               </div>
               <input
+                id="turning-space-slider"
                 type="range"
                 min="90"
                 max="200"
                 step="5"
+                aria-label="Turning space in cm"
+                aria-valuemin={90}
+                aria-valuemax={200}
+                aria-valuenow={activeProfile.turningSpaceCm}
                 value={activeProfile.turningSpaceCm}
                 onChange={(e) =>
                   updateProfile({ turningSpaceCm: Number(e.target.value) })
@@ -132,11 +144,18 @@ export function Stage2Profile() {
 
             {/* Previous fall history */}
             <div className="flex items-center justify-between p-2.5 rounded-lg bg-slate-50 border border-slate-100">
-              <span className="text-xs font-medium text-slate-700">
+              <span id="fall-history-label" className="text-xs font-medium text-slate-700">
                 Previous Fall History
               </span>
-              <div className="flex items-center gap-1 bg-white p-0.5 rounded border border-slate-200">
+              <div
+                role="radiogroup"
+                aria-labelledby="fall-history-label"
+                className="flex items-center gap-1 bg-white p-0.5 rounded border border-slate-200"
+              >
                 <button
+                  type="button"
+                  role="radio"
+                  aria-checked={activeProfile.fallHistory}
                   onClick={() => updateProfile({ fallHistory: true })}
                   className={`px-2.5 py-1 rounded text-xs font-medium transition cursor-pointer ${
                     activeProfile.fallHistory
@@ -147,6 +166,9 @@ export function Stage2Profile() {
                   Yes
                 </button>
                 <button
+                  type="button"
+                  role="radio"
+                  aria-checked={!activeProfile.fallHistory}
                   onClick={() => updateProfile({ fallHistory: false })}
                   className={`px-2.5 py-1 rounded text-xs font-medium transition cursor-pointer ${
                     !activeProfile.fallHistory
@@ -161,11 +183,18 @@ export function Stage2Profile() {
 
             {/* Requires stable support points */}
             <div className="flex items-center justify-between p-2.5 rounded-lg bg-slate-50 border border-slate-100">
-              <span className="text-xs font-medium text-slate-700">
+              <span id="support-points-label" className="text-xs font-medium text-slate-700">
                 Requires Support Points
               </span>
-              <div className="flex items-center gap-1 bg-white p-0.5 rounded border border-slate-200">
+              <div
+                role="radiogroup"
+                aria-labelledby="support-points-label"
+                className="flex items-center gap-1 bg-white p-0.5 rounded border border-slate-200"
+              >
                 <button
+                  type="button"
+                  role="radio"
+                  aria-checked={activeProfile.requiresSupport}
                   onClick={() => updateProfile({ requiresSupport: true })}
                   className={`px-2.5 py-1 rounded text-xs font-medium transition cursor-pointer ${
                     activeProfile.requiresSupport
@@ -176,6 +205,9 @@ export function Stage2Profile() {
                   Yes
                 </button>
                 <button
+                  type="button"
+                  role="radio"
+                  aria-checked={!activeProfile.requiresSupport}
                   onClick={() => updateProfile({ requiresSupport: false })}
                   className={`px-2.5 py-1 rounded text-xs font-medium transition cursor-pointer ${
                     !activeProfile.requiresSupport
@@ -190,12 +222,19 @@ export function Stage2Profile() {
 
             {/* Low-light sensitivity */}
             <div className="sm:col-span-2 flex items-center justify-between p-2.5 rounded-lg bg-slate-50 border border-slate-100">
-              <span className="text-xs font-medium text-slate-700">
+              <span id="low-light-label" className="text-xs font-medium text-slate-700">
                 Low-Light Sensitivity
               </span>
-              <div className="flex items-center gap-1 bg-white p-0.5 rounded border border-slate-200">
+              <div
+                role="radiogroup"
+                aria-labelledby="low-light-label"
+                className="flex items-center gap-1 bg-white p-0.5 rounded border border-slate-200"
+              >
                 {(["Low", "Moderate", "High"] as const).map((lvl) => (
                   <button
+                    type="button"
+                    role="radio"
+                    aria-checked={activeProfile.lowLightSensitivity === lvl}
                     key={lvl}
                     onClick={() => updateProfile({ lowLightSensitivity: lvl })}
                     className={`px-3 py-1 rounded text-xs font-medium transition cursor-pointer ${
@@ -215,6 +254,7 @@ export function Stage2Profile() {
         {/* Footer Navigation */}
         <div className="flex items-center justify-between pt-2">
           <button
+            type="button"
             onClick={() => setStage("layout")}
             className="py-2 px-3.5 rounded-lg border border-[#e2e8e4] bg-white hover:bg-slate-50 text-slate-700 text-xs font-semibold flex items-center gap-1.5 transition cursor-pointer"
           >
@@ -223,6 +263,7 @@ export function Stage2Profile() {
           </button>
 
           <button
+            type="button"
             onClick={() => setStage("routes")}
             className="py-2 px-4 rounded-lg bg-[#1e7168] hover:bg-[#185e56] text-white text-xs font-semibold flex items-center gap-1.5 transition shadow-xs cursor-pointer"
           >

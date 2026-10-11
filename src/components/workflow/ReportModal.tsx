@@ -1,6 +1,6 @@
 "use client";
 
-import React from "react";
+import React, { useEffect } from "react";
 import { useSafeSpaceStore } from "@/store/safespace-store";
 import { X, Printer, ShieldCheck, AlertCircle, ShieldAlert } from "lucide-react";
 import type { SpatialEvaluationSummary } from "@/lib/spatial";
@@ -108,6 +108,15 @@ export function ReportModal() {
     getSpatialFindings,
   } = useSafeSpaceStore();
 
+  useEffect(() => {
+    if (!reportModalOpen) return;
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setReportModalOpen(false);
+    };
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [reportModalOpen, setReportModalOpen]);
+
   if (!reportModalOpen) return null;
 
   const isUserAssessment = assessmentType === "user";
@@ -117,19 +126,29 @@ export function ReportModal() {
   const reportStatus = resolveReportStatus(summary);
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-xs p-4 select-none">
+    <div
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="report-modal-title"
+      onKeyDown={(e) => {
+        if (e.key === "Escape") setReportModalOpen(false);
+      }}
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-xs p-4 select-none"
+    >
       <div className="bg-white rounded-xl shadow-2xl border border-slate-200 max-w-2xl w-full max-h-[90vh] flex flex-col overflow-hidden">
         {/* Modal Header */}
         <div className="px-6 py-4 border-b border-slate-200 flex items-center justify-between bg-slate-50 shrink-0">
           <div className="flex items-center gap-2">
             <ShieldCheck className="w-5 h-5 text-[#1e7168]" />
-            <h2 className="font-bold text-base text-slate-900">
+            <h2 id="report-modal-title" className="font-bold text-base text-slate-900">
               SafeSpace Assessment Summary Report
             </h2>
           </div>
           <button
+            type="button"
             onClick={() => setReportModalOpen(false)}
-            className="p-1 rounded text-slate-400 hover:text-slate-700 hover:bg-slate-200 transition cursor-pointer"
+            aria-label="Close summary report"
+            className="p-1 rounded text-slate-400 hover:text-slate-700 hover:bg-slate-200 transition cursor-pointer focus-visible:outline focus-visible:outline-2 focus-visible:outline-[#1e7168]"
           >
             <X className="w-5 h-5" />
           </button>
@@ -328,7 +347,7 @@ export function ReportModal() {
 
           {/* Honest Disclaimer */}
           <div className="p-3 bg-slate-50 rounded text-xs text-slate-500 border border-slate-200 leading-relaxed">
-            Deterministic 2D spatial clearance and footprint boundary evaluation. Zero detected findings does not constitute proof of clinical safety or statutory building compliance. SafeSpace measures geometric clearances along configured pathways; it does not certify clinical safety, building code compliance, or hazard exemption. Environmental factors (illumination, traction, anchorage, moisture) and 3D architectural clearances remain unassessed. Composite risk scoring and multi-alternative layout optimization are scheduled for Gate 3 delivery.
+            Deterministic 2D spatial clearance and footprint boundary evaluation. Zero detected findings does not constitute proof of clinical safety or statutory building compliance. SafeSpace measures geometric clearances along configured pathways; it does not certify clinical safety, building code compliance, or hazard exemption. Environmental factors (illumination, traction, anchorage, moisture) and 3D architectural clearances remain unassessed.
           </div>
         </div>
 

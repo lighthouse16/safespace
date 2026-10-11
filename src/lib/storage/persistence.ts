@@ -5,6 +5,7 @@ import type { MobilityProfileData, RouteWaypoint, SpatialFurniture } from "@/lib
 export const SAFESPACE_STORAGE_VERSION = 1;
 export const SAFESPACE_STORAGE_KEY = "safespace_confirmed_assessment_v1";
 export const SAFESPACE_ACTIVE_WORKSPACE_KEY = "safespace_active_workspace_v1";
+export const SAFESPACE_PENDING_MEDIA_CLEANUP_KEY = "safespace_pending_media_cleanup_v1";
 
 export type ActiveWorkspace = "demo" | "user";
 
@@ -40,6 +41,8 @@ export type PersistedAssessmentState = {
   appliedLayoutBaseline?: SpatialFurniture[] | null;
   appliedCandidateId?: string | null;
   appliedSceneFingerprint?: string | null;
+  hasFloorplanImage?: boolean;
+  pendingMediaCleanupIds?: string[];
 };
 
 export type StorageLoadResult =
@@ -116,6 +119,71 @@ export function loadActiveWorkspace(): ActiveWorkspace {
   } catch {
     return "demo";
   }
+}
+
+/**
+ * Returns list of assessment IDs with pending/failed floorplan media cleanup obligations.
+ */
+export function getPendingMediaCleanups(): string[] {
+  const storage = getLocalStorage();
+  if (!storage || !isStorageAvailable()) return [];
+  try {
+    const raw = storage.getItem(SAFESPACE_PENDING_MEDIA_CLEANUP_KEY);
+    if (!raw) return [];
+    const parsed = JSON.parse(raw);
+    return Array.isArray(parsed)
+      ? parsed.filter((id): id is string => typeof id === "string" && Boolean(id.trim()))
+      : [];
+  } catch {
+    return [];
+  }
+}
+
+/**
+ * Adds an assessment ID to the durable pending media cleanup queue.
+ * Returns true if successfully acknowledged in durable storage.
+ */
+export function addPendingMediaCleanup(assessmentId: string): boolean {
+  if (!assessmentId || typeof assessmentId !== "string") return false;
+  const storage = getLocalStorage();
+  if (!storage || !isStorageAvailable()) return false;
+  try {
+    const list = getPendingMediaCleanups();
+    if (!list.includes(assessmentId.trim())) {
+      list.push(assessmentId.trim());
+      storage.setItem(SAFESPACE_PENDING_MEDIA_CLEANUP_KEY, JSON.stringify(list));
+    }
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Removes an assessment ID from the durable pending media cleanup queue upon successful purge.
+ */
+export function removePendingMediaCleanup(assessmentId: string): void {
+  const storage = getLocalStorage();
+  if (!storage || !isStorageAvailable()) return;
+  try {
+    const list = getPendingMediaCleanups().filter((id) => id !== assessmentId.trim());
+    if (list.length === 0) {
+      storage.removeItem(SAFESPACE_PENDING_MEDIA_CLEANUP_KEY);
+    } else {
+      storage.setItem(SAFESPACE_PENDING_MEDIA_CLEANUP_KEY, JSON.stringify(list));
+    }
+  } catch {}
+}
+
+/**
+ * Clears all pending media cleanup obligations from durable storage.
+ */
+export function clearPendingMediaCleanups(): void {
+  const storage = getLocalStorage();
+  if (!storage || !isStorageAvailable()) return;
+  try {
+    storage.removeItem(SAFESPACE_PENDING_MEDIA_CLEANUP_KEY);
+  } catch {}
 }
 
 /**
@@ -444,6 +512,19 @@ export function validatePersistedPayload(val: unknown): {
       ? obj.appliedSceneFingerprint.trim()
       : null;
 
+  const hasFloorplanImage =
+    typeof obj.hasFloorplanImage === "boolean" ? obj.hasFloorplanImage : undefined;
+
+  let pendingMediaCleanupIds: string[] | undefined = undefined;
+  if (obj.pendingMediaCleanupIds !== undefined && obj.pendingMediaCleanupIds !== null) {
+    if (!Array.isArray(obj.pendingMediaCleanupIds)) {
+      return { isValid: false, error: "pendingMediaCleanupIds must be an array of strings or undefined" };
+    }
+    pendingMediaCleanupIds = obj.pendingMediaCleanupIds.filter(
+      (id): id is string => typeof id === "string" && Boolean(id.trim())
+    );
+  }
+
   return {
     isValid: true,
     data: {
@@ -459,6 +540,8 @@ export function validatePersistedPayload(val: unknown): {
       appliedLayoutBaseline,
       appliedCandidateId,
       appliedSceneFingerprint,
+      hasFloorplanImage,
+      pendingMediaCleanupIds,
     },
   };
 }
@@ -479,7 +562,22 @@ export function savePersistedAssessment(state: PersistedAssessmentState): Storag
   }
 
   try {
-    const payloadToSerialize = {
+    // Media provenance guard: Never default an omitted or undefined field to false!
+    // If state.hasFloorplanImage is missing/undefined, recover from existing persisted snapshot
+    // matching the same assessment ID.
+    let resolvedHasFloorplanImage = state.hasFloorplanImage;
+    if (typeof resolvedHasFloorplanImage !== "boolean") {
+      const existing = getPersistedAssessment(SAFESPACE_STORAGE_KEY);
+      if (
+        existing &&
+        existing.metadata?.id === state.metadata?.id &&
+        typeof existing.hasFloorplanImage === "boolean"
+      ) {
+        resolvedHasFloorplanImage = existing.hasFloorplanImage;
+      }
+    }
+
+    const payloadToSerialize: Record<string, unknown> = {
       schemaVersion: SAFESPACE_STORAGE_VERSION,
       assessmentType: state.assessmentType,
       metadata: state.metadata,
@@ -494,6 +592,24 @@ export function savePersistedAssessment(state: PersistedAssessmentState): Storag
       appliedSceneFingerprint: state.appliedSceneFingerprint ?? null,
     };
 
+    if (typeof resolvedHasFloorplanImage === "boolean") {
+      payloadToSerialize.hasFloorplanImage = resolvedHasFloorplanImage;
+    }
+
+    // Durable cleanup obligations tracking:
+    if (Array.isArray(state.pendingMediaCleanupIds)) {
+      for (const id of state.pendingMediaCleanupIds) {
+        addPendingMediaCleanup(id);
+      }
+    }
+    const durableCleanups = getPendingMediaCleanups();
+    const combinedCleanups = Array.from(
+      new Set([...(state.pendingMediaCleanupIds || []), ...durableCleanups])
+    );
+    if (combinedCleanups.length > 0) {
+      payloadToSerialize.pendingMediaCleanupIds = combinedCleanups;
+    }
+
     const json = JSON.stringify(payloadToSerialize);
     storage.setItem(SAFESPACE_STORAGE_KEY, json);
     return { success: true };
@@ -502,6 +618,18 @@ export function savePersistedAssessment(state: PersistedAssessmentState): Storag
     return { success: false, error: `Failed to save to storage: ${message}` };
   }
 }
+
+/**
+ * Convenience helper returning parsed and validated persisted assessment or null.
+ */
+export function getPersistedAssessment(
+  storageKey = SAFESPACE_STORAGE_KEY
+): PersistedAssessmentState | null {
+  const res = loadPersistedAssessment(storageKey);
+  return res.success ? res.data : null;
+}
+
+export const getActiveWorkspace = loadActiveWorkspace;
 
 /**
  * Loads and validates confirmed assessment state from browser localStorage.

@@ -44,7 +44,10 @@ export function IntakeReviewStep({
 }: IntakeReviewStepProps) {
   const router = useRouter();
   const createAndLoadUserAssessment = useSafeSpaceStore((s) => s.createAndLoadUserAssessment);
+  const retryPendingMediaCleanup = useSafeSpaceStore((s) => s.retryPendingMediaCleanup);
   const [validationError, setValidationError] = useState<string | null>(null);
+  const [cleanupWarning, setCleanupWarning] = useState<string | null>(null);
+  const [isRetryingCleanup, setIsRetryingCleanup] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [showOverwriteModal, setShowOverwriteModal] = useState(false);
 
@@ -57,7 +60,7 @@ export function IntakeReviewStep({
 
   const polygonPoints = boundary.vertices.map((v) => `${v.x},${v.y}`).join(" ");
 
-  const executeConfirmAndOpen = () => {
+  const executeConfirmAndOpen = async () => {
     setValidationError(null);
 
     const validation = validateIntakeBoundary(
@@ -84,7 +87,7 @@ export function IntakeReviewStep({
           ? computePixelDistance(calibration.p1, calibration.p2)
           : calibration.pixelsPerCm! * realLengthCm;
 
-      const res = createAndLoadUserAssessment({
+      const res = await createAndLoadUserAssessment({
         metadata: {
           id: `assessment-${Date.now()}`,
           name: details.assessmentName.trim(),
@@ -103,11 +106,21 @@ export function IntakeReviewStep({
           pixelDistance: pixelDist,
           originPolicy: INTAKE_ORIGIN_POLICY,
         },
+        imageFile: uploadedFile?.file,
       });
 
       if (!res.success) {
         setIsSubmitting(false);
         setValidationError(`Failed to initialize assessment workspace: ${res.error || "Storage write error"}`);
+        return;
+      }
+
+      if (res.previousMediaCleanupFailed) {
+        setIsSubmitting(false);
+        setCleanupWarning(
+          res.cleanupWarning ||
+          "Assessment created, but the previous floorplan image could not be cleaned up from browser storage. Personal data may remain locally."
+        );
         return;
       }
 
@@ -155,6 +168,48 @@ export function IntakeReviewStep({
           >
             <div className="font-semibold text-sm">Cannot Confirm Assessment</div>
             <p>{validationError}</p>
+          </div>
+        )}
+
+        {/* Media Cleanup Warning Banner */}
+        {cleanupWarning && (
+          <div
+            role="alert"
+            className="rounded-lg border border-amber-300 bg-amber-50 p-4 text-xs text-amber-900 space-y-3"
+          >
+            <div className="font-semibold text-sm text-amber-800">
+              Previous Floorplan Cleanup Warning
+            </div>
+            <p className="leading-relaxed">{cleanupWarning}</p>
+            <div className="flex flex-wrap items-center gap-2 pt-1">
+              <button
+                type="button"
+                disabled={isRetryingCleanup}
+                onClick={async () => {
+                  setIsRetryingCleanup(true);
+                  const retryRes = await retryPendingMediaCleanup();
+                  setIsRetryingCleanup(false);
+                  if (retryRes.success) {
+                    setCleanupWarning(null);
+                    router.push("/");
+                  } else {
+                    setCleanupWarning(
+                      `Retry failed. ${retryRes.remainingCount} previous floorplan image(s) still could not be deleted from browser storage.`
+                    );
+                  }
+                }}
+                className="px-3 py-1.5 rounded-lg bg-amber-700 hover:bg-amber-800 text-white font-semibold transition cursor-pointer text-xs"
+              >
+                {isRetryingCleanup ? "Retrying..." : "Retry Cleanup"}
+              </button>
+              <button
+                type="button"
+                onClick={() => router.push("/")}
+                className="px-3 py-1.5 rounded-lg border border-amber-300 bg-white hover:bg-amber-100 font-semibold text-amber-900 transition cursor-pointer text-xs"
+              >
+                Continue to Workspace
+              </button>
+            </div>
           </div>
         )}
 
@@ -314,13 +369,13 @@ export function IntakeReviewStep({
             {/* Storage Lifecycle Disclosure */}
             <div className="rounded-lg border border-slate-200 bg-slate-50 p-3 text-[11px] text-slate-600 space-y-1">
               <div className="font-semibold text-slate-800">
-                Data Persistence & Source File Lifecycle
+                Saving Your Assessment
               </div>
               <p>
-                Your confirmed room boundary, scale calibration provenance, and assessment metadata will be saved permanently in browser storage.
+                Your confirmed room outline, scale calibration, and space details are saved to local browser storage on this device.
               </p>
               <p className="text-slate-500">
-                Uploaded floorplan images remain in browser memory for the active session and are never saved as durable blob URLs.
+                Floorplan background images are saved locally to IndexedDB so they persist across reloads.
               </p>
             </div>
           </div>
@@ -333,6 +388,9 @@ export function IntakeReviewStep({
           role="dialog"
           aria-modal="true"
           aria-labelledby="replace-modal-title"
+          onKeyDown={(e) => {
+            if (e.key === "Escape") setShowOverwriteModal(false);
+          }}
           className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-xs p-4"
         >
           <div className="bg-white rounded-xl shadow-2xl border border-slate-200 max-w-md w-full p-6 space-y-4">
@@ -340,13 +398,14 @@ export function IntakeReviewStep({
               Replace Existing Saved Assessment?
             </h3>
             <p className="text-xs text-slate-600 leading-relaxed">
-              A previously confirmed user assessment is already saved in this browser. Confirming will permanently replace that assessment with this new space.
+              A previously confirmed assessment is already saved on this device. Confirming will replace that assessment with this new space.
             </p>
             <div className="flex items-center justify-end gap-2 pt-2">
               <Button
                 type="button"
                 variant="secondary"
                 size="sm"
+                autoFocus
                 onClick={() => setShowOverwriteModal(false)}
               >
                 Cancel

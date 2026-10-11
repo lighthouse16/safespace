@@ -73,14 +73,17 @@ test("Stage 5 Mounted UI: Apply and Revert in same mounted component reactively 
       Array.from(harness.rootEl.querySelectorAll("button")).find((b) => b.textContent?.includes(label));
 
     // Phase 1: Mounted in Proposal Mode
-    assert.ok(textContent().includes("Improve Layout · Alternative Proposals"), "Header shows Proposal Mode");
+    assert.ok(
+      /(Improve Layout · Alternative Proposals|Layout Improvement Options)/.test(textContent()),
+      "Header shows Proposal Mode"
+    );
     assert.ok(textContent().includes("Alternatives ("), "Shows alternatives count ribbon");
     assert.ok(textContent().includes("Candidate (Unverified)"), "Shows truthful proposal badge");
     assert.ok(!textContent().includes("Applied Layout Review"), "Does not show Review Mode banner");
 
     const applyBtn = queryButton("Apply This Layout");
     assert.ok(applyBtn, "Apply This Layout button is rendered");
-    assert.ok(!queryButton("Revert to Original Baseline"), "No Revert button in proposal mode");
+    assert.ok(!queryButton("Revert to Original"), "No Revert button in proposal mode");
 
     // Phase 2: Click Apply in the SAME mounted instance
     await act(async () => {
@@ -88,7 +91,10 @@ test("Stage 5 Mounted UI: Apply and Revert in same mounted component reactively 
     });
 
     // Verify reactive update in mounted instance
-    assert.ok(textContent().includes("Improve Layout · Applied Layout Review"), "Header switches to Applied Review Mode");
+    assert.ok(
+      /(Improve Layout · Applied Layout Review|Applied Layout Review)/.test(textContent()),
+      "Header switches to Applied Review Mode"
+    );
     assert.ok(textContent().includes("Applied Layout Review"), "Shows Applied Layout Review banner");
     assert.ok(textContent().includes("Applied (Draft)"), "Shows Applied (Draft) badge");
     assert.ok(!textContent().includes("Apply This Layout"), "Apply button removed after apply");
@@ -97,7 +103,7 @@ test("Stage 5 Mounted UI: Apply and Revert in same mounted component reactively 
     // CRITICAL: Reactive findings update (Before: 2 deficits -> After: 1 deficit)
     assert.ok(textContent().includes("2 → 1"), "Bottom drawer reactively shows deficits improved from 2 to 1");
 
-    const revertBtn = queryButton("Revert to Original Baseline");
+    const revertBtn = queryButton("Revert to Original");
     assert.ok(revertBtn, "Durable Revert button is rendered in review mode");
 
     // Phase 3: Click Revert in the SAME mounted instance
@@ -106,10 +112,13 @@ test("Stage 5 Mounted UI: Apply and Revert in same mounted component reactively 
     });
 
     // Verify reactive return to Proposal Mode
-    assert.ok(textContent().includes("Improve Layout · Alternative Proposals"), "Header restored to Proposal Mode");
+    assert.ok(
+      /(Improve Layout · Alternative Proposals|Layout Improvement Options)/.test(textContent()),
+      "Header restored to Proposal Mode"
+    );
     const applyBtnRestored = queryButton("Apply This Layout");
     assert.ok(applyBtnRestored, "Apply button restored after revert");
-    assert.ok(!queryButton("Revert to Original Baseline"), "Revert button removed after revert");
+    assert.ok(!queryButton("Revert to Original"), "Revert button removed after revert");
     assert.equal(useSafeSpaceStore.getState().baselineFurnitureSnapshot, null, "Baseline snapshot cleared in store");
   } finally {
     await harness.cleanup();
@@ -194,7 +203,7 @@ test("Stage 5 Mounted UI: Zero-candidate scene renders truthful labels and acces
   const boundary = createRectBoundary(700, 700);
   const nowIso = new Date().toISOString();
 
-  store.createAndLoadUserAssessment({
+  await store.createAndLoadUserAssessment({
     metadata: {
       id: "zero-cand-test",
       name: "Zero Candidate Space",
@@ -257,7 +266,7 @@ test("Stage 5 Mounted UI: Storage failure on Apply retains Proposal Mode; failur
   const boundary = createRectBoundary(700, 700);
   const nowIso = new Date().toISOString();
 
-  store.createAndLoadUserAssessment({
+  await store.createAndLoadUserAssessment({
     metadata: {
       id: "storage-fail-mounted-test",
       name: "Storage Failure Space",
@@ -313,7 +322,10 @@ test("Stage 5 Mounted UI: Storage failure on Apply retains Proposal Mode; failur
         applyBtn.click();
       });
 
-      assert.ok(textContent().includes("Improve Layout · Alternative Proposals"), "Stays in Proposal Mode on save failure");
+      assert.ok(
+        /(Improve Layout · Alternative Proposals|Layout Improvement Options)/.test(textContent()),
+        "Stays in Proposal Mode on save failure"
+      );
       assert.equal(useSafeSpaceStore.getState().baselineFurnitureSnapshot, null, "Snapshot was not created");
     } finally {
       dom.window.Storage.prototype.setItem = originalProtoSetItem;
@@ -325,13 +337,16 @@ test("Stage 5 Mounted UI: Storage failure on Apply retains Proposal Mode; failur
     await act(async () => {
       applyBtn.click();
     });
-    assert.ok(textContent().includes("Improve Layout · Applied Layout Review"), "Enters Review Mode on valid save");
+    assert.ok(
+      /(Improve Layout · Applied Layout Review|Applied Layout Review)/.test(textContent()),
+      "Enters Review Mode on valid save"
+    );
 
     // 3. Storage failure on Revert
     dom.window.Storage.prototype.setItem = mockStorageError;
 
     try {
-      const revertBtn = queryButton("Revert to Original Baseline");
+      const revertBtn = queryButton("Revert to Original");
       assert.ok(revertBtn);
 
       await act(async () => {
@@ -339,8 +354,11 @@ test("Stage 5 Mounted UI: Storage failure on Apply retains Proposal Mode; failur
       });
 
       // Must stay in Review Mode so user does not lose state!
-      assert.ok(textContent().includes("Improve Layout · Applied Layout Review"), "Stays in Review Mode on revert failure");
-      assert.ok(queryButton("Revert to Original Baseline"), "Revert button remains accessible to retry");
+      assert.ok(
+        /(Improve Layout · Applied Layout Review|Applied Layout Review)/.test(textContent()),
+        "Stays in Review Mode on revert failure"
+      );
+      assert.ok(queryButton("Revert to Original"), "Revert button remains accessible to retry");
     } finally {
       dom.window.Storage.prototype.setItem = originalProtoSetItem;
     }
@@ -349,3 +367,168 @@ test("Stage 5 Mounted UI: Storage failure on Apply retains Proposal Mode; failur
     store.resetToDemo();
   }
 });
+
+// ---------------------------------------------------------------------------
+// 6. Mobile Viewport & Truthful Candidate Selector Invariants
+// ---------------------------------------------------------------------------
+
+test("Stage 5 Mounted UI: 390px mobile viewport defaults to Proposed view and renders 1-based Option labels", async () => {
+  const store = useSafeSpaceStore.getState();
+  store.resetToDemo();
+  store.setStage("improve");
+  store.runOptimization();
+
+  // Set mobile viewport width
+  const origInnerWidth = dom.window.innerWidth;
+  Object.defineProperty(dom.window, "innerWidth", { writable: true, configurable: true, value: 390 });
+  Object.defineProperty(globalThis, "innerWidth", { writable: true, configurable: true, value: 390 });
+
+  const harness = await createMountedHarness();
+
+  try {
+    const textContent = () => harness.rootEl.textContent ?? "";
+    const queryButton = (label: string) =>
+      Array.from(harness.rootEl.querySelectorAll("button")).find((b) => b.textContent?.trim().includes(label));
+
+    // 1. Candidate cards must use 1-based "Option 1", "Option 2" labels, NEVER "Option 0" or solver tokens
+    const optButtons = Array.from(harness.rootEl.querySelectorAll("button")).filter((b) =>
+      /Option\s+\d+/i.test(b.textContent || "")
+    );
+    assert.ok(optButtons.length > 0, "Candidate selector buttons rendered");
+    assert.ok(
+      optButtons.every((b) => !/Option\s+0\b/i.test(b.textContent || "")),
+      "No 0-based 'Option 0' labels allowed"
+    );
+    assert.ok(
+      !/minimal_displacement|balanced_clearance|circulation_first/i.test(textContent()),
+      "Internal solver objective tokens must not leak into primary UI copy"
+    );
+
+    // 2. Mobile segmented view toggles exist ("Proposed" & "Before")
+    const proposedToggle = queryButton("Proposed");
+    const beforeToggle = queryButton("Before");
+    assert.ok(proposedToggle, "Proposed mobile toggle exists");
+    assert.ok(beforeToggle, "Before mobile toggle exists");
+
+    // 3. Switch to Before Layout
+    await act(async () => {
+      beforeToggle.click();
+    });
+
+    // In Before view, before canvas is visible
+    assert.ok(textContent().includes("Original Baseline") || textContent().includes("Before"));
+
+    // 4. Switch back to Proposed
+    await act(async () => {
+      proposedToggle.click();
+    });
+    assert.ok(textContent().includes("Proposed") || textContent().includes("Current Proposal"));
+  } finally {
+    Object.defineProperty(dom.window, "innerWidth", { writable: true, configurable: true, value: origInnerWidth });
+    Object.defineProperty(globalThis, "innerWidth", { writable: true, configurable: true, value: origInnerWidth });
+    await harness.cleanup();
+    store.resetToDemo();
+  }
+});
+
+test("Stage 5 Mounted UI P1-4: exactly one primary Apply/Revert per mode, narrow viewport renders single floorplan, and resize across 1024 preserves operator control", async () => {
+  const store = useSafeSpaceStore.getState();
+  store.resetToDemo();
+  store.setStage("improve");
+  store.runOptimization();
+
+  // Test narrow viewport (< 1024px)
+  const origInnerWidth = dom.window.innerWidth;
+  Object.defineProperty(dom.window, "innerWidth", { writable: true, configurable: true, value: 900 });
+  Object.defineProperty(globalThis, "innerWidth", { writable: true, configurable: true, value: 900 });
+
+  const harness = await createMountedHarness();
+
+  try {
+    const queryButtons = (label: string) =>
+      Array.from(harness.rootEl.querySelectorAll("button")).filter((b) => b.textContent?.trim().includes(label));
+
+    // 1. In Proposal mode: EXACTLY ONE primary "Apply This Layout" button exists
+    const applyButtons = queryButtons("Apply This Layout");
+    assert.equal(applyButtons.length, 1, "Must render exactly one primary Apply This Layout button in proposal mode");
+
+    // 2. On narrow viewport (900px < 1024px), defaults to single-pane Proposed view
+    // Assert exactly ONE floorplan container pane is rendered
+    const beforePanes = harness.rootEl.querySelectorAll('[data-testid="floorplan-pane-before"]');
+    const proposedPanes = harness.rootEl.querySelectorAll('[data-testid="floorplan-pane-proposed"]');
+    assert.equal(beforePanes.length, 0, "Before pane must not be rendered in default proposed view");
+    assert.equal(proposedPanes.length, 1, "Exactly one proposed floorplan pane rendered on narrow viewport");
+
+    // 3. Switch to Review Mode by clicking the single Apply button
+    await act(async () => {
+      applyButtons[0].click();
+    });
+
+    // 4. In Review Mode: EXACTLY ONE primary "Revert to Original" button exists
+    const revertButtons = queryButtons("Revert to Original");
+    assert.equal(revertButtons.length, 1, "Must render exactly one primary Revert to Original button in review mode");
+    assert.equal(queryButtons("Apply This Layout").length, 0, "No Apply button rendered in review mode");
+
+    // 5. Test resize across 1024px threshold
+    // Resize to desktop (1280px >= 1024px)
+    Object.defineProperty(dom.window, "innerWidth", { writable: true, configurable: true, value: 1280 });
+    Object.defineProperty(globalThis, "innerWidth", { writable: true, configurable: true, value: 1280 });
+    await act(async () => {
+      dom.window.dispatchEvent(new dom.window.Event("resize"));
+    });
+
+    // Operator switches to side-by-side on desktop
+    const sideBySideBtn = queryButtons("Side-by-Side")[0];
+    assert.ok(sideBySideBtn, "Side-by-Side button is available on desktop");
+    await act(async () => {
+      sideBySideBtn.click();
+    });
+
+    // Both panes rendered in side-by-side mode on desktop
+    assert.equal(harness.rootEl.querySelectorAll('[data-testid="floorplan-pane-before"]').length, 1);
+    assert.equal(harness.rootEl.querySelectorAll('[data-testid="floorplan-pane-proposed"]').length, 1);
+
+    // Resize back across 1024px to tablet (800px < 1024px)
+    Object.defineProperty(dom.window, "innerWidth", { writable: true, configurable: true, value: 800 });
+    Object.defineProperty(globalThis, "innerWidth", { writable: true, configurable: true, value: 800 });
+    await act(async () => {
+      dom.window.dispatchEvent(new dom.window.Event("resize"));
+    });
+
+    // Automatically switches out of side-by-side into proposed single pane
+    assert.equal(
+      harness.rootEl.querySelectorAll('[data-testid="floorplan-pane-before"]').length,
+      0,
+      "Before pane hidden on tablet resize"
+    );
+    assert.equal(
+      harness.rootEl.querySelectorAll('[data-testid="floorplan-pane-proposed"]').length,
+      1,
+      "Single proposed pane visible on tablet resize"
+    );
+
+    // Operator still has control: can switch to Before view
+    const beforeToggle = queryButtons("Before")[0];
+    assert.ok(beforeToggle, "Before toggle available on tablet");
+    await act(async () => {
+      beforeToggle.click();
+    });
+    assert.equal(
+      harness.rootEl.querySelectorAll('[data-testid="floorplan-pane-before"]').length,
+      1,
+      "Before pane rendered when operator selects Before view"
+    );
+    assert.equal(
+      harness.rootEl.querySelectorAll('[data-testid="floorplan-pane-proposed"]').length,
+      0,
+      "Proposed pane hidden when operator selects Before view"
+    );
+  } finally {
+    Object.defineProperty(dom.window, "innerWidth", { writable: true, configurable: true, value: origInnerWidth });
+    Object.defineProperty(globalThis, "innerWidth", { writable: true, configurable: true, value: origInnerWidth });
+    await harness.cleanup();
+    store.resetToDemo();
+  }
+});
+
+

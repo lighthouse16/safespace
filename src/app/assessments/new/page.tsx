@@ -293,10 +293,10 @@ export default function NewAssessmentPage({
           : null
       }
       workspaceLabel="New assessment"
-      storageLabel="Session only"
+      storageLabel="Draft assessment"
     >
       <div className="mx-auto max-w-5xl space-y-6">
-        {/* Header with truthful Session-only badge */}
+        {/* Header with draft status badge */}
         <header className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
           <div>
             <div className="flex items-center gap-2">
@@ -307,7 +307,7 @@ export default function NewAssessmentPage({
                 role="status"
                 className="rounded-full bg-slate-100 px-2 py-0.5 text-[11px] font-medium text-slate-600 border border-slate-200"
               >
-                Session only
+                In progress
               </span>
             </div>
             <h1 className="mt-1 text-2xl font-semibold tracking-tight text-[#192329] sm:text-3xl">
@@ -324,7 +324,7 @@ export default function NewAssessmentPage({
           </Link>
         </header>
 
-        {/* Restrained Session Exit Warning Banner */}
+        {/* Exit Warning Banner */}
         {showExitConfirm && (
           <div
             role="alert"
@@ -332,10 +332,10 @@ export default function NewAssessmentPage({
           >
             <div>
               <div className="font-semibold text-sm">
-                Discard current intake draft?
+                Leave without saving?
               </div>
               <p className="mt-0.5 text-amber-800">
-                Leaving will discard the in-progress draft geometry and calibration. This session draft is held in browser memory only.
+                Leaving now will discard your room outline and scale calibration. Finish setup to save this assessment to your device.
               </p>
             </div>
             <div className="flex items-center gap-2 shrink-0">
@@ -344,7 +344,7 @@ export default function NewAssessmentPage({
                 onClick={invalidatePendingFileSelection}
                 className="rounded-lg bg-[#dc2626] px-3 py-1.5 font-semibold text-white hover:bg-red-700 transition"
               >
-                Discard & Exit
+                Discard and leave
               </Link>
               <Button
                 type="button"
@@ -352,7 +352,7 @@ export default function NewAssessmentPage({
                 size="sm"
                 onClick={() => setShowExitConfirm(false)}
               >
-                Continue Editing
+                Stay in assessment
               </Button>
             </div>
           </div>

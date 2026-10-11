@@ -328,14 +328,14 @@ test("Stage 4 Evaluator: mandates 4 explicit unassessed scope boundaries", () =>
   }
 });
 
-test("Stage 4 Store Reactivity: updating furniture or mobility profile updates findings", () => {
+test("Stage 4 Store Reactivity: updating furniture or mobility profile updates findings", async () => {
   if (globalThis.localStorage && typeof globalThis.localStorage.clear === "function") {
     globalThis.localStorage.clear();
   }
   const store = useSafeSpaceStore.getState();
   const boundary = createRectBoundary(800, 600);
   const nowIso = new Date().toISOString();
-  const createResult = store.createAndLoadUserAssessment({
+  const createResult = await store.createAndLoadUserAssessment({
     metadata: {
       id: "test-user-space",
       name: "Test Space",

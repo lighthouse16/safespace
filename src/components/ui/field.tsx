@@ -14,14 +14,14 @@ export const Input = forwardRef<HTMLInputElement, InputHTMLAttributes<HTMLInputE
     const fieldId = id ?? (props.name ? `field-${props.name}` : undefined);
     const errorId = error && fieldId ? `${fieldId}-error` : undefined;
     const hintId = hint && fieldId ? `${fieldId}-hint` : undefined;
-    const describedBy = errorId ?? hintId;
+    const describedBy = [errorId, hintId].filter(Boolean).join(" ") || undefined;
 
     return (
-      <label className="grid gap-1.5 text-xs font-semibold text-[#192329]" htmlFor={fieldId}>
-        <div className="flex items-center justify-between">
+      <div className="grid gap-1.5 text-xs font-semibold text-[#192329]">
+        <label htmlFor={fieldId} className="flex items-center justify-between cursor-pointer">
           <span>{label}</span>
           {optional && <span className="text-[11px] font-normal text-[#94a3b8]">Optional</span>}
-        </div>
+        </label>
         <input
           ref={ref}
           id={fieldId}
@@ -33,7 +33,7 @@ export const Input = forwardRef<HTMLInputElement, InputHTMLAttributes<HTMLInputE
           {...props}
         />
         {error ? (
-          <span id={errorId} className="text-[11px] font-normal text-[#dc2626]">
+          <span id={errorId} role="alert" className="text-[11px] font-normal text-[#dc2626]">
             {error}
           </span>
         ) : hint ? (
@@ -41,7 +41,7 @@ export const Input = forwardRef<HTMLInputElement, InputHTMLAttributes<HTMLInputE
             {hint}
           </span>
         ) : null}
-      </label>
+      </div>
     );
   }
 );
@@ -55,14 +55,14 @@ export const Select = forwardRef<
   const fieldId = id ?? (props.name ? `field-${props.name}` : undefined);
   const errorId = error && fieldId ? `${fieldId}-error` : undefined;
   const hintId = hint && fieldId ? `${fieldId}-hint` : undefined;
-  const describedBy = errorId ?? hintId;
+  const describedBy = [errorId, hintId].filter(Boolean).join(" ") || undefined;
 
   return (
-    <label className="grid gap-1.5 text-xs font-semibold text-[#192329]" htmlFor={fieldId}>
-      <div className="flex items-center justify-between">
+    <div className="grid gap-1.5 text-xs font-semibold text-[#192329]">
+      <label htmlFor={fieldId} className="flex items-center justify-between cursor-pointer">
         <span>{label}</span>
         {optional && <span className="text-[11px] font-normal text-[#94a3b8]">Optional</span>}
-      </div>
+      </label>
       <select
         ref={ref}
         id={fieldId}
@@ -76,7 +76,7 @@ export const Select = forwardRef<
         {children}
       </select>
       {error ? (
-        <span id={errorId} className="text-[11px] font-normal text-[#dc2626]">
+        <span id={errorId} role="alert" className="text-[11px] font-normal text-[#dc2626]">
           {error}
         </span>
       ) : hint ? (
@@ -84,7 +84,7 @@ export const Select = forwardRef<
           {hint}
         </span>
       ) : null}
-    </label>
+    </div>
   );
 });
 
@@ -97,14 +97,14 @@ export const Textarea = forwardRef<
   const fieldId = id ?? (props.name ? `field-${props.name}` : undefined);
   const errorId = error && fieldId ? `${fieldId}-error` : undefined;
   const hintId = hint && fieldId ? `${fieldId}-hint` : undefined;
-  const describedBy = errorId ?? hintId;
+  const describedBy = [errorId, hintId].filter(Boolean).join(" ") || undefined;
 
   return (
-    <label className="grid gap-1.5 text-xs font-semibold text-[#192329]" htmlFor={fieldId}>
-      <div className="flex items-center justify-between">
+    <div className="grid gap-1.5 text-xs font-semibold text-[#192329]">
+      <label htmlFor={fieldId} className="flex items-center justify-between cursor-pointer">
         <span>{label}</span>
         {optional && <span className="text-[11px] font-normal text-[#94a3b8]">Optional</span>}
-      </div>
+      </label>
       <textarea
         ref={ref}
         id={fieldId}
@@ -116,7 +116,7 @@ export const Textarea = forwardRef<
         {...props}
       />
       {error ? (
-        <span id={errorId} className="text-[11px] font-normal text-[#dc2626]">
+        <span id={errorId} role="alert" className="text-[11px] font-normal text-[#dc2626]">
           {error}
         </span>
       ) : hint ? (
@@ -124,7 +124,7 @@ export const Textarea = forwardRef<
           {hint}
         </span>
       ) : null}
-    </label>
+    </div>
   );
 });
 

@@ -10,7 +10,6 @@ import {
   ChevronRight,
   ChevronLeft,
   MapPin,
-  Box,
 } from "lucide-react";
 import type { SpatialFindingClassification } from "@/lib/spatial";
 
@@ -62,20 +61,11 @@ export function Stage4Analysis() {
       {/* Top View Toolbar */}
       <div className="h-10 bg-white border-b border-[#e2e8e4] px-3.5 flex items-center justify-between shrink-0 select-none z-10">
         <div className="flex items-center gap-2">
-          {/* 2D Plan Active / 3D Analysis Pending */}
+          {/* 2D Plan Active */}
           <div className="flex items-center gap-1 bg-[#f1f5f3] p-0.5 rounded-lg border border-[#e2e8e4]">
             <span className="px-2.5 py-0.5 rounded text-xs font-semibold bg-white text-[#1e7168] shadow-xs">
-              2D Plan
+              2D Clearance Plan
             </span>
-            <button
-              type="button"
-              disabled
-              title="3D spatial analysis is disabled pending synchronized canonical geometry in Gate 3"
-              className="px-2.5 py-0.5 rounded text-xs font-semibold flex items-center gap-1 text-slate-400 cursor-not-allowed opacity-60"
-            >
-              <Box className="w-3 h-3" />
-              <span>3D Analysis Pending</span>
-            </button>
           </div>
 
           {/* Mobile / Tablet View Switcher [Both | Plan | Findings] */}
@@ -249,10 +239,10 @@ export function Stage4Analysis() {
             <div className="p-2.5 rounded bg-slate-50 border border-slate-200 text-[11px] text-slate-600 leading-snug">
               <span className="font-semibold text-slate-800">
                 {isUserAssessment
-                  ? `Custom Workspace (${assessmentMetadata?.spaceName || "User Space"}): `
-                  : "Queen Care Demonstration Workspace: "}
+                  ? `Custom Assessment (${assessmentMetadata?.spaceName || "User Space"}): `
+                  : "Example Clinic Scenario: "}
               </span>
-              Findings are derived from canonical geometry and active route clearance ({summary.corridorWidthCm !== null && summary.corridorWidthCm > 0 ? `configured profile target (unverified): ≥ ${summary.corridorWidthCm} cm for ${activeProfile.name}` : `No valid configured profile width for ${activeProfile.name}`}). Non-holonomic turning space and 3D grab bar anchorage are unassessed in 2D evaluation. Composite risk scoring is disabled pending professional occupational therapy validation.
+              Findings are derived from 2D room geometry and active route clearance ({summary.corridorWidthCm !== null && summary.corridorWidthCm > 0 ? `target: ≥ ${summary.corridorWidthCm} cm for ${activeProfile.name}` : `target width for ${activeProfile.name}`}). 3D structures, grab bar anchorage, and non-holonomic turns are not assessed in 2D evaluation. Not statutory or clinical certification.
             </div>
 
             {/* Classification Filter Tabs */}
@@ -378,9 +368,13 @@ export function Stage4Analysis() {
             <div className="space-y-2 max-h-[calc(100vh-27rem)] overflow-y-auto pr-0.5">
               {filteredFindings.length === 0 ? (
                 <div className="p-4 text-center border border-dashed border-slate-200 rounded-lg bg-slate-50">
-                  <p className="text-xs text-slate-600 font-semibold">No findings in this category</p>
+                  <p className="text-xs text-slate-700 font-semibold">
+                    {filterClassification === "actionable-deficit"
+                      ? `All configured routes meet the clearance target (${activeProfile.minClearanceCm} cm). No bottlenecks detected.`
+                      : "No findings in this category"}
+                  </p>
                   <p className="text-[11px] text-slate-500 mt-1 leading-relaxed">
-                    Adjust the category filter above to inspect other findings or scope boundaries.
+                    Adjust the category filter above to inspect other findings or unassessed scope.
                   </p>
                 </div>
               ) : (
@@ -389,10 +383,12 @@ export function Stage4Analysis() {
                   const isCriticalOrHigh = f.severity === "critical" || f.severity === "high";
 
                   return (
-                    <div
+                    <button
+                      type="button"
                       key={f.id}
+                      aria-pressed={isSelected}
                       onClick={() => selectFinding(f.id)}
-                      className={`p-3 rounded-lg border text-xs cursor-pointer transition ${
+                      className={`w-full text-left p-3 rounded-lg border text-xs cursor-pointer transition focus-visible:outline focus-visible:outline-2 focus-visible:outline-[#1e7168] ${
                         isSelected
                           ? "border-[#1e7168] bg-[#f0f7f5] ring-1 ring-[#1e7168]"
                           : f.classification === "actionable-deficit"
@@ -415,9 +411,9 @@ export function Stage4Analysis() {
                           >
                             {i + 1}
                           </span>
-                          <h4 className="font-semibold text-slate-900 leading-snug">
+                          <h3 className="font-semibold text-slate-900 leading-snug text-xs">
                             {f.title}
-                          </h4>
+                          </h3>
                         </div>
                         <span
                           className={`px-1.5 py-0.2 rounded text-[9px] uppercase font-bold tracking-wide shrink-0 ${
@@ -443,19 +439,13 @@ export function Stage4Analysis() {
                           </span>
                         </div>
                         {f.location && (
-                          <button
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              selectFinding(f.id);
-                            }}
-                            className="text-[#1e7168] hover:underline font-semibold flex items-center gap-0.5 cursor-pointer text-[11px]"
-                          >
-                            <MapPin className="w-3 h-3" />
-                            <span>Inspect</span>
-                          </button>
+                          <span className="text-[10px] text-[#1e7168] flex items-center gap-0.5 font-medium">
+                            <MapPin className="w-2.5 h-2.5" />
+                            <span>View on plan</span>
+                          </span>
                         )}
                       </div>
-                    </div>
+                    </button>
                   );
                 })
               )}
@@ -470,10 +460,11 @@ export function Stage4Analysis() {
           {/* Action Footer */}
           <div className="pt-2.5 border-t border-slate-200 space-y-1.5">
             <button
+              type="button"
               onClick={() => setStage("improve")}
               className="w-full py-2 px-3 bg-[#1e7168] hover:bg-[#185e56] text-white rounded-lg text-xs font-semibold flex items-center justify-center gap-1.5 transition shadow-xs cursor-pointer"
             >
-              <span>Proceed to Layout Options (Stage 5)</span>
+              <span>Explore Layout Improvements</span>
               <ChevronRight className="w-3.5 h-3.5" />
             </button>
 

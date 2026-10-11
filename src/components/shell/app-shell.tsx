@@ -2,7 +2,7 @@ import Link from "next/link";
 import type { ReactNode } from "react";
 
 const nav = [
-  { href: "/", label: "Dashboard" },
+  { href: "/", label: "Workspace" },
   { href: "/assessments", label: "Assessments" },
 ];
 
@@ -18,8 +18,8 @@ export function AppShell({
   children,
   activePath = "/",
   facilityName = null,
-  workspaceLabel = "Demo workspace",
-  storageLabel = "Storage not connected",
+  workspaceLabel = "Workspace",
+  storageLabel = "Saved on this device",
 }: AppShellProps) {
   return (
     <div className="min-h-dvh bg-slate-50 text-slate-950">
