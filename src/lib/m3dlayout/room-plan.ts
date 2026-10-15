@@ -56,7 +56,9 @@ function gapSegments(
   ];
 }
 
-export function composeRoomFrames(requests: PromptTranslation[]): GeneratedPlan | null {
+export type OuterBounds = { x: number; y: number; width: number; depth: number };
+
+export function composeRoomFrames(requests: PromptTranslation[], outer?: OuterBounds): GeneratedPlan | null {
   const ready = requests.filter((request) => request.ready && request.roomType);
   if (ready.length === 0) return null;
 
@@ -83,6 +85,18 @@ export function composeRoomFrames(requests: PromptTranslation[]): GeneratedPlan 
       };
     }),
   ];
+
+  if (outer && outer.width > 0 && outer.depth > 0 && totalWidth > 0 && totalDepth > 0) {
+    const scale = Math.min(outer.width / totalWidth, outer.depth / totalDepth);
+    const offsetX = outer.x + (outer.width - totalWidth * scale) / 2;
+    const offsetY = outer.y + (outer.depth - totalDepth * scale) / 2;
+    for (const rect of rects) {
+      rect.x = offsetX + (rect.x - ORIGIN) * scale;
+      rect.y = offsetY + (rect.y - ORIGIN) * scale;
+      rect.width *= scale;
+      rect.depth *= scale;
+    }
+  }
 
   const framed: FramedRoom[] = ready.map((request, index) => {
     const spec = specs[index];
@@ -117,28 +131,30 @@ export function composeRoomFrames(requests: PromptTranslation[]): GeneratedPlan 
     lightLevelLux: room.roomType === "bathroom" ? 180 : 320,
   }));
 
-  const right = ORIGIN + totalWidth;
-  const bottom = ORIGIN + totalDepth;
+  const minX = Math.min(...rects.map((rect) => rect.x));
+  const minY = Math.min(...rects.map((rect) => rect.y));
+  const maxX = Math.max(...rects.map((rect) => rect.x + rect.width));
+  const maxY = Math.max(...rects.map((rect) => rect.y + rect.depth));
   const boundary: Polygon2D = [
-    { x: ORIGIN, y: ORIGIN },
-    { x: right, y: ORIGIN },
-    { x: right, y: bottom },
-    { x: ORIGIN, y: bottom },
+    { x: minX, y: minY },
+    { x: maxX, y: minY },
+    { x: maxX, y: maxY },
+    { x: minX, y: maxY },
   ];
 
   const solid = (x1: number, y1: number, x2: number, y2: number) => [{ start: { x: x1, y: y1 }, end: { x: x2, y: y2 } }];
   const lines: Array<{ start: { x: number; y: number }; end: { x: number; y: number } }> = [
-    ...solid(ORIGIN, ORIGIN, right, ORIGIN),
-    ...solid(right, ORIGIN, right, bottom),
-    ...solid(right, bottom, ORIGIN, bottom),
-    ...solid(ORIGIN, bottom, ORIGIN, ORIGIN),
+    ...solid(minX, minY, maxX, minY),
+    ...solid(maxX, minY, maxX, maxY),
+    ...solid(maxX, maxY, minX, maxY),
+    ...solid(minX, maxY, minX, minY),
   ];
-  if (rest.length > 0) {
-    lines.push(...gapSegments(ORIGIN + primary.width, ORIGIN, ORIGIN + primary.width, bottom));
-    let y = ORIGIN;
-    for (let index = 0; index < rightDepths.length - 1; index += 1) {
-      y += rightDepths[index];
-      lines.push(...gapSegments(ORIGIN + primary.width, y, right, y));
+  if (rects.length > 1) {
+    const splitX = rects[1].x;
+    lines.push(...gapSegments(splitX, minY, splitX, maxY));
+    for (let index = 2; index < rects.length; index += 1) {
+      const y = rects[index].y;
+      lines.push(...gapSegments(splitX, y, maxX, y));
     }
   }
 

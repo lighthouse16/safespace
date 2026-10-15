@@ -13,6 +13,7 @@ export type PromptTranslation = {
   prompt: string;
   roomType: string;
   classes: string[];
+  pieces: Array<{ className: string; count: number }>;
   style: "passthrough" | "rewritten";
   ready: boolean;
   note: string;
@@ -274,6 +275,35 @@ function specializeForRoom(
   });
 }
 
+function impliedPlacement(room: RoomType, objects: Array<{ className: M3DClassLabel; count: number }>): string[] {
+  const names = new Set(objects.map((item) => item.className));
+  const hasSofa = names.has("sofa") || names.has("l_shaped_sofa") || names.has("loveseat_sofa") || names.has("multi_seat_sofa");
+  const hasScreen = names.has("tv") || names.has("tv_stand") || names.has("tv_monitor");
+  if (room === "living room" && hasSofa && hasScreen) {
+    const lines = ["A sofa faces a television."];
+    if (names.has("coffee_table")) lines.push("A coffee table sits in front of the sofa.");
+    return lines;
+  }
+  if ((room === "kitchen" || room === "dining room") && names.has("dining_table") && names.has("dining_chair")) {
+    return ["Dining chairs are placed around the dining table."];
+  }
+  if (room === "bathroom" && (names.has("toilet") || names.has("sink") || names.has("bathtub"))) {
+    return ["The toilet and sink sit beside each other, with the bathtub along the opposite wall."];
+  }
+  return [];
+}
+
+function placementSentence(
+  room: RoomType,
+  objects: Array<{ className: M3DClassLabel; count: number }>,
+  spatial: string[],
+): string {
+  if (spatial.length > 0) return spatial.join(" ");
+  const implied = impliedPlacement(room, objects);
+  if (implied.length > 0) return implied.join(" ");
+  return "The furniture is placed for optimal use.";
+}
+
 function buildRoomPrompt(
   userQuery: string,
   room: RoomType,
@@ -284,13 +314,14 @@ function buildRoomPrompt(
 ): PromptTranslation {
   const roomSentence = room === "office" ? "The room is an office." : `The room is a ${room}.`;
   const thereIs = `There is ${joinPhrases(objects.map((item) => nounPhrase(item.className, item.count)))}.`;
-  const placement = spatial.length > 0 ? spatial.join(" ") : "The furniture is placed for optimal use.";
+  const placement = placementSentence(room, objects, spatial);
   const names = objects.map((item) => promptNameForClass(item.className)).join(", ");
   return {
     userQuery,
     prompt: `${roomSentence} ${thereIs} ${placement} ${constraintSentence(lower)}`,
     roomType: room,
     classes: objects.map((item) => item.className),
+    pieces: objects.map((item) => ({ className: item.className, count: item.count })),
     style: "rewritten",
     ready: true,
     note: usedDefaults
@@ -374,6 +405,7 @@ export function translateUserQuery(userQuery: string): PromptTranslation {
     prompt: "",
     roomType: "",
     classes: [],
+    pieces: [],
     style: "rewritten",
     ready: false,
     note: "Name a room and its furniture. Example: a living room with a sofa and a television.",
@@ -391,6 +423,7 @@ export function translateUserQuery(userQuery: string): PromptTranslation {
       prompt: trimmed,
       roomType: room ?? "",
       classes: merged.map((item) => item.className),
+      pieces: merged.map((item) => ({ className: item.className, count: item.count })),
       style: "passthrough",
       ready: true,
       note: "This already matches the model's description style, so it is sent unchanged.",
@@ -404,7 +437,7 @@ export function translateUserQuery(userQuery: string): PromptTranslation {
   const roomSentence = room === "office" ? "The room is an office." : `The room is a ${room}.`;
   const thereIs = `There is ${joinPhrases(objects.map((item) => nounPhrase(item.className, item.count)))}.`;
   const spatial = spatialSentences(lower, mentions);
-  const placement = spatial.length > 0 ? spatial.join(" ") : "The furniture is placed for optimal use.";
+  const placement = placementSentence(room, objects, spatial);
   const prompt = `${roomSentence} ${thereIs} ${placement} ${constraintSentence(lower)}`;
   const names = objects.map((item) => promptNameForClass(item.className)).join(", ");
 
@@ -413,6 +446,7 @@ export function translateUserQuery(userQuery: string): PromptTranslation {
     prompt,
     roomType: room,
     classes: objects.map((item) => item.className),
+    pieces: objects.map((item) => ({ className: item.className, count: item.count })),
     style: "rewritten",
     ready: true,
     note: usedDefaults

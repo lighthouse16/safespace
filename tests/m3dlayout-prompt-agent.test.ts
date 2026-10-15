@@ -4,6 +4,7 @@ import { splitRoomRequests, translateUserQuery } from "../src/lib/m3dlayout/prom
 import { composeRoomFrames } from "../src/lib/m3dlayout/room-plan";
 import { isM3DClassLabel } from "../src/lib/m3dlayout/vocabulary";
 import { furnitureCategoryForClass, sceneToFurniture } from "../src/lib/m3dlayout/scene-adapter";
+import { arrangeRoomFurniture } from "../src/lib/m3dlayout/arrange";
 import { normalizeApiBase } from "../src/lib/m3dlayout/client";
 
 test("a multi-room sentence becomes one model prompt per room", () => {
@@ -42,8 +43,7 @@ test("short living-room request becomes a training-style description", () => {
   assert.equal(result.roomType, "living room");
   assert.deepEqual(result.classes, ["sofa", "tv"]);
   assert.match(result.prompt, /^The room is a living room\. There is a sofa and a television\./);
-  assert.match(result.prompt, /Only include the objects described above/);
-  assert.match(result.prompt, /Do not include small decorative items/);
+  assert.match(result.prompt, /A sofa faces a television/);
   assert.equal(result.prompt.includes("coffee table"), false);
 });
 
@@ -118,4 +118,58 @@ test("category mapping keeps desks distinct from tables", () => {
 test("api base rejects a bare host and strips a trailing slash", () => {
   assert.equal(normalizeApiBase("https://demo.ngrok-free.app/"), "https://demo.ngrok-free.app");
   assert.throws(() => normalizeApiBase("demo.ngrok-free.app"), /https?:\/\//);
+});
+
+test("requested furniture is placed by relation and extra model classes are absent", () => {
+  const query =
+    "a living room with a sofa, a coffee table, and a television, a kitchen with a countertop, a table with 6 chairs, a fridge, a cupboard, a toilet with a sink, a toilet, a hottub";
+  const rooms = splitRoomRequests(query);
+  const plan = composeRoomFrames(rooms);
+  assert.ok(plan);
+  const living = arrangeRoomFurniture({
+    pieces: rooms[0].pieces,
+    roomType: rooms[0].roomType,
+    rect: plan.framed[0].rect,
+    roomId: plan.framed[0].id,
+    idPrefix: plan.framed[0].id,
+  });
+  const tv = living.find((item) => item.code === "TV");
+  const table = living.find((item) => item.code === "COFFEE_TABLE");
+  const sofa = living.find((item) => item.code === "SOFA");
+  assert.ok(tv && table && sofa);
+  const center = (item: { x: number; width: number }) => item.x + item.width / 2;
+  assert.ok(Math.abs(center(tv) - center(sofa)) < 8);
+  assert.ok(table.y > tv.y + tv.depth - 1);
+  assert.ok(sofa.y > table.y + table.depth - 1);
+  assert.equal(sofa.rotation, 0);
+  assert.equal(living.some((item) => item.code === "BED" || item.code?.includes("PLANT")), false);
+
+  const kitchen = arrangeRoomFurniture({
+    pieces: rooms[1].pieces,
+    roomType: rooms[1].roomType,
+    rect: plan.framed[1].rect,
+    roomId: plan.framed[1].id,
+    idPrefix: plan.framed[1].id,
+  });
+  const dining = kitchen.find((item) => item.code === "DINING_TABLE");
+  const chairs = kitchen.filter((item) => item.code === "DINING_CHAIR");
+  assert.ok(dining);
+  assert.equal(chairs.length, 6);
+  assert.equal(chairs.filter((chair) => chair.y > dining.y + dining.depth - 1).length, 2);
+  assert.equal(chairs.filter((chair) => chair.y + chair.depth < dining.y + 1).length, 2);
+  assert.equal(kitchen.some((item) => item.code === "LOUNGE_CHAIR" || item.code === "WINE_CABINET"), false);
+
+  const bathroom = arrangeRoomFurniture({
+    pieces: rooms[2].pieces,
+    roomType: rooms[2].roomType,
+    rect: plan.framed[2].rect,
+    roomId: plan.framed[2].id,
+    idPrefix: plan.framed[2].id,
+  });
+  const tub = bathroom.find((item) => item.code === "BATHTUB");
+  const toilets = bathroom.filter((item) => item.code === "TOILET");
+  assert.ok(tub);
+  assert.equal(toilets.length, 2);
+  assert.ok(toilets.every((toilet) => toilet.y < tub.y));
+  assert.equal(bathroom.some((item) => item.code === "WINE_CABINET" || item.code?.includes("PLANT")), false);
 });

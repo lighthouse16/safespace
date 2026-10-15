@@ -6,13 +6,15 @@ import { useSafeSpaceStore } from "@/store/safespace-store";
 import { generateM3DLayout, readStoredApiBase, storeApiBase } from "@/lib/m3dlayout/client";
 import { splitRoomRequests } from "@/lib/m3dlayout/prompt-agent";
 import { composeRoomFrames, type GeneratedPlan } from "@/lib/m3dlayout/room-plan";
-import { sceneToFurniture } from "@/lib/m3dlayout/scene-adapter";
+import { arrangeRoomFurniture } from "@/lib/m3dlayout/arrange";
+import { computePolygonBoundsCm } from "@/lib/spatial";
 import type { SpatialFurniture } from "@/lib/spatial-model";
 
 type PendingPlan = GeneratedPlan & { furniture: SpatialFurniture[] };
 
 export function GenerateLayoutPanel() {
   const applyGeneratedPlan = useSafeSpaceStore((state) => state.applyGeneratedPlan);
+  const canonicalBoundary = useSafeSpaceStore((state) => state.canonicalBoundary);
   const [apiUrl, setApiUrl] = useState("");
   const [query, setQuery] = useState("a living room with a sofa, a coffee table, and a television");
   const [seed, setSeed] = useState(0);
@@ -35,7 +37,18 @@ export function GenerateLayoutPanel() {
       setError(requests[0]?.note || "Name each room and its furniture.");
       return;
     }
-    const plan = composeRoomFrames(requests);
+    const outer = canonicalBoundary && canonicalBoundary.length >= 3
+      ? (() => {
+          const bounds = computePolygonBoundsCm(canonicalBoundary);
+          return {
+            x: bounds.minX + 16,
+            y: bounds.minY + 16,
+            width: Math.max(160, bounds.widthCm - 32),
+            depth: Math.max(160, bounds.heightCm - 32),
+          };
+        })()
+      : undefined;
+    const plan = composeRoomFrames(requests, outer);
     if (!plan) {
       setError("Name each room and its furniture.");
       return;
@@ -48,7 +61,18 @@ export function GenerateLayoutPanel() {
         const room = plan.framed[index];
         setStatus(`Generating ${room.name} (${index + 1} of ${plan.framed.length})…`);
         const scene = await generateM3DLayout(apiUrl, room.prompt, seed + index);
-        furniture.push(...sceneToFurniture(scene, room.frame, room.id));
+        const requested = requests[index]?.pieces ?? [];
+        const arranged = arrangeRoomFurniture({
+          pieces: requested,
+          roomType: room.roomType,
+          rect: room.rect,
+          roomId: room.id,
+          idPrefix: room.id,
+        });
+        if (arranged.length === 0 && scene.class_names?.length) {
+          setError(`${room.name} did not include furniture that could be placed.`);
+        }
+        furniture.push(...arranged);
       }
       if (furniture.length === 0) {
         setError("The model answered, but none of the boxes could be placed.");
@@ -66,11 +90,12 @@ export function GenerateLayoutPanel() {
 
   const onAccept = () => {
     if (!pending) return;
+    const outline = canonicalBoundary && canonicalBoundary.length >= 3 ? canonicalBoundary : null;
     applyGeneratedPlan({
       furniture: pending.furniture,
       rooms: pending.rooms,
-      walls: pending.walls,
-      boundary: pending.boundary,
+      walls: outline ? pending.walls.filter((wall) => !wall.isExterior) : pending.walls,
+      boundary: outline ?? pending.boundary,
     });
     setPending(null);
   };
@@ -80,7 +105,7 @@ export function GenerateLayoutPanel() {
       <div>
         <h2 className="text-xs font-bold text-[#0B514B] uppercase tracking-wider">Generate layout</h2>
         <p className="text-[11px] text-[#647078] leading-snug mt-1">
-          Each room in the sentence gets its own frame. Furniture from the Colab model is placed inside that frame. You do not need to trace the floorplan.
+          Each room keeps the furniture you named. A sofa is placed in front of the television, chairs sit around the table, and the bathtub stays on the bathroom wall. Objects the model invents, such as extra beds or plants, are left out. An existing outline is kept and the rooms are fitted inside it.
         </p>
       </div>
 
