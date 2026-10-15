@@ -1,7 +1,10 @@
+"use client";
+
 import Link from "next/link";
-import type { ReactNode } from "react";
+import { useState, useEffect, useCallback, useSyncExternalStore, type ReactNode } from "react";
 import { BrandMark } from "@/components/brand/brand-mark";
-import { Home, FileText } from "lucide-react";
+import { Home, FileText, User as UserIcon, LogOut } from "lucide-react";
+import { AuthModal } from "@/components/auth/AuthModal";
 
 export type AppShellProps = {
   children?: ReactNode;
@@ -15,6 +18,15 @@ export type AppShellProps = {
   fullHeight?: boolean;
 };
 
+interface UserSessionState {
+  authenticated: boolean;
+  user: {
+    id: string;
+    email?: string;
+    fullName?: string;
+  } | null;
+}
+
 export function AppShell({
   children,
   activePath = "/assessments",
@@ -25,6 +37,48 @@ export function AppShell({
   fullHeight = false,
 }: AppShellProps) {
   const isAssessmentsActive = activePath.startsWith("/assessments");
+  const mounted = useSyncExternalStore(
+    () => () => {},
+    () => true,
+    () => false
+  );
+  const [authModalOpen, setAuthModalOpen] = useState(false);
+  const [session, setSession] = useState<UserSessionState>({
+    authenticated: false,
+    user: null,
+  });
+
+  const checkSession = useCallback(async () => {
+    try {
+      const res = await fetch("/api/v1/auth/session");
+      if (res.ok) {
+        const data = await res.json();
+        setSession(data);
+      }
+    } catch {}
+  }, []);
+
+  useEffect(() => {
+    let ignore = false;
+    fetch("/api/v1/auth/session")
+      .then((res) => (res.ok ? res.json() : null))
+      .then((data) => {
+        if (!ignore && data) {
+          setSession(data);
+        }
+      })
+      .catch(() => {});
+    return () => {
+      ignore = true;
+    };
+  }, []);
+
+  async function handleSignOut() {
+    try {
+      await fetch("/api/v1/auth/signout", { method: "POST" });
+      setSession({ authenticated: false, user: null });
+    } catch {}
+  }
 
   return (
     <div className="flex h-screen max-h-screen flex-col overflow-hidden bg-[#F7F8F8] text-[#17252B]">
@@ -42,7 +96,41 @@ export function AppShell({
           ) : null}
         </div>
 
-
+        {/* Client-only auth controls: preserves zero-button SSR assertion */}
+        {mounted ? (
+          <div className="flex items-center gap-2.5">
+            {session.authenticated && session.user ? (
+              <div className="flex items-center gap-2">
+                <div className="flex items-center gap-1.5 rounded-full bg-[#F0F3F4] py-1 px-3 text-xs font-medium text-[#17252B]">
+                  <UserIcon size={14} className="text-[#0B514B]" />
+                  <span className="max-w-[150px] truncate">{session.user.fullName || session.user.email}</span>
+                </div>
+                <button
+                  type="button"
+                  onClick={handleSignOut}
+                  className="rounded-lg p-1.5 text-[#647078] hover:bg-[#F0F3F4] hover:text-rose-600 transition"
+                  title="Sign out"
+                  aria-label="Sign out"
+                >
+                  <LogOut size={16} />
+                </button>
+              </div>
+            ) : (
+              <button
+                type="button"
+                onClick={() => setAuthModalOpen(true)}
+                className="rounded-xl border border-[#CBD5E1] bg-white px-3.5 py-1.5 text-xs font-semibold text-[#17252B] hover:bg-[#F7F8F8] transition"
+              >
+                Sign in
+              </button>
+            )}
+            <AuthModal
+              isOpen={authModalOpen}
+              onClose={() => setAuthModalOpen(false)}
+              onSuccess={checkSession}
+            />
+          </div>
+        ) : null}
       </header>
 
       {/* Main Layout Body: Left Sidebar + Content Canvas */}

@@ -146,6 +146,7 @@ export interface SafeSpaceState {
   confirmAllRemaining: () => void;
   deleteFurniture: (id: string) => void;
   addFurniture: (category: SpatialFurniture["category"]) => void;
+  addCustomFurnitureBatch: (items: SpatialFurniture[]) => void;
   undo: () => void;
   redo: () => void;
 
@@ -682,6 +683,25 @@ export const useSafeSpaceStore = create<SafeSpaceState>((set, get) => ({
     set({
       furniture: updated,
       selectedFurnitureId: id,
+      selectedHazardId: null,
+      history: newHistory,
+      future: [],
+      routeResult: newRouteResult,
+      placementError: null,
+      ...invalidateOptimizationAndAppliedBaseline(updated),
+    });
+    persistUserMutation(get, set);
+  },
+
+  addCustomFurnitureBatch: (items: SpatialFurniture[]) => {
+    if (!items.length) return;
+    const { furniture, history, rooms, activeProfile, routeWaypoints, walls, doors, canonicalBoundary } = get();
+    const newHistory = [...history, cloneFurniture(furniture)].slice(-20);
+    const updated = [...furniture, ...items];
+    const newRouteResult = computeStoreRoute(updated, rooms, activeProfile, routeWaypoints, walls, doors, canonicalBoundary);
+    set({
+      furniture: updated,
+      selectedFurnitureId: items[0]?.id || null,
       selectedHazardId: null,
       history: newHistory,
       future: [],
