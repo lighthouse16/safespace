@@ -22,6 +22,7 @@ import {
   AIInterpretationReviewModal,
   type InterpretedElementCandidate,
 } from "@/components/ai/AIInterpretationReviewModal";
+import { GenerateLayoutPanel } from "./GenerateLayoutPanel";
 
 export function Stage1Layout() {
   const {
@@ -517,6 +518,7 @@ export function Stage1Layout() {
             {/* Tab 1 Content: Room fixtures */}
             {activeRightTab === "fixtures" && (
               <div className="p-5">
+                <GenerateLayoutPanel />
                 <h2 className="text-sm font-bold text-[#17252B] mb-3.5">
                   Fixture summary
                 </h2>

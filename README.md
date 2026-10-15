@@ -11,6 +11,20 @@ npm run dev
 
 Open `http://localhost:3000`.
 
+## Generate a layout from Colab
+
+The M3DLayout checkpoint stays on Google Colab. This branch only rewrites the room sentence and calls that notebook. Open the site from a Codespace if you do not want `npm install` on your own computer.
+
+1. On Colab, run the cells that clone `M3DLayout-code`, install packages, remove the `tkinter` import, write the `fast_transformers` shim, write `api_server.py`, install or stub CLIP, start uvicorn on port 8000, and open ngrok.
+2. Copy the printed `API: https://….ngrok-free.app` line. That is the Colab API URL. Do not append `/generate`.
+3. In this app, open an assessment and stay on Layout. The form is at the top of **Room fixtures**.
+4. Paste the URL, describe the room, and press **Generate layout**. The prompt agent rewrites a short sentence into the description style the autoregressive model was trained on, then `POST`s `{ "prompt", "seed" }` to `/generate`.
+5. Press **Add to layout** after you review the returned objects. They stay unconfirmed until you accept them on the plan. Undo removes the batch.
+
+Leave the Colab runtime running. After a disconnect, start uvicorn and ngrok again and paste the new URL. The browser stores it in `localStorage` under `safespace-m3d-api-url`.
+
+The rewriter lives in `src/lib/m3dlayout/prompt-agent.ts`. It maps everyday furniture words onto the model's 102 class labels, keeps relations such as "facing" and "in front of", and sends an already paper-style paragraph through unchanged. `src/lib/m3dlayout/scene-adapter.ts` reads translations as meters with Y up, uses X and Z as the floor, converts them to centimeter top-left corners, and centers the group in the current room. Colab does not pull this branch. It still clones `Graphic-Kiliani/M3DLayout-code`.
+
 ## Demo path
 
 1. Open Queen Care Clinic assessment.
