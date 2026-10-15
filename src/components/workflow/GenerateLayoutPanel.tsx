@@ -7,7 +7,6 @@ import { generateM3DLayout, readStoredApiBase, storeApiBase } from "@/lib/m3dlay
 import { splitRoomRequests } from "@/lib/m3dlayout/prompt-agent";
 import { composeRoomFrames, type GeneratedPlan } from "@/lib/m3dlayout/room-plan";
 import { arrangeRoomFurniture } from "@/lib/m3dlayout/arrange";
-import { computePolygonBoundsCm } from "@/lib/spatial";
 import type { SpatialFurniture } from "@/lib/spatial-model";
 
 type PendingPlan = GeneratedPlan & { furniture: SpatialFurniture[] };
@@ -37,18 +36,10 @@ export function GenerateLayoutPanel() {
       setError(requests[0]?.note || "Name each room and its furniture.");
       return;
     }
-    const outer = canonicalBoundary && canonicalBoundary.length >= 3
-      ? (() => {
-          const bounds = computePolygonBoundsCm(canonicalBoundary);
-          return {
-            x: bounds.minX + 16,
-            y: bounds.minY + 16,
-            width: Math.max(160, bounds.widthCm - 32),
-            depth: Math.max(160, bounds.heightCm - 32),
-          };
-        })()
-      : undefined;
-    const plan = composeRoomFrames(requests, outer);
+    const plan = composeRoomFrames(
+      requests,
+      canonicalBoundary && canonicalBoundary.length >= 3 ? { polygon: canonicalBoundary } : undefined,
+    );
     if (!plan) {
       setError("Name each room and its furniture.");
       return;
@@ -105,7 +96,7 @@ export function GenerateLayoutPanel() {
       <div>
         <h2 className="text-xs font-bold text-[#0B514B] uppercase tracking-wider">Generate layout</h2>
         <p className="text-[11px] text-[#647078] leading-snug mt-1">
-          Each room keeps the furniture you named. A sofa is placed in front of the television, chairs sit around the table, and the bathtub stays on the bathroom wall. Objects the model invents, such as extra beds or plants, are left out. An existing outline is kept and the rooms are fitted inside it.
+          Rooms are built from the outline you traced, so that shape is the floor. A sofa sits in front of the television, chairs sit around the table, and the bathtub stays on the bathroom wall. Objects the model invents, such as extra beds or plants, are left out.
         </p>
       </div>
 

@@ -24,6 +24,7 @@ export interface SpatialRoom {
   depth: number;
   color: string;
   lightLevelLux: number; // Lux level
+  polygon?: Point2D[];
 }
 
 export interface SpatialWall {

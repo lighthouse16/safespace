@@ -522,6 +522,14 @@ export function Floorplan2D({
             : rooms
           ).map((room) => (
               <g key={room.id} clipPath={keepUserOutline ? "url(#user-house-clip)" : undefined}>
+                {room.polygon && room.polygon.length >= 3 ? (
+                  <polygon
+                    points={room.polygon.map((point) => `${point.x},${point.y}`).join(" ")}
+                    fill={room.color}
+                    fillOpacity={0.94}
+                    stroke="none"
+                  />
+                ) : (
                 <rect
                   x={room.x}
                   y={room.y}
@@ -532,6 +540,7 @@ export function Floorplan2D({
                   stroke={keepUserOutline ? "none" : "#0B514B"}
                   strokeWidth={room.id.startsWith("m3d-room-") ? 2 : 1}
                 />
+                )}
                 <text
                   x={room.x + 12}
                   y={room.y + 22}

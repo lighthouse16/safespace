@@ -4,6 +4,7 @@ import { splitRoomRequests, translateUserQuery } from "../src/lib/m3dlayout/prom
 import { composeRoomFrames } from "../src/lib/m3dlayout/room-plan";
 import { isM3DClassLabel } from "../src/lib/m3dlayout/vocabulary";
 import { furnitureCategoryForClass, sceneToFurniture } from "../src/lib/m3dlayout/scene-adapter";
+import { isPointInPolygon, polygonArea } from "../src/lib/spatial/geometry/polygons";
 import { arrangeRoomFurniture } from "../src/lib/m3dlayout/arrange";
 import { normalizeApiBase } from "../src/lib/m3dlayout/client";
 
@@ -172,4 +173,58 @@ test("requested furniture is placed by relation and extra model classes are abse
   assert.equal(toilets.length, 2);
   assert.ok(toilets.every((toilet) => toilet.y < tub.y));
   assert.equal(bathroom.some((item) => item.code === "WINE_CABINET" || item.code?.includes("PLANT")), false);
+});
+
+test("rooms fill the traced outline instead of a rectangle around it", () => {
+  const territory = [
+    { x: 0, y: 0 },
+    { x: 600, y: 0 },
+    { x: 600, y: 180 },
+    { x: 920, y: 180 },
+    { x: 920, y: 520 },
+    { x: 280, y: 520 },
+    { x: 280, y: 320 },
+    { x: 0, y: 320 },
+  ];
+  const requests = splitRoomRequests(
+    "a living room with a sofa and a television, a kitchen with a table and 4 chairs, a bathroom with a toilet and a bathtub",
+  );
+  const plan = composeRoomFrames(requests, { polygon: territory });
+  assert.ok(plan);
+  assert.equal(plan.rooms.length, 3);
+  assert.ok(plan.rooms.every((room) => room.polygon && room.polygon.length >= 4));
+
+  const xs = [...new Set(territory.map((point) => point.x))].sort((a, b) => a - b);
+  const ys = [...new Set(territory.map((point) => point.y))].sort((a, b) => a - b);
+  let covered = 0;
+  for (let col = 0; col < xs.length - 1; col += 1) {
+    for (let row = 0; row < ys.length - 1; row += 1) {
+      const center = { x: (xs[col] + xs[col + 1]) / 2, y: (ys[row] + ys[row + 1]) / 2 };
+      if (!isPointInPolygon(center, territory, true)) continue;
+      const owners = plan.rooms.filter((room) => isPointInPolygon(center, room.polygon ?? [], true));
+      assert.equal(owners.length, 1);
+      covered += 1;
+    }
+  }
+  assert.ok(covered >= 4);
+  const roomArea = plan.rooms.reduce((sum, room) => sum + polygonArea(room.polygon ?? []), 0);
+  assert.ok(Math.abs(roomArea - polygonArea(territory)) < 1);
+
+  const living = plan.rooms[0];
+  const furniture = arrangeRoomFurniture({
+    pieces: requests[0].pieces,
+    roomType: requests[0].roomType,
+    rect: plan.framed[0].rect,
+    roomId: living.id,
+    idPrefix: living.id,
+  });
+  for (const item of furniture) {
+    const corners = [
+      { x: item.x, y: item.y },
+      { x: item.x + item.width, y: item.y },
+      { x: item.x, y: item.y + item.depth },
+      { x: item.x + item.width, y: item.y + item.depth },
+    ];
+    assert.ok(corners.every((corner) => isPointInPolygon(corner, living.polygon ?? [], true)));
+  }
 });
