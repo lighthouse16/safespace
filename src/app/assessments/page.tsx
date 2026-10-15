@@ -67,37 +67,35 @@ export default function AssessmentsPage() {
     <AppShell
       activePath="/assessments"
       facilityName={savedAssessment?.metadata?.facilityName ?? null}
+      assessmentName={savedAssessment?.metadata?.name ?? null}
+      spaceName={savedAssessment?.metadata?.spaceName ?? null}
       workspaceLabel="SafeSpace workspace"
-      storageLabel={savedAssessment ? "Saved on this device" : "Storage not connected"}
+      storageLabel={savedAssessment ? "Saved on this device" : "Local browser storage"}
     >
       <div className="mx-auto max-w-5xl space-y-6">
         {/* Header */}
         <header className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
           <div>
             <div className="flex items-center gap-2">
-              <p className="text-xs font-semibold uppercase tracking-wider text-slate-500">
-                SafeSpace Workspace
+              <p className="text-xs font-semibold uppercase tracking-wider text-[#647078]">
+                SafeSpace workspace
               </p>
-              {savedAssessment && (
-                <span
-                  role="status"
-                  className="rounded-full px-2.5 py-0.5 text-[11px] font-medium border bg-emerald-50 text-emerald-800 border-emerald-200"
-                >
-                  Saved on this device
-                </span>
-              )}
+              <span className="text-xs text-[#647078]">·</span>
+              <span className="text-xs text-[#647078]">
+                {savedAssessment ? "Saved on this device" : "Storage not connected"}
+              </span>
             </div>
-            <h1 className="mt-1 text-2xl font-semibold tracking-tight text-[#192329] sm:text-3xl">
+            <h1 className="mt-1 text-2xl font-semibold tracking-tight text-[#17252B] sm:text-3xl">
               Assessments & Spaces
             </h1>
-            <p className="mt-1.5 text-xs text-[#64748b]">
+            <p className="mt-1.5 text-xs text-[#647078]">
               Evaluate pathway clearance, calibrate floorplans, and audit critical routes across living and care environments.
             </p>
           </div>
 
           <Link
             href="/assessments/new"
-            className="inline-flex items-center justify-center rounded-lg bg-[#1e7168] px-4 py-2 text-xs font-semibold text-white shadow-xs hover:bg-[#175b54] transition cursor-pointer shrink-0"
+            className="inline-flex items-center justify-center rounded-lg bg-[#0B514B] px-4 py-2 text-xs font-semibold text-white shadow-xs hover:bg-[#073D38] transition cursor-pointer shrink-0"
           >
             + New assessment
           </Link>
@@ -138,7 +136,7 @@ export default function AssessmentsPage() {
             <div className="flex items-center justify-between">
               <h2
                 id="saved-assessment-heading"
-                className="text-xs font-semibold uppercase tracking-wider text-[#1e7168]"
+                className="text-xs font-semibold uppercase tracking-wider text-[#0B514B]"
               >
                 Confirmed User Assessment
               </h2>
@@ -150,16 +148,12 @@ export default function AssessmentsPage() {
             <div className="overflow-hidden rounded-xl border border-emerald-200 bg-white shadow-xs">
               <div className="p-5 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
                 <div className="space-y-1">
-                  <div className="flex items-center gap-2">
-                    <span className="font-semibold text-sm text-[#192329]">
-                      {savedAssessment.metadata?.facilityName || "Custom Facility"}
+                  <div className="flex flex-wrap items-baseline gap-x-2 gap-y-1">
+                    <span className="font-semibold text-sm text-[#17252B]">
+                      {savedAssessment.metadata?.name || "Custom assessment"}
                     </span>
-                    <span className="rounded bg-emerald-50 px-2 py-0.5 text-[10px] font-semibold text-emerald-800 border border-emerald-200">
-                      Saved Assessment
-                    </span>
-                    <span className="text-slate-400 text-xs">·</span>
-                    <span className="text-xs font-medium text-slate-600">
-                      {savedAssessment.metadata?.spaceName || "Room"}
+                    <span className="text-xs text-slate-600">
+                      {savedAssessment.metadata?.facilityName || "Custom Facility"} · {savedAssessment.metadata?.spaceName || "Room"}
                     </span>
                   </div>
                   <p className="text-xs text-slate-600">
@@ -181,9 +175,9 @@ export default function AssessmentsPage() {
                     Delete
                   </button>
                   <Link
-                    href="/"
+                    href="/workspace"
                     onClick={handleOpenUserAssessment}
-                    className="rounded-lg bg-[#1e7168] px-3.5 py-1.5 text-xs font-semibold text-white hover:bg-[#175b54] transition cursor-pointer"
+                    className="rounded-lg bg-[#0B514B] px-3.5 py-1.5 text-xs font-semibold text-white hover:bg-[#073D38] transition cursor-pointer"
                   >
                     Open in workspace &rarr;
                   </Link>
@@ -226,7 +220,7 @@ export default function AssessmentsPage() {
                       autoFocus
                       disabled={isDeleting}
                       onClick={() => setShowDeleteConfirm(false)}
-                      className="px-3 py-1.5 rounded-lg border border-slate-300 text-xs font-semibold text-slate-700 hover:bg-slate-50 transition cursor-pointer focus-visible:outline focus-visible:outline-2 focus-visible:outline-[#1e7168]"
+                      className="px-3 py-1.5 rounded-lg border border-slate-300 text-xs font-semibold text-slate-700 hover:bg-slate-50 transition cursor-pointer focus-visible:outline focus-visible:outline-2 focus-visible:outline-[#0B514B]"
                     >
                       Cancel
                     </button>
@@ -261,10 +255,10 @@ export default function AssessmentsPage() {
                 />
               </svg>
             </div>
-            <h2 className="mt-3 text-sm font-semibold text-[#192329]">
+            <h2 className="mt-3 text-sm font-semibold text-[#17252B]">
               No custom assessments saved yet
             </h2>
-            <p className="mt-1 text-xs text-[#64748b] max-w-md mx-auto">
+            <p className="mt-1 text-xs text-[#647078] max-w-md mx-auto">
               Draft assessments stay in memory until finalized. Start a new assessment to measure your space and save it to this device.
             </p>
             <div className="mt-4">

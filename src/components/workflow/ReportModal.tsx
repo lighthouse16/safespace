@@ -4,6 +4,7 @@ import React, { useEffect } from "react";
 import { useSafeSpaceStore } from "@/store/safespace-store";
 import { X, Printer, ShieldCheck, AlertCircle, ShieldAlert } from "lucide-react";
 import type { SpatialEvaluationSummary } from "@/lib/spatial";
+import { Floorplan2D } from "@/components/spatial/Floorplan2D";
 
 export interface ReportStatusPresentation {
   statusLabel: string;
@@ -105,6 +106,11 @@ export function ReportModal() {
     activeProfile,
     assessmentType,
     assessmentMetadata,
+    assessmentId,
+    routeWaypoints,
+    calibrationProvenance,
+    appliedCandidateId,
+    activeOptimizationResult,
     getSpatialFindings,
   } = useSafeSpaceStore();
 
@@ -124,6 +130,17 @@ export function ReportModal() {
   const { summary, findings } = evaluation;
   const deficits = findings.filter((f) => f.classification === "actionable-deficit");
   const reportStatus = resolveReportStatus(summary);
+  const appliedCandidate = appliedCandidateId
+    ? activeOptimizationResult?.candidates.find((candidate) => candidate.id === appliedCandidateId)
+    : null;
+  const routeMeasured = summary.routeFeasibility === "adequate" && summary.pathLengthM !== null;
+  const evaluatedAt = new Date(evaluation.evaluatedAt).toLocaleString();
+  const facilityName = isUserAssessment
+    ? assessmentMetadata?.facilityName || "Unnamed facility"
+    : "Queen Care Clinic";
+  const spaceName = isUserAssessment
+    ? assessmentMetadata?.spaceName || "Unnamed space"
+    : "Waiting & Consultation Corridor";
 
   return (
     <div
@@ -133,13 +150,19 @@ export function ReportModal() {
       onKeyDown={(e) => {
         if (e.key === "Escape") setReportModalOpen(false);
       }}
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-xs p-4 select-none"
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-xs p-4 select-none print:static print:block print:bg-white print:p-0"
     >
-      <div className="bg-white rounded-xl shadow-2xl border border-slate-200 max-w-2xl w-full max-h-[90vh] flex flex-col overflow-hidden">
+      <style>{`@media print {
+        body:has(#report-modal-title) * { visibility: hidden !important; }
+        body:has(#report-modal-title) #report-printable,
+        body:has(#report-modal-title) #report-printable * { visibility: visible !important; }
+        #report-printable { position: absolute; left: 0; top: 0; width: 100%; max-height: none !important; overflow: visible !important; }
+      }`}</style>
+      <div id="report-printable" className="bg-white rounded-xl shadow-2xl border border-slate-200 max-w-2xl w-full max-h-[90vh] flex flex-col overflow-hidden print:block print:max-w-none print:max-h-none print:overflow-visible print:rounded-none print:border-0 print:shadow-none">
         {/* Modal Header */}
         <div className="px-6 py-4 border-b border-slate-200 flex items-center justify-between bg-slate-50 shrink-0">
           <div className="flex items-center gap-2">
-            <ShieldCheck className="w-5 h-5 text-[#1e7168]" />
+            <ShieldCheck className="w-5 h-5 text-[#0B514B]" />
             <h2 id="report-modal-title" className="font-bold text-base text-slate-900">
               SafeSpace Assessment Summary Report
             </h2>
@@ -148,22 +171,20 @@ export function ReportModal() {
             type="button"
             onClick={() => setReportModalOpen(false)}
             aria-label="Close summary report"
-            className="p-1 rounded text-slate-400 hover:text-slate-700 hover:bg-slate-200 transition cursor-pointer focus-visible:outline focus-visible:outline-2 focus-visible:outline-[#1e7168]"
+            className="p-1 rounded text-slate-400 hover:text-slate-700 hover:bg-slate-200 transition cursor-pointer focus-visible:outline focus-visible:outline-2 focus-visible:outline-[#0B514B] print:hidden"
           >
             <X className="w-5 h-5" />
           </button>
         </div>
 
         {/* Printable Report Body */}
-        <div className="p-6 overflow-y-auto space-y-5 text-slate-800 text-sm">
+        <div className="p-6 overflow-y-auto space-y-5 text-slate-800 text-sm print:overflow-visible print:p-4">
           {/* Metadata Grid */}
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 p-3.5 bg-slate-50 rounded-lg border border-slate-100 text-xs font-mono">
             <div>
               <span className="text-slate-400 block text-[10px]">FACILITY</span>
               <span className="font-semibold text-slate-900">
-                {isUserAssessment
-                  ? assessmentMetadata?.facilityName || "Custom Assessment"
-                  : "Queen Care Clinic"}{" "}
+                {facilityName}{" "}
                 <span className="font-normal text-[10px] text-slate-500">
                   ({isUserAssessment ? "User Assessment" : "Demo Fixture"})
                 </span>
@@ -171,15 +192,11 @@ export function ReportModal() {
             </div>
             <div>
               <span className="text-slate-400 block text-[10px]">ASSESSED SPACE</span>
-              <span className="font-semibold text-slate-900">
-                {isUserAssessment
-                  ? assessmentMetadata?.spaceName || "Calibrated Space"
-                  : "Waiting & Consultation Corridor"}
-              </span>
+              <span className="font-semibold text-slate-900">{spaceName}</span>
             </div>
             <div>
               <span className="text-slate-400 block text-[10px]">MOBILITY PROFILE</span>
-              <span className="font-semibold text-[#1e7168]">{activeProfile.name}</span>
+              <span className="font-semibold text-[#0B514B]">{activeProfile.name}</span>
             </div>
             <div>
               <span className="text-slate-400 block text-[10px]">EVALUATION STATUS</span>
@@ -188,6 +205,22 @@ export function ReportModal() {
               </span>
             </div>
           </div>
+
+          <div className="grid gap-2 text-xs text-slate-600 sm:grid-cols-2">
+            <p><strong>Assessment:</strong> {assessmentMetadata?.name || (isUserAssessment ? "User assessment" : "Demo fixture")} · {isUserAssessment ? assessmentId : "Demo"}</p>
+            <p><strong>Evaluated:</strong> {evaluatedAt} (local time)</p>
+            <p><strong>Scope:</strong> 2D boundary, authored furniture footprints and route; {calibrationProvenance ? `calibrated from ${calibrationProvenance.realLength} ${calibrationProvenance.unit}` : "demo geometry, not site verified"}.</p>
+            <p><strong>Route:</strong> {routeWaypoints.length >= 2 ? routeWaypoints.map((waypoint) => waypoint.name).join(" → ") : "Unconfigured (at least two checkpoints needed)"}</p>
+            {isUserAssessment && assessmentMetadata?.environmentType && <p><strong>Environment:</strong> {assessmentMetadata.environmentType}</p>}
+          </div>
+
+          <figure className="break-inside-avoid">
+            <figcaption className="font-bold text-xs uppercase tracking-wider text-slate-500 mb-2">Assessed floorplan · current layout</figcaption>
+            <div className="h-60 print:h-[60mm]">
+              <Floorplan2D readOnly hideControls overrideStage="routes" className="print:border-0" />
+            </div>
+            <p className="mt-1 text-[11px] text-slate-500">Live floorplan preview; depicted route comes from current workspace, not a certified site survey.</p>
+          </figure>
 
           {/* Objective Spatial Evidence Table */}
           <div>
@@ -207,22 +240,22 @@ export function ReportModal() {
                 <tbody className="divide-y divide-slate-100 font-mono">
                   <tr>
                     <td className="p-2.5 font-sans font-medium text-slate-800">
-                      Minimum Walking Clearance
+                      Minimum Route Clearance Radius
                     </td>
                     <td
                       className={`p-2.5 font-bold ${
-                        summary.minimumClearanceCm !== null &&
+                        routeMeasured && summary.minimumClearanceCm !== null &&
                         summary.requiredClearanceRadiusCm !== null &&
                         summary.minimumClearanceCm >= summary.requiredClearanceRadiusCm
                           ? "text-emerald-700"
-                          : summary.minimumClearanceCm !== null && summary.minimumClearanceCm > 0
+                          : routeMeasured && summary.minimumClearanceCm !== null
                           ? "text-red-600"
                           : "text-slate-400"
                       }`}
                     >
-                      {summary.minimumClearanceCm !== null && summary.minimumClearanceCm > 0
+                      {routeMeasured && summary.minimumClearanceCm !== null
                         ? `${summary.minimumClearanceCm} cm`
-                        : "—"}
+                        : "Not measured"}
                     </td>
                     <td className="p-2.5 text-slate-600 font-sans">
                       {summary.requiredClearanceRadiusCm !== null
@@ -240,13 +273,11 @@ export function ReportModal() {
                       Critical Route Length
                     </td>
                     <td className="p-2.5 text-slate-800 font-bold">
-                      {summary.pathLengthM !== null && summary.pathLengthM > 0
-                        ? `${summary.pathLengthM} m`
-                        : "—"}
+                      {routeMeasured ? `${summary.pathLengthM} m` : "Not measured"}
                     </td>
                     <td className="p-2.5 text-slate-600 font-sans">Authored checkpoints</td>
                     <td className="p-2.5 font-sans text-slate-500">
-                      {summary.pathLengthM !== null ? "Computed Path" : "Uncomputed"}
+                      {routeMeasured ? "Computed Path" : "Uncomputed"}
                     </td>
                   </tr>
                   <tr>
@@ -308,8 +339,13 @@ export function ReportModal() {
                       </span>
                     </div>
                     <p className="text-slate-600 text-[11px]">{d.description}</p>
+                    <p className="text-slate-600 text-[11px]">
+                      Evidence ({d.evidence.source}): {d.evidence.rawEvidenceString}
+                      {d.requirement && ` · Target: ${d.requirement.targetValue} ${d.requirement.unit} (${d.requirement.sourceDescription})`}
+                    </p>
+                    {d.uncertaintyExplanation && <p className="text-slate-500 text-[11px]">Limit: {d.uncertaintyExplanation}</p>}
                     {d.suggestedAction && (
-                      <p className="text-[#1e7168] text-[11px] font-medium pt-0.5">
+                      <p className="text-[#0B514B] text-[11px] font-medium pt-0.5">
                         Recommendation: {d.suggestedAction.label}
                       </p>
                     )}
@@ -318,6 +354,21 @@ export function ReportModal() {
               </div>
             </div>
           )}
+
+          <section className="break-inside-avoid text-xs">
+            <h3 className="font-bold uppercase tracking-wider text-slate-500 mb-2">Improvement state</h3>
+            {appliedCandidate ? (
+              <div className="rounded-lg border border-slate-200 p-3 space-y-2">
+                <p><strong>Applied layout candidate:</strong> {appliedCandidate.name} · {appliedCandidate.moveCount} furniture move(s). Digital layout only; onsite work not verified.</p>
+                <ul className="list-disc pl-5">
+                  {appliedCandidate.moves.map((move) => (
+                    <li key={move.furnitureId}>{move.furnitureName}: ({move.fromPosition.x}, {move.fromPosition.y}) cm to ({move.toPosition.x}, {move.toPosition.y}) cm.</li>
+                  ))}
+                </ul>
+                <p>Baseline: {activeOptimizationResult?.baselineEvaluation.summary.routeFeasibility}; {activeOptimizationResult?.baselineEvaluation.summary.actionableDeficitsCount} deficit(s). Current: {summary.routeFeasibility}; {summary.actionableDeficitsCount} deficit(s).</p>
+              </div>
+            ) : <p>No optimization candidate applied to current assessment. Suggested actions above remain recommendations, not completed work.</p>}
+          </section>
 
           {/* Unassessed Environmental Scope Boundaries */}
           <div>
@@ -352,7 +403,7 @@ export function ReportModal() {
         </div>
 
         {/* Modal Actions */}
-        <div className="px-6 py-3 border-t border-slate-200 bg-slate-50 flex items-center justify-between shrink-0">
+        <div className="px-6 py-3 border-t border-slate-200 bg-slate-50 flex items-center justify-between shrink-0 print:hidden">
           <button
             onClick={() => window.print()}
             className="px-3.5 py-1.5 border border-slate-300 rounded text-xs font-semibold text-slate-700 hover:bg-slate-100 flex items-center gap-1.5 cursor-pointer shadow-xs"
@@ -363,7 +414,7 @@ export function ReportModal() {
 
           <button
             onClick={() => setReportModalOpen(false)}
-            className="px-4 py-1.5 bg-[#1e7168] hover:bg-[#185e56] text-white rounded text-xs font-semibold transition cursor-pointer shadow-xs"
+            className="px-4 py-1.5 bg-[#0B514B] hover:bg-[#073D38] text-white rounded text-xs font-semibold transition cursor-pointer shadow-xs"
           >
             Done
           </button>

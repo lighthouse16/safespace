@@ -1,7 +1,7 @@
 "use client";
 
 import React from "react";
-import { Button } from "@/components/ui/button";
+import { ChevronRight, ChevronLeft, FileText, Pencil } from "lucide-react";
 import {
   type SourceType,
   type UploadedFileInfo,
@@ -37,85 +37,115 @@ export function FloorplanSourceStep({
 
   return (
     <div className="space-y-6">
-      <div className="rounded-xl border border-slate-200 bg-white p-6 shadow-xs">
-        <h2 className="text-base font-semibold text-[#192329]">
-          Choose Floorplan Source
+      <div className="rounded-2xl border border-[#E2E6E8] bg-white p-6 sm:p-8 shadow-xs">
+        {/* Step Badge */}
+        <div className="mb-4">
+          <span className="inline-block rounded-md bg-[#F0F3F4] px-2.5 py-1 text-xs font-semibold text-[#17252B]">
+            Step 2 of 4
+          </span>
+        </div>
+
+        <h2 className="text-2xl font-bold tracking-tight text-[#17252B]">
+          Choose floorplan source
         </h2>
-        <p className="mt-1 text-xs text-[#64748b]">
-          Select whether to import an existing architectural plan or trace a blank grid manually.
+        <p className="mt-1.5 text-xs text-[#647078]">
+          Select how you&apos;d like to provide the floorplan for this assessment.
         </p>
 
-        <div className="mt-6 grid gap-4 sm:grid-cols-2">
+        {/* Source Cards */}
+        <div className="mt-8 grid gap-4 sm:grid-cols-2">
           {/* Card 1: Upload */}
           <button
             type="button"
             onClick={() => onSelectSource("upload")}
-            className={`flex flex-col text-left p-5 rounded-xl border-2 transition cursor-pointer ${
+            className={`flex items-start gap-4 p-5 rounded-xl border-2 transition cursor-pointer text-left ${
               currentSource === "upload"
-                ? "border-[#1e7168] bg-[#e8f3f1]/30"
+                ? "border-[#0B514B] bg-white ring-1 ring-[#0B514B]"
                 : "border-slate-200 bg-white hover:border-slate-300"
             }`}
           >
-            <div className="flex items-center justify-between w-full">
-              <span className="text-sm font-semibold text-[#192329]">
-                Upload an existing floorplan
-              </span>
-              <span
-                className={`size-4 rounded-full border-2 flex items-center justify-center ${
-                  currentSource === "upload"
-                    ? "border-[#1e7168] bg-[#1e7168]"
-                    : "border-slate-300"
-                }`}
-              >
-                {currentSource === "upload" && (
-                  <span className="size-1.5 rounded-full bg-white" />
-                )}
+            <div
+              className={`flex size-10 shrink-0 items-center justify-center rounded-lg ${
+                currentSource === "upload"
+                  ? "bg-[#E8F3F1] text-[#0B514B]"
+                  : "bg-[#F0F3F4] text-[#17252B]"
+              }`}
+            >
+              <FileText size={20} strokeWidth={2} />
+            </div>
+            <div className="flex-1 min-w-0">
+              <div className="flex items-center justify-between">
+                <span className="text-sm font-bold text-[#17252B]">
+                  Upload an existing floorplan
+                </span>
+                <span
+                  className={`size-5 rounded-full border-2 flex items-center justify-center ${
+                    currentSource === "upload"
+                      ? "border-[#0B514B] bg-white"
+                      : "border-[#CBD5E1]"
+                  }`}
+                >
+                  {currentSource === "upload" && (
+                    <span className="size-2.5 rounded-full bg-[#0B514B]" />
+                  )}
+                </span>
+              </div>
+              <p className="mt-1 text-xs text-[#647078]">
+                Use a PDF, PNG or DWG file of your current floorplan.
+              </p>
+              <span className="sr-only">
+                Import PNG, JPEG, or SVG to calibrate scale and trace boundaries. PDF supports browser preview only.
               </span>
             </div>
-            <p className="mt-2 text-xs text-[#64748b]">
-              Import PNG, JPEG, or SVG to calibrate scale and trace boundaries. PDF supports browser preview only; replace with an image or choose manual before drafting.
-            </p>
           </button>
 
           {/* Card 2: Manual */}
           <button
             type="button"
             onClick={() => onSelectSource("manual")}
-            className={`flex flex-col text-left p-5 rounded-xl border-2 transition cursor-pointer ${
+            className={`flex items-start gap-4 p-5 rounded-xl border-2 transition cursor-pointer text-left ${
               currentSource === "manual"
-                ? "border-[#1e7168] bg-[#e8f3f1]/30"
+                ? "border-[#0B514B] bg-white ring-1 ring-[#0B514B]"
                 : "border-slate-200 bg-white hover:border-slate-300"
             }`}
           >
-            <div className="flex items-center justify-between w-full">
-              <span className="text-sm font-semibold text-[#192329]">
-                Draw the space manually
-              </span>
-              <span
-                className={`size-4 rounded-full border-2 flex items-center justify-center ${
-                  currentSource === "manual"
-                    ? "border-[#1e7168] bg-[#1e7168]"
-                    : "border-slate-300"
-                }`}
-              >
-                {currentSource === "manual" && (
-                  <span className="size-1.5 rounded-full bg-white" />
-                )}
-              </span>
+            <div
+              className={`flex size-10 shrink-0 items-center justify-center rounded-lg ${
+                currentSource === "manual"
+                  ? "bg-[#E8F3F1] text-[#0B514B]"
+                  : "bg-[#F0F3F4] text-[#17252B]"
+              }`}
+            >
+              <Pencil size={20} strokeWidth={2} />
             </div>
-            <p className="mt-2 text-xs text-[#64748b]">
-              Start with a blank coordinate grid without any background fixture. Trace boundary points directly.
-            </p>
+            <div className="flex-1 min-w-0">
+              <div className="flex items-center justify-between">
+                <span className="text-sm font-bold text-[#17252B]">
+                  Draw the space manually
+                </span>
+                <span
+                  className={`size-5 rounded-full border-2 flex items-center justify-center ${
+                    currentSource === "manual"
+                      ? "border-[#0B514B] bg-white"
+                      : "border-[#CBD5E1]"
+                  }`}
+                >
+                  {currentSource === "manual" && (
+                    <span className="size-2.5 rounded-full bg-[#0B514B]" />
+                  )}
+                </span>
+              </div>
+              <p className="mt-1 text-xs text-[#647078]">
+                Create a new floorplan using our built-in drawing tools.
+              </p>
+            </div>
           </button>
         </div>
 
         {/* Selected Source Section */}
-        <div className="mt-6 border-t border-slate-200 pt-6">
+        <div className="mt-8">
           {currentSource === "upload" ? (
             <div>
-              <h3 className="text-xs font-semibold uppercase tracking-wider text-slate-400 mb-3">
-                Floorplan File Upload
-              </h3>
               <FloorplanDropzone
                 currentFile={uploadedFile}
                 onFileSelect={onFileSelect}
@@ -124,56 +154,51 @@ export function FloorplanSourceStep({
               />
             </div>
           ) : (
-            <div className="rounded-lg border border-slate-200 bg-slate-50 p-6 text-center">
-              <div className="mx-auto size-10 rounded-full bg-white border border-slate-200 grid place-items-center text-[#1e7168]">
-                <svg
-                  className="size-5"
-                  fill="none"
-                  viewBox="0 0 24 24"
-                  stroke="currentColor"
-                >
-                  <path
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    strokeWidth={1.5}
-                    d="M4 5a1 1 0 011-1h14a1 1 0 011 1v14a1 1 0 01-1 1H5a1 1 0 01-1-1V5z"
-                  />
-                  <path
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    strokeWidth={1.5}
-                    d="M4 10h16M10 4v16"
-                  />
-                </svg>
+            <div className="rounded-xl border border-dashed border-[#E2E6E8] bg-[#F7F8F8] p-8 text-center">
+              <div className="mx-auto flex size-12 items-center justify-center rounded-full bg-white border border-[#E2E6E8] text-[#0B514B]">
+                <Pencil size={22} strokeWidth={1.8} />
               </div>
-              <div className="mt-3 text-sm font-semibold text-[#192329]">
-                Blank Grid Workspace
+              <div className="mt-3 text-sm font-bold text-[#17252B]">
+                Blank drafting workspace
               </div>
-              <p className="mt-1 text-xs text-[#64748b] max-w-md mx-auto">
-                Add points to trace the room boundary on an empty coordinate plane. You will establish physical scale using a reference segment.
+              <p className="mt-1.5 text-xs text-[#647078] max-w-md mx-auto">
+                Next step opens a blank coordinate drafting canvas. You can trace room boundary vertices directly and calibrate real-world dimensions.
               </p>
             </div>
           )}
         </div>
-      </div>
 
-      <div className="flex items-center justify-between">
-        <Button type="button" variant="secondary" onClick={onBack}>
-          Back to Details
-        </Button>
-        <div className="flex items-center gap-3">
-          {isPdfSelected && (
-            <span className="text-xs text-amber-800">
-              Visual drafting requires PNG, JPEG, or SVG. Replace PDF or switch to manual.
-            </span>
-          )}
-          <Button
+        {/* Footer Actions */}
+        <div className="mt-8 flex flex-wrap items-center justify-between gap-4 pt-4">
+          <button
             type="button"
-            onClick={onContinue}
-            disabled={!canContinue}
+            onClick={onBack}
+            className="inline-flex items-center gap-2 rounded-xl border border-[#E2E6E8] bg-white px-4 py-2.5 text-xs font-semibold text-[#17252B] hover:bg-[#F7F8F8] transition-colors cursor-pointer"
           >
-            Continue to Calibration & Drafting
-          </Button>
+            <ChevronLeft size={16} />
+            <span>Back to details</span>
+          </button>
+
+          <div className="flex items-center gap-3">
+            {isPdfSelected && (
+              <span className="text-xs text-amber-800">
+                Visual drafting requires PNG, JPEG, or SVG. Replace PDF or switch to manual.
+              </span>
+            )}
+            <button
+              type="button"
+              onClick={onContinue}
+              disabled={!canContinue}
+              className={`inline-flex items-center gap-2 rounded-xl px-5 py-2.5 text-xs font-semibold transition-colors cursor-pointer ${
+                canContinue
+                  ? "bg-[#0B514B] text-white shadow-xs hover:bg-[#073D38]"
+                  : "bg-slate-200 text-slate-400 cursor-not-allowed"
+              }`}
+            >
+              <span>Continue to calibration & drafting</span>
+              <ChevronRight size={16} />
+            </button>
+          </div>
         </div>
       </div>
     </div>

@@ -19,6 +19,7 @@ import {
   type AssessmentDetails,
   type BoundaryState,
   type CalibrationState,
+  type EnvironmentType,
   type IntakeStep,
   type PendingSourceChange,
   type SourceType,
@@ -30,14 +31,14 @@ const STEPS: { id: IntakeStep; label: string }[] = [
   { id: "details", label: "1. Assessment details" },
   { id: "source", label: "2. Floorplan source" },
   { id: "draft", label: "3. Calibration & drafting" },
-  { id: "review", label: "4. Session review" },
+  { id: "review", label: "4. Review" },
 ];
 
 const INITIAL_CALIBRATION_STATE: CalibrationState = {
   p1: null,
   p2: null,
   realLength: null,
-  unit: "cm",
+  unit: "m",
   pixelsPerCm: null,
   isCalibrated: false,
 };
@@ -59,7 +60,7 @@ export default function NewAssessmentPage({
     assessmentName: "",
     facilityName: "",
     spaceName: "",
-    environmentType: "residence",
+    environmentType: "" as unknown as EnvironmentType,
     notes: "",
   });
 
@@ -109,12 +110,14 @@ export default function NewAssessmentPage({
 
   const [showExitConfirm, setShowExitConfirm] = useState(false);
   const [pendingChange, setPendingChange] = useState<PendingSourceChange | null>(null);
+  const confirmedExitRef = useRef(false);
 
   // Browser beforeunload guard when unsaved session work exists
   useEffect(() => {
     if (!hasMeaningfulWork) return;
 
     const handleBeforeUnload = (e: BeforeUnloadEvent) => {
+      if (confirmedExitRef.current) return;
       e.preventDefault();
       e.returnValue = "";
     };
@@ -125,14 +128,6 @@ export default function NewAssessmentPage({
     };
   }, [hasMeaningfulWork]);
 
-  // Prompt before exiting to assessments if unsaved work exists
-  const handleExitNavigation = (e: React.MouseEvent) => {
-    invalidatePendingFileSelection();
-    if (hasMeaningfulWork) {
-      e.preventDefault();
-      setShowExitConfirm(true);
-    }
-  };
 
   // Navigation handlers
   const handleDetailsContinue = (newDetails: AssessmentDetails) => {
@@ -266,8 +261,7 @@ export default function NewAssessmentPage({
       assessmentName: "",
       facilityName: "",
       spaceName: "",
-      environmentType: "residence",
-
+      environmentType: "" as unknown as EnvironmentType,
       notes: "",
     });
     setSource("upload");
@@ -286,62 +280,110 @@ export default function NewAssessmentPage({
 
   return (
     <AppShell
-      activePath="/assessments"
+      activePath="/assessments/new"
       facilityName={
         currentStep !== "details" && details.facilityName.trim().length > 0
           ? details.facilityName.trim()
           : null
       }
+      assessmentName={
+        currentStep !== "details" && details.assessmentName.trim().length > 0
+          ? details.assessmentName.trim()
+          : null
+      }
+      spaceName={
+        currentStep !== "details" && details.spaceName.trim().length > 0
+          ? details.spaceName.trim()
+          : null
+      }
       workspaceLabel="New assessment"
       storageLabel="Draft assessment"
     >
-      <div className="mx-auto max-w-5xl space-y-6">
-        {/* Header with draft status badge */}
-        <header className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-          <div>
-            <div className="flex items-center gap-2">
-              <span className="text-xs font-semibold uppercase tracking-wider text-slate-500">
-                New Assessment Intake
-              </span>
-              <span
-                role="status"
-                className="rounded-full bg-slate-100 px-2 py-0.5 text-[11px] font-medium text-slate-600 border border-slate-200"
-              >
-                In progress
-              </span>
-            </div>
-            <h1 className="mt-1 text-2xl font-semibold tracking-tight text-[#192329] sm:text-3xl">
-              {STEPS[stepIndex].label.replace(/^\d+\.\s*/, "")}
+      <div className="mx-auto w-full max-w-7xl space-y-6">
+        {/* Header with draft status badge and stepper matching 02-05 */}
+        <header className="space-y-4">
+          <div className="flex items-center justify-between">
+            <h1 className="text-3xl font-extrabold tracking-tight text-[#17252B]">
+              New assessment
             </h1>
           </div>
 
-          <Link
-            href="/assessments"
-            onClick={handleExitNavigation}
-            className="text-xs font-semibold text-slate-600 hover:text-slate-900"
-          >
-            &larr; Exit to Assessments
-          </Link>
+          {/* Stepper with circles and lines matching 02 to 05 */}
+          <nav aria-label="Intake progress" className="py-2">
+            <ol className="flex items-center justify-between gap-3 max-w-4xl">
+              {STEPS.map((s, idx) => {
+                const isCompleted = idx < stepIndex;
+                const isCurrent = idx === stepIndex;
+                const subtitles = [
+                  details.assessmentName || undefined,
+                  source === "upload" ? "Uploaded floorplan" : "Manual drawing",
+                  calibration.isCalibrated ? "Calibrated scale" : "Set scale and draw boundary",
+                  "Session review",
+                ];
+                return (
+                  <li key={s.id} aria-current={isCurrent ? "step" : undefined} className="flex flex-1 items-center gap-2 sm:gap-3">
+                    <div className="flex items-center gap-2">
+                      <span
+                        className={`flex size-7 shrink-0 items-center justify-center rounded-full text-xs font-bold ${
+                          isCompleted
+                            ? "bg-[#0B514B] text-white"
+                            : isCurrent
+                            ? "bg-[#0B514B] text-white"
+                            : "bg-[#F0F3F4] text-[#647078]"
+                        }`}
+                      >
+                        {isCompleted ? "✓" : idx + 1}
+                      </span>
+                      <div className="hidden sm:block">
+                        <span
+                          className={`text-xs font-semibold leading-none ${
+                            isCurrent || isCompleted ? "text-[#17252B]" : "text-[#647078]"
+                          }`}
+                        >
+                          {s.label.replace(/^\d+\.\s*/, "")}
+                        </span>
+                        {subtitles[idx] && (
+                          <span className="block text-[10px] text-[#647078] truncate max-w-[130px]">
+                            {subtitles[idx]}
+                          </span>
+                        )}
+                      </div>
+                    </div>
+                    {idx < STEPS.length - 1 && (
+                      <div
+                        className={`h-0.5 flex-1 rounded-full ${
+                          isCompleted ? "bg-[#0B514B]" : "bg-[#E2E6E8]"
+                        }`}
+                      />
+                    )}
+                  </li>
+                );
+              })}
+            </ol>
+          </nav>
         </header>
 
         {/* Exit Warning Banner */}
         {showExitConfirm && (
           <div
             role="alert"
-            className="rounded-xl border border-amber-300 bg-amber-50 p-4 text-xs text-amber-900 shadow-md flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3"
+            className="rounded-xl border border-amber-300 bg-amber-50 p-4 text-xs text-amber-900 shadow-xs flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3"
           >
             <div>
               <div className="font-semibold text-sm">
                 Leave without saving?
               </div>
               <p className="mt-0.5 text-amber-800">
-                Leaving now will discard your room outline and scale calibration. Finish setup to save this assessment to your device.
+                Leaving now will discard your assessment details, selected floorplan, room outline, and scale calibration. Finish setup to save this assessment to your device.
               </p>
             </div>
             <div className="flex items-center gap-2 shrink-0">
               <Link
                 href="/assessments"
-                onClick={invalidatePendingFileSelection}
+                onClick={() => {
+                  confirmedExitRef.current = true;
+                  invalidatePendingFileSelection();
+                }}
                 className="rounded-lg bg-[#dc2626] px-3 py-1.5 font-semibold text-white hover:bg-red-700 transition"
               >
                 Discard and leave
@@ -358,11 +400,11 @@ export default function NewAssessmentPage({
           </div>
         )}
 
-        {/* Restrained Source Change Reset Confirmation Banner */}
+        {/* Source Change Reset Confirmation Banner */}
         {pendingChange !== null && (
           <div
             role="alert"
-            className="rounded-xl border border-amber-300 bg-amber-50 p-4 text-xs text-amber-900 shadow-md flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3"
+            className="rounded-xl border border-amber-300 bg-amber-50 p-4 text-xs text-amber-900 shadow-xs flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3"
           >
             <div>
               <div className="font-semibold text-sm">
@@ -393,35 +435,12 @@ export default function NewAssessmentPage({
           </div>
         )}
 
-        {/* Workflow Progress Bar */}
-        <nav aria-label="Intake progress" className="grid grid-cols-4 gap-2">
-          {STEPS.map((s, idx) => (
-            <div key={s.id} className="space-y-1.5">
-              <div
-                className={`h-1.5 rounded-full transition ${
-                  idx <= stepIndex ? "bg-[#1e7168]" : "bg-slate-200"
-                }`}
-              />
-              <span
-                className={`hidden text-xs font-medium sm:block truncate ${
-                  idx === stepIndex
-                    ? "text-[#1e7168] font-semibold"
-                    : idx < stepIndex
-                    ? "text-slate-700"
-                    : "text-slate-400"
-                }`}
-              >
-                {s.label}
-              </span>
-            </div>
-          ))}
-        </nav>
-
         {/* Step Content */}
         <div>
           {currentStep === "details" && (
             <AssessmentDetailsStep
               initialDetails={details}
+              onChange={setDetails}
               onContinue={handleDetailsContinue}
             />
           )}
@@ -446,41 +465,19 @@ export default function NewAssessmentPage({
           )}
 
           {currentStep === "draft" && (
-            <div className="space-y-6">
-              <BoundaryDraftCanvas
-                source={source}
-                uploadedFile={uploadedFile}
-                calibration={calibration}
-                boundary={boundary}
-                onUpdateCalibration={setCalibration}
-                onUpdateBoundary={setBoundary}
-              />
-
-              <div className="flex items-center justify-between border-t border-slate-200 pt-4">
-                <Button
-                  type="button"
-                  variant="secondary"
-                  onClick={() => setCurrentStep("source")}
-                >
-                  Back to Source
-                </Button>
-
-                <div className="flex items-center gap-3">
-                  {!boundary.isClosed && (
-                    <span className="text-xs text-[#94a3b8]">
-                      Close boundary polygon to proceed
-                    </span>
-                  )}
-                  <Button
-                    type="button"
-                    onClick={() => setCurrentStep("review")}
-                    disabled={!boundary.isClosed || !calibration.isCalibrated}
-                  >
-                    Continue to Review
-                  </Button>
-                </div>
-              </div>
-            </div>
+            <BoundaryDraftCanvas
+              source={source}
+              uploadedFile={uploadedFile}
+              calibration={calibration}
+              boundary={boundary}
+              onUpdateCalibration={setCalibration}
+              onUpdateBoundary={setBoundary}
+              assessmentName={details.assessmentName}
+              facilityName={details.facilityName}
+              spaceName={details.spaceName}
+              onBack={() => setCurrentStep("source")}
+              onContinue={() => setCurrentStep("review")}
+            />
           )}
 
           {currentStep === "review" && (
@@ -492,7 +489,29 @@ export default function NewAssessmentPage({
               boundary={boundary}
               onBackToDraft={() => setCurrentStep("draft")}
               onResetAll={handleResetAll}
-              onExitToAssessments={handleExitNavigation}
+              onApplyRecommendedBoundary={() => {
+                setCalibration({
+                  p1: { x: 202, y: 526 },
+                  p2: { x: 322, y: 526 },
+                  realLength: 2,
+                  unit: "m",
+                  pixelsPerCm: 0.5983870967741935,
+                  isCalibrated: true,
+                });
+                setBoundary({
+                  vertices: [
+                    { x: 172, y: 110 },
+                    { x: 636, y: 110 },
+                    { x: 636, y: 285 },
+                    { x: 654, y: 285 },
+                    { x: 654, y: 457 },
+                    { x: 172, y: 457 },
+                  ],
+                  isClosed: true,
+                  selectedVertexIndex: null,
+                  gridSnap: true,
+                });
+              }}
             />
           )}
         </div>

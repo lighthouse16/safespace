@@ -358,7 +358,7 @@ export function Floorplan2D({
       {/* Floating Canvas Controls */}
       {!hideControls && (
         <div className="absolute top-2.5 left-2.5 z-10 flex items-center gap-1.5 bg-white/95 backdrop-blur-sm border border-[#e2e8e4] px-2 py-1 rounded text-xs text-[#2c3d3a]">
-          <span className="font-semibold text-[#1e7168]">
+          <span className="font-semibold text-[#0B514B]">
             {isBefore ? "BEFORE PLAN" : "2D PLAN"}
           </span>
           <span className="text-[#a4b2ad]">|</span>
@@ -367,7 +367,7 @@ export function Floorplan2D({
             aria-label="Toggle grid visibility"
             onClick={() => setShowGrid((v) => !v)}
             className={`min-h-[28px] px-2 py-0.5 rounded transition flex items-center text-xs ${
-              showGrid ? "bg-[#e8f3f1] text-[#1e7168] font-medium" : "text-[#627571] hover:bg-slate-100"
+              showGrid ? "bg-[#e8f3f1] text-[#0B514B] font-medium" : "text-[#627571] hover:bg-slate-100"
             }`}
           >
             Grid
@@ -377,7 +377,7 @@ export function Floorplan2D({
             aria-label="Toggle snap to grid"
             onClick={() => setSnapToGrid((v) => !v)}
             className={`min-h-[28px] px-2 py-0.5 rounded transition flex items-center text-xs ${
-              snapToGrid ? "bg-[#e8f3f1] text-[#1e7168] font-medium" : "text-[#627571] hover:bg-slate-100"
+              snapToGrid ? "bg-[#e8f3f1] text-[#0B514B] font-medium" : "text-[#627571] hover:bg-slate-100"
             }`}
           >
             Snap
@@ -387,7 +387,7 @@ export function Floorplan2D({
             aria-label="Toggle dimension indicators"
             onClick={() => setShowDimensions((v) => !v)}
             className={`min-h-[28px] px-2 py-0.5 rounded transition flex items-center text-xs ${
-              showDimensions ? "bg-[#e8f3f1] text-[#1e7168] font-medium" : "text-[#627571] hover:bg-slate-100"
+              showDimensions ? "bg-[#e8f3f1] text-[#0B514B] font-medium" : "text-[#627571] hover:bg-slate-100"
             }`}
           >
             Dim
@@ -402,7 +402,7 @@ export function Floorplan2D({
             type="button"
             onClick={handleZoomIn}
             aria-label="Zoom in"
-            className="min-h-[28px] min-w-[28px] flex items-center justify-center p-1 text-[#4a5e59] hover:text-[#1e7168] hover:bg-slate-100 rounded transition"
+            className="min-h-[28px] min-w-[28px] flex items-center justify-center p-1 text-[#4a5e59] hover:text-[#0B514B] hover:bg-slate-100 rounded transition"
           >
             <ZoomIn className="w-3.5 h-3.5" />
           </button>
@@ -413,7 +413,7 @@ export function Floorplan2D({
             type="button"
             onClick={handleZoomOut}
             aria-label="Zoom out"
-            className="min-h-[28px] min-w-[28px] flex items-center justify-center p-1 text-[#4a5e59] hover:text-[#1e7168] hover:bg-slate-100 rounded transition"
+            className="min-h-[28px] min-w-[28px] flex items-center justify-center p-1 text-[#4a5e59] hover:text-[#0B514B] hover:bg-slate-100 rounded transition"
           >
             <ZoomOut className="w-3.5 h-3.5" />
           </button>
@@ -421,27 +421,13 @@ export function Floorplan2D({
             type="button"
             onClick={handleFitView}
             aria-label="Fit view to room"
-            className="min-h-[28px] min-w-[28px] flex items-center justify-center p-1 text-[#4a5e59] hover:text-[#1e7168] hover:bg-slate-100 rounded transition"
+            className="min-h-[28px] min-w-[28px] flex items-center justify-center p-1 text-[#4a5e59] hover:text-[#0B514B] hover:bg-slate-100 rounded transition"
           >
             <Maximize2 className="w-3.5 h-3.5" />
           </button>
         </div>
       )}
 
-      {/* Scale bar indicator */}
-      {!hideControls && (
-        <div className="absolute bottom-2.5 left-2.5 z-10 flex items-center gap-2 bg-white/90 border border-[#e2e8e4] px-2 py-0.5 rounded text-[9px] text-[#556964] font-mono">
-          <div className="flex flex-col items-center">
-            <div className="flex items-center">
-              <span className="w-px h-1 bg-[#556964]"></span>
-              <div className="w-[40px] h-0.5 bg-[#556964]"></div>
-              <span className="w-px h-1 bg-[#556964]"></span>
-            </div>
-            <span>1.0 m</span>
-          </div>
-          <span>Scale 1:50</span>
-        </div>
-      )}
 
       {/* SVG Canvas Area */}
       <svg
@@ -464,25 +450,15 @@ export function Floorplan2D({
             <path d="M 100 0 L 0 0 0 100" fill="none" stroke="#d5ded9" strokeWidth="1" />
           </pattern>
 
-          <radialGradient id="heat-high" cx="50%" cy="50%" r="50%">
-            <stop offset="0%" stopColor="#dc2626" stopOpacity="0.45" />
-            <stop offset="60%" stopColor="#dc2626" stopOpacity="0.18" />
-            <stop offset="100%" stopColor="#dc2626" stopOpacity="0" />
-          </radialGradient>
-          <radialGradient id="heat-med" cx="50%" cy="50%" r="50%">
-            <stop offset="0%" stopColor="#d97706" stopOpacity="0.38" />
-            <stop offset="70%" stopColor="#d97706" stopOpacity="0.12" />
-            <stop offset="100%" stopColor="#d97706" stopOpacity="0" />
-          </radialGradient>
 
           <marker id="route-arrow" viewBox="0 0 10 10" refX="5" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
-            <path d="M 0 1.5 L 8 5 L 0 8.5 z" fill="#1d63b8" />
+            <path d="M 0 1.5 L 8 5 L 0 8.5 z" fill="#0B514B" />
           </marker>
           <marker id="route-arrow-pinch" viewBox="0 0 10 10" refX="5" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
             <path d="M 0 1.5 L 8 5 L 0 8.5 z" fill="#dc2626" />
           </marker>
           <marker id="move-arrow" viewBox="0 0 10 10" refX="5" refY="5" markerWidth="5" markerHeight="5" orient="auto-start-reverse">
-            <path d="M 0 1.5 L 8 5 L 0 8.5 z" fill="#0f766e" />
+            <path d="M 0 1.5 L 8 5 L 0 8.5 z" fill="#0B514B" />
           </marker>
         </defs>
 
@@ -510,14 +486,14 @@ export function Floorplan2D({
               <polygon
                 points={canonicalBoundary.map((p) => `${p.x},${p.y}`).join(" ")}
                 fill={floorplanImageBlobUrl ? "none" : "#f4f8f6"}
-                stroke="#0f766e"
+                stroke="#0B514B"
                 strokeWidth="2.5"
                 strokeLinejoin="round"
               />
               <text
                 x={(userBounds?.minX ?? 0) + 16}
                 y={(userBounds?.minY ?? 0) + 24}
-                fill="#0f766e"
+                fill="#0B514B"
                 fontSize="12"
                 fontWeight="700"
                 letterSpacing="1"
@@ -555,26 +531,6 @@ export function Floorplan2D({
             ))
           )}
         </g>
-
-        {/* 3. Heatmap Layer */}
-        {(stage === "analysis" || stage === "improve" || stage === "before") && layerToggles.heatmap && (
-          <g id="heatmap-layer" className="pointer-events-none transition-opacity duration-300">
-            {spatialFindingsWithLocation.map((f) => {
-              const isHigh = f.severity === "critical" || f.severity === "high";
-              const r = isHigh ? 55 : 35;
-              const fillGrad = isHigh ? "url(#heat-high)" : "url(#heat-med)";
-              return (
-                <circle
-                  key={`heat-${f.id}`}
-                  cx={f.location!.x}
-                  cy={f.location!.y}
-                  r={r}
-                  fill={fillGrad}
-                />
-              );
-            })}
-          </g>
-        )}
 
         {/* 4. Route Clearance Envelope Buffer (Rendered only on successful computed route) */}
         {(stage === "routes" || stage === "analysis" || stage === "improve" || stage === "before") &&
@@ -650,9 +606,9 @@ export function Floorplan2D({
                       y1={pt.y}
                       x2={next.x}
                       y2={next.y}
-                      stroke={isConstrained ? "#dc2626" : "#1d63b8"}
-                      strokeWidth={isConstrained ? "3" : "2"}
-                      strokeDasharray={isConstrained ? "5,3" : undefined}
+                      stroke={isConstrained ? "#dc2626" : "#0B514B"}
+                      strokeWidth={isConstrained ? "3" : "2.5"}
+                      strokeDasharray={isConstrained ? "5,3" : "6,4"}
                       markerEnd={isConstrained ? "url(#route-arrow-pinch)" : "url(#route-arrow)"}
                     />
                   );
@@ -678,10 +634,12 @@ export function Floorplan2D({
                   );
                 })}
 
-              {/* Waypoint Nodes: DEFAULT USE NUMBER ONLY, HOVER/SELECT SHOWS NAME (Fixes route screen clutter!) */}
+              {/* Waypoint Nodes: Start (wheelchair badge), Intermediate (numbered), Destination (flag badge) matching 08-workspace-routes.png */}
               {routeWaypoints.map((pt, i) => {
                 const isSelected = selectedWaypointId === pt.id;
                 const isHovered = hoveredWaypointId === pt.id;
+                const isStart = i === 0;
+                const isEnd = i === routeWaypoints.length - 1;
                 const isPinch = (isBefore || stage !== "improve") && pt.id === "pt-4" && !canonicalBoundary;
 
                 return (
@@ -689,7 +647,7 @@ export function Floorplan2D({
                     key={`wp-${pt.id}`}
                     tabIndex={stage === "routes" && !readOnly ? 0 : undefined}
                     role={stage === "routes" ? "button" : undefined}
-                    aria-label={`Route checkpoint ${i + 1}: ${pt.name}${isSelected ? ", selected" : ""}`}
+                    aria-label={`Route checkpoint ${i + 1}: ${isStart ? "Start" : isEnd ? "Destination" : pt.name}${isSelected ? ", selected" : ""}`}
                     aria-pressed={stage === "routes" ? isSelected : undefined}
                     onFocus={() => selectWaypoint(pt.id)}
                     className={stage === "routes" ? "cursor-move outline-none" : "cursor-pointer"}
@@ -697,29 +655,158 @@ export function Floorplan2D({
                     onMouseEnter={() => setHoveredWaypointId(pt.id)}
                     onMouseLeave={() => setHoveredWaypointId(null)}
                   >
-                    <circle
-                      cx={pt.x}
-                      cy={pt.y}
-                      r={isSelected || isHovered ? 8 : 6}
-                      fill={isPinch ? "#dc2626" : isSelected ? "#0284c7" : "#1d63b8"}
-                      stroke="#ffffff"
-                      strokeWidth="1.5"
-                    />
-                    <text
-                      x={pt.x}
-                      y={pt.y + 3}
-                      textAnchor="middle"
-                      fill="#ffffff"
-                      fontSize="8"
-                      fontWeight="bold"
-                      fontFamily="var(--font-inter), Inter, sans-serif"
-                      className="pointer-events-none select-none"
-                    >
-                      {i + 1}
-                    </text>
+                    {isStart ? (
+                      /* Start Marker matching 08-workspace-routes.png */
+                      <g transform={`translate(${pt.x}, ${pt.y})`}>
+                        {/* Start pill label (rendered first so circle sits cleanly on top) */}
+                        <g transform="translate(6, -9)">
+                          <rect
+                            x="0"
+                            y="0"
+                            width="42"
+                            height="18"
+                            rx="9"
+                            fill="#ffffff"
+                            stroke="#E2E6E8"
+                            strokeWidth="1"
+                          />
+                          <text
+                            x="25"
+                            y="9"
+                            dominantBaseline="central"
+                            textAnchor="middle"
+                            fill="#17252B"
+                            fontSize="9"
+                            fontWeight="bold"
+                            fontFamily="var(--font-inter), Inter, sans-serif"
+                          >
+                            Start
+                          </text>
+                        </g>
 
-                    {/* Show label tooltip ONLY on hover or select per user requirement! */}
-                    {(isSelected || isHovered) && (
+                        {/* Start circle badge */}
+                        <circle
+                          r={isSelected || isHovered ? 13 : 11.5}
+                          fill="#0B514B"
+                          stroke="#ffffff"
+                          strokeWidth="2"
+                        />
+
+                        {/* Wheelchair icon - scaled and centered with generous clearance */}
+                        <g transform="translate(-6.24, -6.5) scale(0.52)">
+                          <circle cx="12" cy="4" r="2" fill="#ffffff" />
+                          <path
+                            d="M12 7v5l4 3"
+                            stroke="#ffffff"
+                            strokeWidth="2.2"
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                            fill="none"
+                          />
+                          <path
+                            d="M10 13a5 5 0 1 0 5 5"
+                            stroke="#ffffff"
+                            strokeWidth="2.2"
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                            fill="none"
+                          />
+                          <path
+                            d="M16 19h3"
+                            stroke="#ffffff"
+                            strokeWidth="2.2"
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                            fill="none"
+                          />
+                        </g>
+                      </g>
+                    ) : isEnd ? (
+                      /* Destination Marker matching 08-workspace-routes.png */
+                      <g transform={`translate(${pt.x}, ${pt.y})`}>
+                        {/* Destination pill label */}
+                        <g transform="translate(6, -9)">
+                          <rect
+                            x="0"
+                            y="0"
+                            width="72"
+                            height="18"
+                            rx="9"
+                            fill="#ffffff"
+                            stroke="#E2E6E8"
+                            strokeWidth="1"
+                          />
+                          <text
+                            x="41"
+                            y="9"
+                            dominantBaseline="central"
+                            textAnchor="middle"
+                            fill="#17252B"
+                            fontSize="9"
+                            fontWeight="bold"
+                            fontFamily="var(--font-inter), Inter, sans-serif"
+                          >
+                            Destination
+                          </text>
+                        </g>
+
+                        {/* Destination circle badge */}
+                        <circle
+                          r={isSelected || isHovered ? 13 : 11.5}
+                          fill="#0B514B"
+                          stroke="#ffffff"
+                          strokeWidth="2"
+                        />
+
+                        {/* Destination Flag icon - clean, centered, well-padded */}
+                        <g transform="translate(-5.5, -6) scale(0.5)">
+                          <line
+                            x1="5"
+                            y1="3"
+                            x2="5"
+                            y2="21"
+                            stroke="#ffffff"
+                            strokeWidth="2.2"
+                            strokeLinecap="round"
+                          />
+                          <path
+                            d="M5 3.5h11l-2.5 4.5L16 12.5H5z"
+                            fill="#ffffff"
+                            stroke="#ffffff"
+                            strokeWidth="1"
+                            strokeLinejoin="round"
+                          />
+                        </g>
+                      </g>
+                    ) : (
+                      /* Intermediate numbered checkpoints matching 08-workspace-routes.png */
+                      <g>
+                        <circle
+                          cx={pt.x}
+                          cy={pt.y}
+                          r={isSelected || isHovered ? 10 : 8.5}
+                          fill={isPinch ? "#dc2626" : "#0B514B"}
+                          stroke="#ffffff"
+                          strokeWidth="1.8"
+                        />
+                        <text
+                          x={pt.x}
+                          y={pt.y}
+                          dominantBaseline="central"
+                          textAnchor="middle"
+                          fill="#ffffff"
+                          fontSize="9"
+                          fontWeight="bold"
+                          fontFamily="var(--font-inter), Inter, sans-serif"
+                          className="pointer-events-none select-none"
+                        >
+                          {i}
+                        </text>
+                      </g>
+                    )}
+
+                    {/* Show label tooltip on hover or select */}
+                    {(isSelected || isHovered) && !isStart && !isEnd && (
                       <g transform={`translate(${pt.x + 10}, ${pt.y - 12})`} className="pointer-events-none">
                         <rect
                           x="0"
@@ -881,7 +968,7 @@ export function Floorplan2D({
                   }
                   stroke={
                     isSelected
-                      ? "#1e7168"
+                      ? "#0B514B"
                       : isUnconfirmed
                       ? "#d97706"
                       : !isBefore && item.id === "chair-c04"
@@ -930,19 +1017,12 @@ export function Floorplan2D({
           })}
         </g>
 
-        {/* 11. Numbered Spatial Finding Markers (Stage 4 Analysis and Stage 5 Improve/Before) */}
+        {/* 11. Spatial Finding Markers (Stage 4 Analysis and Stage 5 Improve/Before matching 09-workspace-analysis.png) */}
         {(stage === "analysis" || stage === "improve" || stage === "before") && layerToggles.hazards && (
           <g id="hazard-markers-layer">
-            {spatialFindingsWithLocation.map((f, idx) => {
+            {spatialFindingsWithLocation.map((f) => {
               const isSelected = selectedFindingId === f.id || selectedHazardId === f.id;
-              const num = idx + 1;
               const isHigh = f.severity === "critical" || f.severity === "high";
-              const markerColor =
-                f.classification === "actionable-deficit"
-                  ? "#dc2626"
-                  : f.classification === "advisory-observation"
-                  ? "#2563eb"
-                  : "#d97706";
 
               return (
                 <g
@@ -957,22 +1037,72 @@ export function Floorplan2D({
                   {isHigh && (
                     <circle r="14" fill="#dc2626" opacity="0.2" className="animate-ping" />
                   )}
-                  <circle
-                    r={isSelected ? 11 : 8.5}
-                    fill={markerColor}
-                    stroke="#ffffff"
-                    strokeWidth={isSelected ? "2.5" : "1.5"}
-                  />
-                  <text
-                    textAnchor="middle"
-                    dy="3"
-                    fill="#ffffff"
-                    fontSize="9"
-                    fontWeight="bold"
-                    fontFamily="var(--font-inter), Inter, sans-serif"
-                  >
-                    {num}
-                  </text>
+
+                  {f.classification === "actionable-deficit" ? (
+                    /* Red circle with white ! */
+                    <g>
+                      <circle
+                        r={isSelected ? 11 : 9}
+                        fill="#dc2626"
+                        stroke="#ffffff"
+                        strokeWidth={isSelected ? "2.5" : "1.5"}
+                      />
+                      <text
+                        textAnchor="middle"
+                        dominantBaseline="central"
+                        y="0"
+                        fill="#ffffff"
+                        fontSize="9.5"
+                        fontWeight="bold"
+                        fontFamily="var(--font-inter), Inter, sans-serif"
+                      >
+                        !
+                      </text>
+                    </g>
+                  ) : f.classification === "advisory-observation" ? (
+                    /* Amber triangle with white ! */
+                    <g transform="translate(-10, -9)">
+                      <path
+                        d="M10 1L1 17h18L10 1z"
+                        fill="#F59E0B"
+                        stroke={isSelected ? "#0B514B" : "#ffffff"}
+                        strokeWidth={isSelected ? "2" : "1.2"}
+                      />
+                      <text
+                        x="10"
+                        y="12"
+                        dominantBaseline="central"
+                        textAnchor="middle"
+                        fill="#ffffff"
+                        fontSize="9"
+                        fontWeight="bold"
+                        fontFamily="var(--font-inter), Inter, sans-serif"
+                      >
+                        !
+                      </text>
+                    </g>
+                  ) : (
+                    /* Slate circle with white ? */
+                    <g>
+                      <circle
+                        r={isSelected ? 11 : 9}
+                        fill="#64748b"
+                        stroke="#ffffff"
+                        strokeWidth={isSelected ? "2.5" : "1.5"}
+                      />
+                      <text
+                        textAnchor="middle"
+                        dominantBaseline="central"
+                        y="0"
+                        fill="#ffffff"
+                        fontSize="9"
+                        fontWeight="bold"
+                        fontFamily="var(--font-inter), Inter, sans-serif"
+                      >
+                        ?
+                      </text>
+                    </g>
+                  )}
                 </g>
               );
             })}

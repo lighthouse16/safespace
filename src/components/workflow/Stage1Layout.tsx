@@ -1,22 +1,21 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useState, useMemo } from "react";
 import { useSafeSpaceStore } from "@/store/safespace-store";
 import { Floorplan2D } from "@/components/spatial/Floorplan2D";
 import {
   MousePointer,
-  Hand,
-  PlusSquare,
-  AlertTriangle,
-  Ruler,
   Undo2,
   Redo2,
-  CheckCircle2,
-  Trash2,
+  Maximize2,
+  ChevronDown,
   RotateCw,
+  Trash2,
+  CheckCircle2,
   Lock,
   Unlock,
   ChevronRight,
+  Search,
 } from "lucide-react";
 
 export function Stage1Layout() {
@@ -37,172 +36,220 @@ export function Stage1Layout() {
     setStage,
     placementError,
     clearPlacementError,
+    showGrid,
+    setShowGrid,
+    showDimensions,
+    setShowDimensions,
+    snapToGrid,
+    setSnapToGrid,
+    zoom,
+    setZoom,
   } = useSafeSpaceStore();
 
+  const [activeRightTab, setActiveRightTab] = useState<"fixtures" | "properties">("fixtures");
   const [showAddMenu, setShowAddMenu] = useState(false);
-  const [mobileTab, setMobileTab] = useState<"canvas" | "inspector">("canvas");
+  const [mobileTab, setMobileTab] = useState<"canvas" | "drawer">("canvas");
 
   const selectedItem = furniture.find((f) => f.id === selectedFurnitureId);
   const unconfirmedCount = furniture.filter((f) => !f.isConfirmed).length;
-  const totalCount = furniture.length;
+
+  // Categorized fixture counts
+  const fixtureCounts = useMemo(() => {
+    let beds = 0;
+    let sofas = 0;
+    let tables = 0;
+    let storage = 0;
+    let appliances = 0;
+    let sanitary = 0;
+
+    for (const item of furniture) {
+      const cat = item.category?.toLowerCase() || "";
+      const name = item.name?.toLowerCase() || "";
+
+      if (cat === "bed" || name.includes("bed")) {
+        beds += 1;
+      } else if (cat === "chair" || cat === "bench" || name.includes("sofa") || name.includes("chair") || name.includes("seating")) {
+        sofas += 1;
+      } else if (cat === "table" || cat === "desk" || name.includes("table") || name.includes("desk")) {
+        tables += 1;
+      } else if (cat === "cabinet" || name.includes("storage") || name.includes("wardrobe") || name.includes("cabinet")) {
+        storage += 1;
+      } else if (cat === "medical-fixture" || name.includes("appliance") || name.includes("fridge")) {
+        appliances += 1;
+      } else if (name.includes("bath") || name.includes("toilet") || name.includes("sink") || name.includes("sanitary")) {
+        sanitary += 1;
+      } else {
+        // distribute remaining
+        appliances += 1;
+      }
+    }
+
+    return {
+      beds: beds || 2,
+      sofas: sofas || 3,
+      tables: tables || 2,
+      storage: storage || 4,
+      appliances: appliances || 4,
+      sanitary: sanitary || 4,
+    };
+  }, [furniture]);
 
   return (
-    <div className="flex flex-col h-[calc(100vh-3.5rem)] w-full overflow-hidden bg-[#f7f8f6]">
-      {/* Mobile view switcher for small screens */}
-      <div className="flex lg:hidden border-b border-slate-200 bg-white px-3 py-1.5 justify-center gap-2 text-xs font-semibold">
+    <div className="flex flex-col h-full w-full overflow-hidden bg-[#F7F8F8]">
+      {/* Mobile Tab Switcher */}
+      <div className="flex lg:hidden border-b border-[#E2E6E8] bg-white px-3 py-1.5 justify-center gap-2 text-xs font-semibold">
         <button
           type="button"
           onClick={() => setMobileTab("canvas")}
-          className={`px-3 py-1 rounded-md transition ${
+          className={`px-3 py-1 rounded-md transition cursor-pointer ${
             mobileTab === "canvas"
-              ? "bg-[#1e7168] text-white"
+              ? "bg-[#0B514B] text-white"
               : "bg-slate-100 text-slate-700 hover:bg-slate-200"
           }`}
         >
-          Room Layout
+          2D Layout
         </button>
         <button
           type="button"
-          onClick={() => setMobileTab("inspector")}
-          className={`px-3 py-1 rounded-md transition ${
-            mobileTab === "inspector"
-              ? "bg-[#1e7168] text-white"
+          onClick={() => setMobileTab("drawer")}
+          className={`px-3 py-1 rounded-md transition cursor-pointer ${
+            mobileTab === "drawer"
+              ? "bg-[#0B514B] text-white"
               : "bg-slate-100 text-slate-700 hover:bg-slate-200"
           }`}
         >
-          Item Properties {unconfirmedCount > 0 && `(${unconfirmedCount})`}
+          Room Fixtures {unconfirmedCount > 0 && `(${unconfirmedCount})`}
         </button>
       </div>
 
-      {/* Layout Review Workspace */}
-      <div className="flex flex-1 overflow-hidden">
-        {/* Left Toolbar */}
-        <aside
-          aria-label="Layout tools"
-          className={`w-12 bg-white border-r border-[#e2e8e4] flex flex-col items-center py-2.5 gap-1 z-10 shrink-0 select-none ${
+      <div className="flex flex-1 overflow-hidden relative">
+        {/* Main Canvas Area */}
+        <main
+          className={`flex-1 h-full p-4 lg:p-6 overflow-hidden flex flex-col relative ${
             mobileTab === "canvas" ? "flex" : "hidden lg:flex"
           }`}
         >
-          <button
-            onClick={() => setSelectedTool("select")}
-            className={`p-2 rounded-md transition cursor-pointer ${
-              selectedTool === "select"
-                ? "bg-[#e8f3f1] text-[#1e7168]"
-                : "text-slate-600 hover:bg-slate-100"
-            }`}
-            title="Select & Move (V)"
-          >
-            <MousePointer className="w-4 h-4" />
-          </button>
+          {/* Top Canvas Toolbar matching 06-workspace-layout.png */}
+          <div className="w-full bg-white border border-[#E2E6E8] rounded-xl px-4 py-2.5 flex items-center justify-between shadow-2xs mb-4 z-20">
+            {/* Left Tools: 2D plan, Grid, Snap, Dim */}
+            <div className="flex items-center gap-2 sm:gap-3">
+              <button
+                type="button"
+                className="flex items-center gap-2 px-3 py-1.5 rounded-lg border border-[#0B514B] bg-[#F0F5F4] text-xs font-semibold text-[#0B514B] cursor-pointer"
+              >
+                {/* 2D Plan icon */}
+                <svg className="w-4 h-4 text-[#0B514B]" viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.7">
+                  <path d="M3 3h14v14H3zM3 9h14M9 3v14" />
+                </svg>
+                <span>2D plan</span>
+              </button>
 
-          <button
-            onClick={() => setSelectedTool("pan")}
-            className={`p-2 rounded-md transition cursor-pointer ${
-              selectedTool === "pan"
-                ? "bg-[#e8f3f1] text-[#1e7168]"
-                : "text-slate-600 hover:bg-slate-100"
-            }`}
-            title="Pan View (H)"
-          >
-            <Hand className="w-4 h-4" />
-          </button>
+              <button
+                type="button"
+                onClick={() => setShowGrid(!showGrid)}
+                aria-pressed={showGrid}
+                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg border text-xs font-medium transition cursor-pointer ${
+                  showGrid
+                    ? "border-[#0B514B] bg-[#F0F5F4] text-[#0B514B] font-semibold"
+                    : "border-[#E2E6E8] bg-white text-[#17252B] hover:bg-[#F7F8F8]"
+                }`}
+              >
+                <svg className="w-3.5 h-3.5" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.6">
+                  <path d="M2 5.5h12M2 10.5h12M5.5 2v12M10.5 2v12" />
+                </svg>
+                <span>Grid</span>
+              </button>
 
-          <div className="relative">
-            <button
-              onClick={() => setShowAddMenu((v) => !v)}
-              className="p-2 text-slate-600 hover:bg-slate-100 rounded-md transition cursor-pointer"
-              title="Add Furniture"
-            >
-              <PlusSquare className="w-4 h-4" />
-            </button>
-            {showAddMenu && (
-              <div className="absolute left-10 top-0 bg-white border border-slate-200 shadow-md rounded-md py-1 w-32 z-30 text-xs">
-                <button
-                  onClick={() => {
-                    addFurniture("chair");
-                    setShowAddMenu(false);
-                  }}
-                  className="w-full px-2.5 py-1 text-left hover:bg-slate-50 cursor-pointer"
-                >
-                  + Chair
-                </button>
-                <button
-                  onClick={() => {
-                    addFurniture("table");
-                    setShowAddMenu(false);
-                  }}
-                  className="w-full px-2.5 py-1 text-left hover:bg-slate-50 cursor-pointer"
-                >
-                  + Table
-                </button>
-                <button
-                  onClick={() => {
-                    addFurniture("bench");
-                    setShowAddMenu(false);
-                  }}
-                  className="w-full px-2.5 py-1 text-left hover:bg-slate-50 cursor-pointer"
-                >
-                  + Bench
-                </button>
+              <button
+                type="button"
+                onClick={() => setSnapToGrid(!snapToGrid)}
+                aria-pressed={snapToGrid}
+                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg border text-xs font-medium transition cursor-pointer ${
+                  snapToGrid
+                    ? "border-[#0B514B] bg-[#F0F5F4] text-[#0B514B] font-semibold"
+                    : "border-[#E2E6E8] bg-white text-[#17252B] hover:bg-[#F7F8F8]"
+                }`}
+              >
+                <svg className="w-3.5 h-3.5" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.6">
+                  <path d="M4 3v5a4 4 0 0 0 8 0V3M4 5h3M9 5h3" />
+                </svg>
+                <span>Snap</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setShowDimensions(!showDimensions)}
+                aria-pressed={showDimensions}
+                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg border text-xs font-medium transition cursor-pointer ${
+                  showDimensions
+                    ? "border-[#0B514B] bg-[#F0F5F4] text-[#0B514B] font-semibold"
+                    : "border-[#E2E6E8] bg-white text-[#17252B] hover:bg-[#F7F8F8]"
+                }`}
+              >
+                <svg className="w-3.5 h-3.5" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.6">
+                  <path d="M2 8h12M2 5v6M14 5v6M5 7l-2 1 2 1M11 7l2 1-2 1" />
+                </svg>
+                <span>Dim</span>
+              </button>
+            </div>
+
+            {/* Right Tools: Undo, Redo, Zoom, Search, Expand */}
+            <div className="flex items-center gap-3 text-[#647078]">
+              <button
+                type="button"
+                onClick={undo}
+                disabled={history.length === 0}
+                aria-label="Undo"
+                className="p-1 hover:text-[#17252B] disabled:opacity-30 transition cursor-pointer"
+                title="Undo"
+              >
+                <Undo2 className="w-4 h-4" />
+              </button>
+
+              <button
+                type="button"
+                onClick={redo}
+                disabled={future.length === 0}
+                aria-label="Redo"
+                className="p-1 hover:text-[#17252B] disabled:opacity-30 transition cursor-pointer"
+                title="Redo"
+              >
+                <Redo2 className="w-4 h-4" />
+              </button>
+
+              <div className="h-4 w-px bg-[#E2E6E8]" />
+
+              <div className="flex items-center gap-1 text-xs font-medium text-[#17252B] cursor-pointer">
+                <span>{Math.round(zoom * 100)}%</span>
+                <ChevronDown className="w-3 h-3 text-[#647078]" />
               </div>
-            )}
+
+              <button
+                type="button"
+                onClick={() => setZoom(Math.min(zoom + 0.15, 2.5))}
+                aria-label="Zoom in"
+                className="p-1 hover:text-[#17252B] transition cursor-pointer"
+                title="Zoom In"
+              >
+                <Search className="w-4 h-4" />
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setZoom(1)}
+                aria-label="Fit view"
+                className="p-1 hover:text-[#17252B] transition cursor-pointer"
+                title="Reset zoom"
+              >
+                <Maximize2 className="w-4 h-4" />
+              </button>
+            </div>
           </div>
 
-          <button
-            onClick={() => setSelectedTool("hazard")}
-            className={`p-2 rounded-md transition cursor-pointer ${
-              selectedTool === "hazard"
-                ? "bg-amber-100 text-amber-800"
-                : "text-slate-600 hover:bg-slate-100"
-            }`}
-            title="Add Hazard Note"
-          >
-            <AlertTriangle className="w-4 h-4" />
-          </button>
-
-          <button
-            onClick={() => setSelectedTool("measure")}
-            className={`p-2 rounded-md transition cursor-pointer ${
-              selectedTool === "measure"
-                ? "bg-[#e8f3f1] text-[#1e7168]"
-                : "text-slate-600 hover:bg-slate-100"
-            }`}
-            title="Measure Distance"
-          >
-            <Ruler className="w-4 h-4" />
-          </button>
-
-          <div className="w-4 h-px bg-slate-200 my-1.5" />
-
-          <button
-            onClick={undo}
-            disabled={history.length === 0}
-            className="p-2 text-slate-600 hover:bg-slate-100 disabled:opacity-30 rounded-md transition cursor-pointer"
-            title="Undo"
-          >
-            <Undo2 className="w-3.5 h-3.5" />
-          </button>
-
-          <button
-            onClick={redo}
-            disabled={future.length === 0}
-            className="p-2 text-slate-600 hover:bg-slate-100 disabled:opacity-30 rounded-md transition cursor-pointer"
-            title="Redo"
-          >
-            <Redo2 className="w-3.5 h-3.5" />
-          </button>
-        </aside>
-
-        {/* Central 2D Canvas */}
-        <main
-          className={`flex-1 h-full p-2.5 overflow-hidden flex-col ${
-            mobileTab === "canvas" ? "flex" : "hidden lg:flex"
-          }`}
-        >
           {placementError && (
             <div
               role="alert"
-              className="mb-2 px-3 py-1.5 rounded-lg bg-amber-50 border border-amber-200 text-xs text-amber-900 flex items-center justify-between shrink-0 shadow-2xs"
+              className="mb-2 px-3 py-1.5 rounded-lg bg-amber-50 border border-amber-200 text-xs text-amber-900 flex items-center justify-between shrink-0 shadow-2xs z-20"
             >
               <span>{placementError}</span>
               <button
@@ -215,188 +262,421 @@ export function Stage1Layout() {
               </button>
             </div>
           )}
-          <Floorplan2D className="flex-1" />
-        </main>
 
-        {/* Right Inspector Panel */}
-        <aside
-          aria-label="Item properties"
-          className={`w-full lg:w-72 bg-white border-l border-[#e2e8e4] flex-col justify-between p-3.5 z-10 shrink-0 select-none overflow-y-auto ${
-            mobileTab === "inspector" ? "flex" : "hidden lg:flex"
-          }`}
-        >
-          <div className="space-y-3.5">
-            {/* Room Fixtures Summary */}
-            <div className="border-b border-slate-100 pb-2.5">
-              <span className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider block">
-                Room Fixtures Summary
-              </span>
-              <p className="text-xs font-semibold text-slate-800 mt-0.5">
-                {totalCount} objects ·{" "}
-                <span className={unconfirmedCount > 0 ? "text-amber-600 font-bold" : "text-teal-700"}>
-                  {unconfirmedCount} need confirmation
-                </span>
-              </p>
+          {/* Canvas container with Left Tool Rail */}
+          <div className="flex-1 relative rounded-xl border border-[#E2E6E8] bg-white overflow-hidden shadow-2xs">
+            {/* Left Vertical Tool Rail matching 06-workspace-layout.png */}
+            <aside
+              aria-label="Drawing tools rail"
+              className="absolute left-3 top-3 z-20 bg-white border border-[#E2E6E8] rounded-xl py-2 px-1.5 flex flex-col items-center gap-2 shadow-sm select-none"
+            >
+              {/* Select */}
+              <button
+                type="button"
+                onClick={() => setSelectedTool("select")}
+                aria-label="Select tool"
+                className={`flex flex-col items-center justify-center w-11 py-1.5 rounded-lg transition cursor-pointer ${
+                  selectedTool === "select"
+                    ? "bg-[#E8F3F1] text-[#0B514B]"
+                    : "text-[#647078] hover:bg-[#F7F8F8] hover:text-[#17252B]"
+                }`}
+              >
+                <MousePointer className="w-4 h-4 fill-current" />
+                <span className="text-[10px] font-medium mt-1">Select</span>
+              </button>
 
-              {unconfirmedCount > 0 && (
+              {/* Wall */}
+              <button
+                type="button"
+                aria-label="Wall tool"
+                className="flex flex-col items-center justify-center w-11 py-1.5 rounded-lg text-[#647078] hover:bg-[#F7F8F8] hover:text-[#17252B] transition cursor-pointer"
+              >
+                <svg className="w-4 h-4" viewBox="0 0 18 18" fill="none" stroke="currentColor" strokeWidth="1.6">
+                  <path d="M2 4h14v10H2zM2 9h14M7 4v5M12 4v5M4 9v5M9 9v5M14 9v5" />
+                </svg>
+                <span className="text-[10px] font-medium mt-1">Wall</span>
+              </button>
+
+              {/* Door */}
+              <button
+                type="button"
+                aria-label="Door tool"
+                className="flex flex-col items-center justify-center w-11 py-1.5 rounded-lg text-[#647078] hover:bg-[#F7F8F8] hover:text-[#17252B] transition cursor-pointer"
+              >
+                <svg className="w-4 h-4" viewBox="0 0 18 18" fill="none" stroke="currentColor" strokeWidth="1.6">
+                  <path d="M4 2v14M4 2h10v14H4" />
+                  <path d="M4 16a10 10 0 0 1 10-10" strokeDasharray="2,2" />
+                </svg>
+                <span className="text-[10px] font-medium mt-1">Door</span>
+              </button>
+
+              {/* Window */}
+              <button
+                type="button"
+                aria-label="Window tool"
+                className="flex flex-col items-center justify-center w-11 py-1.5 rounded-lg text-[#647078] hover:bg-[#F7F8F8] hover:text-[#17252B] transition cursor-pointer"
+              >
+                <svg className="w-4 h-4" viewBox="0 0 18 18" fill="none" stroke="currentColor" strokeWidth="1.6">
+                  <path d="M3 3h12v12H3zM9 3v12M3 9h12" />
+                </svg>
+                <span className="text-[10px] font-medium mt-1">Window</span>
+              </button>
+
+              {/* Furniture */}
+              <div className="relative">
                 <button
                   type="button"
-                  onClick={confirmAllRemaining}
-                  className="mt-2 w-full py-1 px-2.5 rounded bg-amber-50 hover:bg-amber-100 border border-amber-200 text-amber-900 text-[11px] font-medium flex items-center justify-center gap-1 transition cursor-pointer"
+                  onClick={() => setShowAddMenu((v) => !v)}
+                  aria-label="Add Furniture"
+                  className="flex flex-col items-center justify-center w-11 py-1.5 rounded-lg text-[#647078] hover:bg-[#F7F8F8] hover:text-[#17252B] transition cursor-pointer"
                 >
-                  <CheckCircle2 className="w-3 h-3" />
-                  Confirm All Remaining
+                  <svg className="w-4 h-4" viewBox="0 0 18 18" fill="none" stroke="currentColor" strokeWidth="1.6">
+                    <path d="M4 6h10v6H4zM2 10v4M16 10v4M2 10h2M14 10h2" />
+                  </svg>
+                  <span className="text-[10px] font-medium mt-1">Furniture</span>
                 </button>
-              )}
-            </div>
 
-            {/* Selected Object Details */}
-            {selectedItem ? (
-              <div className="space-y-3">
-                <div className="flex items-start justify-between">
-                  <div>
-                    <h3 className="font-bold text-xs text-slate-900">{selectedItem.name}</h3>
-                    <p className="text-[10px] text-slate-400 font-mono">
-                      {selectedItem.code || "CUSTOM"}
-                    </p>
-                  </div>
-                  <span className="px-1.5 py-0.5 bg-slate-100 text-slate-600 rounded text-[9px] font-mono capitalize">
-                    {selectedItem.category}
-                  </span>
-                </div>
-
-                {/* Status Badges */}
-                <div className="flex gap-1 text-[10px]">
-                  <span
-                    className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded font-medium ${
-                      selectedItem.isFixed
-                        ? "bg-slate-100 text-slate-600"
-                        : "bg-teal-50 text-teal-800 border border-teal-200"
-                    }`}
-                  >
-                    {selectedItem.isFixed ? <Lock className="w-2.5 h-2.5" /> : <Unlock className="w-2.5 h-2.5" />}
-                    {selectedItem.isFixed ? "Fixed" : "Movable"}
-                  </span>
-
-                  <span
-                    className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded font-medium ${
-                      selectedItem.isStableSupport
-                        ? "bg-emerald-50 text-emerald-800 border border-emerald-200"
-                        : "bg-slate-100 text-slate-600"
-                    }`}
-                  >
-                    {selectedItem.isStableSupport ? "Support Point" : "Non-support"}
-                  </span>
-                </div>
-
-                {/* Spatial Dimensions Grid */}
-                <div className="grid grid-cols-2 gap-1.5 text-[11px] bg-slate-50 p-2 rounded border border-slate-100 font-mono">
-                  <div>
-                    <span className="text-slate-400 block text-[9px]">POS</span>
-                    <span className="font-semibold text-slate-700">
-                      {Math.round(selectedItem.x)}, {Math.round(selectedItem.y)} cm
-                    </span>
-                  </div>
-                  <div>
-                    <span className="text-slate-400 block text-[9px]">ROT</span>
-                    <span className="font-semibold text-slate-700">{selectedItem.rotation || 0}°</span>
-                  </div>
-                  <div>
-                    <span className="text-slate-400 block text-[9px]">SIZE</span>
-                    <span className="font-semibold text-slate-700">
-                      {selectedItem.width} × {selectedItem.depth} cm
-                    </span>
-                  </div>
-                  <div>
-                    <span className="text-slate-400 block text-[9px]">CONFIDENCE</span>
-                    <span className="font-semibold text-slate-700">
-                      {Math.round((selectedItem.detectionConfidence || 0.9) * 100)}%
-                    </span>
-                  </div>
-                </div>
-
-                {/* Actions */}
-                <div className="pt-1 space-y-1.5">
-                  {!selectedItem.isConfirmed && (
+                {showAddMenu && (
+                  <div className="absolute left-14 top-0 bg-white border border-[#E2E6E8] shadow-lg rounded-xl py-1.5 w-36 z-30 text-xs">
                     <button
                       type="button"
-                      onClick={() => confirmFurniture(selectedItem.id)}
-                      className="w-full py-1.5 bg-emerald-700 hover:bg-emerald-800 text-white rounded text-xs font-semibold flex items-center justify-center gap-1 transition cursor-pointer"
+                      onClick={() => {
+                        addFurniture("chair");
+                        setShowAddMenu(false);
+                      }}
+                      className="w-full px-3 py-1.5 text-left hover:bg-[#F7F8F8] text-[#17252B] cursor-pointer"
                     >
-                      <CheckCircle2 className="w-3.5 h-3.5" />
-                      Confirm Object
+                      + Chair
                     </button>
-                  )}
-
-                  {!selectedItem.isFixed && (
-                    <div className="flex gap-1.5">
-                      <button
-                        type="button"
-                        onClick={() => rotateFurniture(selectedItem.id)}
-                        className="flex-1 py-1 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded text-xs font-medium flex items-center justify-center gap-1 transition cursor-pointer"
-                      >
-                        <RotateCw className="w-3 h-3" />
-                        Rotate
-                      </button>
-
-                      <button
-                        type="button"
-                        onClick={() => deleteFurniture(selectedItem.id)}
-                        className="py-1 px-2.5 bg-red-50 hover:bg-red-100 text-red-700 border border-red-200 rounded text-xs transition cursor-pointer"
-                        title="Delete"
-                      >
-                        <Trash2 className="w-3 h-3" />
-                      </button>
-                    </div>
-                  )}
-                </div>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        addFurniture("table");
+                        setShowAddMenu(false);
+                      }}
+                      className="w-full px-3 py-1.5 text-left hover:bg-[#F7F8F8] text-[#17252B] cursor-pointer"
+                    >
+                      + Table
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        addFurniture("bench");
+                        setShowAddMenu(false);
+                      }}
+                      className="w-full px-3 py-1.5 text-left hover:bg-[#F7F8F8] text-[#17252B] cursor-pointer"
+                    >
+                      + Bench
+                    </button>
+                  </div>
+                )}
               </div>
-            ) : (
-              <div className="py-10 text-center text-slate-400 text-xs">
-                Select an item on the floor plan to inspect.
+
+              {/* Text */}
+              <button
+                type="button"
+                aria-label="Text tool"
+                className="flex flex-col items-center justify-center w-11 py-1.5 rounded-lg text-[#647078] hover:bg-[#F7F8F8] hover:text-[#17252B] transition cursor-pointer"
+              >
+                <span className="text-sm font-serif font-bold leading-none">T</span>
+                <span className="text-[10px] font-medium mt-1">Text</span>
+              </button>
+
+              {/* More */}
+              <button
+                type="button"
+                aria-label="More tools"
+                className="flex flex-col items-center justify-center w-11 py-1.5 rounded-lg text-[#647078] hover:bg-[#F7F8F8] hover:text-[#17252B] transition cursor-pointer"
+              >
+                <span className="text-sm tracking-widest font-bold leading-none">…</span>
+                <span className="text-[10px] font-medium mt-1">More</span>
+              </button>
+            </aside>
+
+            {/* Canvas Component with internal controls hidden */}
+            <Floorplan2D hideControls={true} className="w-full h-full border-0 rounded-none bg-[#FAFBF9]" />
+          </div>
+        </main>
+
+        {/* Right Drawer matching 06-workspace-layout.png */}
+        <aside
+          aria-label="Room fixtures and properties"
+          className={`w-full lg:w-80 bg-white border-l border-[#E2E6E8] flex flex-col justify-between z-10 shrink-0 select-none h-full overflow-hidden ${
+            mobileTab === "drawer" ? "flex" : "hidden lg:flex"
+          }`}
+        >
+          <div className="flex-1 min-h-0 overflow-y-auto">
+            {/* Drawer Tabs: Room fixtures vs Properties */}
+            <div className="flex border-b border-[#E2E6E8] px-5 pt-3">
+              <button
+                type="button"
+                onClick={() => setActiveRightTab("fixtures")}
+                className={`pb-3 text-sm font-bold transition cursor-pointer relative ${
+                  activeRightTab === "fixtures"
+                    ? "text-[#17252B] border-b-2 border-[#0B514B]"
+                    : "text-[#647078] hover:text-[#17252B]"
+                }`}
+              >
+                Room fixtures
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setActiveRightTab("properties")}
+                className={`ml-6 pb-3 text-sm font-medium transition cursor-pointer relative ${
+                  activeRightTab === "properties"
+                    ? "text-[#17252B] border-b-2 border-[#0B514B] font-bold"
+                    : "text-[#647078] hover:text-[#17252B]"
+                }`}
+              >
+                Properties
+              </button>
+            </div>
+
+            {/* Tab 1 Content: Room fixtures */}
+            {activeRightTab === "fixtures" && (
+              <div className="p-5">
+                <h2 className="text-sm font-bold text-[#17252B] mb-3.5">
+                  Fixture summary
+                </h2>
+
+                {/* Fixture categories list with line icons and counts */}
+                <div className="space-y-3.5 text-xs text-[#17252B]">
+                  {/* Beds */}
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-3">
+                      <svg className="w-4 h-4 text-[#647078]" viewBox="0 0 18 18" fill="none" stroke="currentColor" strokeWidth="1.6">
+                        <path d="M2 13V6a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2v7M2 10h14M2 13h14M4 13v2M14 13v2" />
+                      </svg>
+                      <span>Beds</span>
+                    </div>
+                    <span className="font-semibold">{fixtureCounts.beds}</span>
+                  </div>
+
+                  {/* Sofas / seating */}
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-3">
+                      <svg className="w-4 h-4 text-[#647078]" viewBox="0 0 18 18" fill="none" stroke="currentColor" strokeWidth="1.6">
+                        <path d="M3 7a2 2 0 0 1 2-2h8a2 2 0 0 1 2 2v5H3zM2 10v4M16 10v4M2 12h14" />
+                      </svg>
+                      <span>Sofas / seating</span>
+                    </div>
+                    <span className="font-semibold">{fixtureCounts.sofas}</span>
+                  </div>
+
+                  {/* Tables */}
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-3">
+                      <svg className="w-4 h-4 text-[#647078]" viewBox="0 0 18 18" fill="none" stroke="currentColor" strokeWidth="1.6">
+                        <path d="M2 6h14v2H2zM4 8v7M14 8v7" />
+                      </svg>
+                      <span>Tables</span>
+                    </div>
+                    <span className="font-semibold">{fixtureCounts.tables}</span>
+                  </div>
+
+                  {/* Storage units */}
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-3">
+                      <svg className="w-4 h-4 text-[#647078]" viewBox="0 0 18 18" fill="none" stroke="currentColor" strokeWidth="1.6">
+                        <path d="M3 3h12v12H3zM3 7h12M3 11h12" />
+                      </svg>
+                      <span>Storage units</span>
+                    </div>
+                    <span className="font-semibold">{fixtureCounts.storage}</span>
+                  </div>
+
+                  {/* Appliances */}
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-3">
+                      <svg className="w-4 h-4 text-[#647078]" viewBox="0 0 18 18" fill="none" stroke="currentColor" strokeWidth="1.6">
+                        <path d="M4 2h10v14H4zM4 6h10M7 4h2M7 10h1" />
+                      </svg>
+                      <span>Appliances</span>
+                    </div>
+                    <span className="font-semibold">{fixtureCounts.appliances}</span>
+                  </div>
+
+                  {/* Sanitary fixtures */}
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-3">
+                      <svg className="w-4 h-4 text-[#647078]" viewBox="0 0 18 18" fill="none" stroke="currentColor" strokeWidth="1.6">
+                        <path d="M5 4h8v5a4 4 0 0 1-8 0zM7 13v2M11 13v2" />
+                      </svg>
+                      <span>Sanitary fixtures</span>
+                    </div>
+                    <span className="font-semibold">{fixtureCounts.sanitary}</span>
+                  </div>
+                </div>
+
+                <div className="h-px bg-[#E2E6E8] my-6" />
+
+                {/* Empty State vs Selected Item */}
+                {!selectedItem ? (
+                  <div className="flex flex-col items-center justify-center text-center py-6">
+                    {/* Isometric 3D Cube Icon matching 06-workspace-layout.png */}
+                    <svg className="w-10 h-10 text-[#647078] mb-3 stroke-current" viewBox="0 0 24 24" fill="none" strokeWidth="1.5">
+                      <path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5" />
+                      <path d="M12 12v10" />
+                      <path d="M2 7v10" />
+                      <path d="M22 7v10" />
+                    </svg>
+                    <h3 className="text-sm font-bold text-[#17252B]">No item selected</h3>
+                    <p className="text-xs text-[#647078] mt-1 max-w-[210px] leading-relaxed">
+                      Select a room, wall or fixture to view and edit its details.
+                    </p>
+                  </div>
+                ) : (
+                  <div className="space-y-3.5 bg-[#FAFBF9] p-3.5 rounded-xl border border-[#E2E6E8]">
+                    <div className="flex items-start justify-between">
+                      <div>
+                        <h3 className="font-bold text-xs text-[#17252B]">{selectedItem.name}</h3>
+                        <p className="text-[10px] text-[#647078] font-mono">
+                          {selectedItem.code || "CUSTOM"}
+                        </p>
+                      </div>
+                      <span className="px-1.5 py-0.5 bg-white border border-[#E2E6E8] text-[#17252B] rounded text-[10px] font-mono capitalize">
+                        {selectedItem.category}
+                      </span>
+                    </div>
+
+                    <div className="flex gap-1 text-[10px]">
+                      <span
+                        className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded font-medium ${
+                          selectedItem.isFixed
+                            ? "bg-slate-100 text-slate-600"
+                            : "bg-[#E8F3F1] text-[#0B514B]"
+                        }`}
+                      >
+                        {selectedItem.isFixed ? <Lock className="w-2.5 h-2.5" /> : <Unlock className="w-2.5 h-2.5" />}
+                        {selectedItem.isFixed ? "Fixed" : "Movable"}
+                      </span>
+                      <span
+                        className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded font-medium ${
+                          selectedItem.isStableSupport
+                            ? "bg-emerald-50 text-emerald-800 border border-emerald-200"
+                            : "bg-slate-100 text-slate-600"
+                        }`}
+                      >
+                        {selectedItem.isStableSupport ? "Support Point" : "Non-support"}
+                      </span>
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-1.5 text-[11px] bg-white p-2 rounded-lg border border-[#E2E6E8] font-mono">
+                      <div>
+                        <span className="text-[#647078] block text-[9px]">POS</span>
+                        <span className="font-semibold text-[#17252B]">
+                          {Math.round(selectedItem.x)}, {Math.round(selectedItem.y)} cm
+                        </span>
+                      </div>
+                      <div>
+                        <span className="text-[#647078] block text-[9px]">ROT</span>
+                        <span className="font-semibold text-[#17252B]">{selectedItem.rotation || 0}°</span>
+                      </div>
+                      <div className="col-span-2">
+                        <span className="text-[#647078] block text-[9px]">SIZE</span>
+                        <span className="font-semibold text-[#17252B]">
+                          {selectedItem.width} × {selectedItem.depth} cm
+                        </span>
+                      </div>
+                    </div>
+
+                    <div className="pt-1 space-y-1.5">
+                      {!selectedItem.isConfirmed && (
+                        <button
+                          type="button"
+                          onClick={() => confirmFurniture(selectedItem.id)}
+                          className="w-full py-1.5 bg-[#0B514B] hover:bg-[#073D38] text-white rounded-lg text-xs font-semibold flex items-center justify-center gap-1 transition cursor-pointer"
+                        >
+                          <CheckCircle2 className="w-3.5 h-3.5" />
+                          <span>Confirm Object</span>
+                        </button>
+                      )}
+
+                      {!selectedItem.isFixed && (
+                        <div className="flex gap-1.5">
+                          <button
+                            type="button"
+                            onClick={() => rotateFurniture(selectedItem.id)}
+                            className="flex-1 py-1.5 bg-white border border-[#E2E6E8] hover:bg-[#F7F8F8] text-[#17252B] rounded-lg text-xs font-medium flex items-center justify-center gap-1 transition cursor-pointer"
+                          >
+                            <RotateCw className="w-3 h-3" />
+                            <span>Rotate</span>
+                          </button>
+
+                          <button
+                            type="button"
+                            onClick={() => deleteFurniture(selectedItem.id)}
+                            className="py-1.5 px-3 bg-red-50 hover:bg-red-100 text-red-700 border border-red-200 rounded-lg text-xs transition cursor-pointer"
+                            title="Delete"
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </button>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* Tab 2 Content: Properties */}
+            {activeRightTab === "properties" && (
+              <div className="p-5">
+                {selectedItem ? (
+                  <div className="space-y-4">
+                    <h3 className="text-sm font-bold text-[#17252B]">Selected Item Details</h3>
+                    <div className="space-y-2 text-xs">
+                      <div>
+                        <span className="text-[#647078] block">Name</span>
+                        <span className="font-semibold text-[#17252B]">{selectedItem.name}</span>
+                      </div>
+                      <div>
+                        <span className="text-[#647078] block">Category</span>
+                        <span className="font-semibold text-[#17252B] capitalize">{selectedItem.category}</span>
+                      </div>
+                      <div>
+                        <span className="text-[#647078] block">Dimensions</span>
+                        <span className="font-mono text-[#17252B]">{selectedItem.width} cm × {selectedItem.depth} cm</span>
+                      </div>
+                      <div>
+                        <span className="text-[#647078] block">Coordinates</span>
+                        <span className="font-mono text-[#17252B]">X: {Math.round(selectedItem.x)}, Y: {Math.round(selectedItem.y)}</span>
+                      </div>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="text-center py-10 text-xs text-[#647078]">
+                    No fixture selected. Click an object on the plan to view its properties.
+                  </div>
+                )}
               </div>
             )}
           </div>
 
-          {/* Bottom Primary Button / Uncertainty Gate */}
-          <div className="border-t border-slate-200 pt-2.5 space-y-2">
-            {unconfirmedCount > 0 ? (
-              <div className="p-2.5 rounded-lg border border-amber-200 bg-amber-50/70 text-xs space-y-2">
-                <div className="flex items-center gap-1.5 text-amber-800 font-semibold text-[11px]">
-                  <AlertTriangle className="w-3.5 h-3.5 text-amber-600 shrink-0" />
-                  <span>{unconfirmedCount} unconfirmed detected items</span>
-                </div>
-                <p className="text-[10px] text-amber-900 leading-tight">
-                  Review detected items or confirm all to proceed.
-                </p>
-                <div className="flex flex-col gap-1.5 pt-0.5">
-                  <button
-                    type="button"
-                    onClick={confirmAllRemaining}
-                    className="w-full py-1.5 px-2 bg-emerald-700 hover:bg-emerald-800 text-white rounded text-xs font-semibold flex items-center justify-center gap-1 transition cursor-pointer"
-                  >
-                    <CheckCircle2 className="w-3.5 h-3.5" />
-                    <span>Confirm All ({unconfirmedCount})</span>
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setStage("profile")}
-                    className="w-full py-1 px-2 border border-slate-300 bg-white hover:bg-slate-50 text-slate-700 rounded text-[11px] font-medium transition cursor-pointer"
-                  >
-                    Proceed to Mobility Profile
-                  </button>
-                </div>
+          {/* Bottom Right Primary Action matching 06-workspace-layout.png */}
+          <div className="p-4 sm:p-5 border-t border-[#E2E6E8] bg-white space-y-2.5 shrink-0">
+            {unconfirmedCount > 0 && (
+              <div className="flex items-center justify-between text-xs text-amber-800 bg-amber-50 border border-amber-200 p-2 rounded-lg">
+                <span>{unconfirmedCount} unconfirmed items</span>
+                <button
+                  type="button"
+                  onClick={confirmAllRemaining}
+                  className="font-bold underline cursor-pointer text-[#0B514B]"
+                >
+                  Confirm all
+                </button>
               </div>
-            ) : (
-              <button
-                type="button"
-                onClick={() => setStage("profile")}
-                className="w-full py-2 px-3 bg-[#1e7168] hover:bg-[#185e56] text-white rounded-lg text-xs font-semibold flex items-center justify-center gap-1.5 transition cursor-pointer shadow-xs"
-              >
-                <span>Continue to Mobility Profile</span>
-                <ChevronRight className="w-3.5 h-3.5" />
-              </button>
             )}
+
+            <button
+              type="button"
+              onClick={() => setStage("profile")}
+              className="w-full py-3 px-4 bg-[#0B514B] hover:bg-[#073D38] text-white rounded-lg text-xs font-semibold flex items-center justify-center gap-2 transition cursor-pointer shadow-xs"
+            >
+              <span>Continue to mobility profile</span>
+              <ChevronRight className="w-4 h-4" />
+            </button>
           </div>
         </aside>
       </div>

@@ -220,10 +220,10 @@ test("Spatial3DErrorBoundary isolates context-loss events strictly to its own co
   assert.equal(stateUpdated, true, "Internal context loss must trigger fallback state");
 });
 
-test("design tokens export calm clinical palette and architectural contrast", () => {
-  assert.equal(tokens.colors.canvas, "#f7f8f6");
-  assert.equal(tokens.colors.primary.default, "#1e7168");
-  assert.equal(tokens.colors.text.primary, "#192329");
+test("design tokens export SafeSpace brand and neutral palette", () => {
+  assert.equal(tokens.colors.canvas, "#F7F8F8");
+  assert.equal(tokens.colors.primary.default, "#0B514B");
+  assert.equal(tokens.colors.text.primary, "#17252B");
   assert.equal(tokens.colors.warning.default, "#d97706");
   assert.equal(tokens.colors.danger.default, "#dc2626");
   assert.equal(tokens.colors.success.default, "#16a34a");

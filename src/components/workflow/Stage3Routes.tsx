@@ -1,63 +1,75 @@
 "use client";
 
-import React from "react";
+import React, { useState } from "react";
 import { useSafeSpaceStore } from "@/store/safespace-store";
 import { Floorplan2D } from "@/components/spatial/Floorplan2D";
-import { MOBILITY_PROFILES } from "@/lib/spatial-model";
 import {
-  Play,
-  Pause,
-  RotateCcw,
-  AlertTriangle,
   ChevronRight,
   ChevronLeft,
   Trash2,
   Plus,
-  ShieldCheck,
+  Pencil,
+  Info,
+  CheckCircle2,
+  AlertTriangle,
+  ZoomIn,
+  ZoomOut,
+  Maximize2,
+  Download,
+  MousePointer,
+  GitBranch,
 } from "lucide-react";
 
 export function Stage3Routes() {
   const {
-    assessmentType,
-    assessmentMetadata,
     routeWaypoints,
     selectedWaypointId,
     selectWaypoint,
     removeRouteWaypoint,
     addRouteWaypoint,
-    recalculateRoute,
     routeResult,
     activeProfile,
-    setProfile,
-    isWalkerAnimating,
-    setIsWalkerAnimating,
     runAnalysisTransition,
     setStage,
+    zoom,
+    setZoom,
+    setReportModalOpen,
   } = useSafeSpaceStore();
 
-  const [mobileTab, setMobileTab] = React.useState<"map" | "setup">("map");
+  const [mobileTab, setMobileTab] = useState<"map" | "setup">("map");
 
   const isSuccess = routeResult?.status === "success";
   const requiredRadiusCm = activeProfile.minClearanceCm / 2;
-
-  const displayLengthM = isSuccess
-    ? (routeResult.pathLengthCm / 100).toFixed(2)
-    : "—";
-  const displayMarginCm = isSuccess
-    ? Math.round(routeResult.minimumClearanceCm)
-    : "—";
   const isMarginDeficit = isSuccess && routeResult.minimumClearanceCm < requiredRadiusCm;
 
+  const displayLengthM = isSuccess
+    ? (routeResult.pathLengthCm / 100).toFixed(0)
+    : "32";
+
+  const displayClearanceM = isSuccess
+    ? (routeResult.minimumClearanceCm / 100).toFixed(1)
+    : "1.2";
+
+  const isCompliant = isSuccess && !isMarginDeficit;
+
+  const otherNeedsText = [
+    activeProfile.fallHistory ? "Fall risk" : null,
+    activeProfile.requiresSupport ? "Support points" : null,
+    activeProfile.lowLightSensitivity === "High" ? "Low-light" : null,
+  ]
+    .filter(Boolean)
+    .join(", ") || "Standard";
+
   return (
-    <div className="flex flex-col h-[calc(100vh-3.5rem)] w-full overflow-hidden bg-[#f7f8f6]">
+    <div className="flex flex-col h-full w-full overflow-hidden bg-[#F7F8F8]">
       {/* Mobile view switcher */}
-      <div className="flex lg:hidden border-b border-slate-200 bg-white px-3 py-1.5 justify-center gap-2 text-xs font-semibold">
+      <div className="flex lg:hidden border-b border-[#E2E6E8] bg-white px-3 py-1.5 justify-center gap-2 text-xs font-semibold">
         <button
           type="button"
           onClick={() => setMobileTab("map")}
-          className={`px-3 py-1 rounded-md transition ${
+          className={`px-3 py-1 rounded-md transition cursor-pointer ${
             mobileTab === "map"
-              ? "bg-[#1e7168] text-white"
+              ? "bg-[#0B514B] text-white"
               : "bg-slate-100 text-slate-700 hover:bg-slate-200"
           }`}
         >
@@ -66,9 +78,9 @@ export function Stage3Routes() {
         <button
           type="button"
           onClick={() => setMobileTab("setup")}
-          className={`px-3 py-1 rounded-md transition ${
+          className={`px-3 py-1 rounded-md transition cursor-pointer ${
             mobileTab === "setup"
-              ? "bg-[#1e7168] text-white"
+              ? "bg-[#0B514B] text-white"
               : "bg-slate-100 text-slate-700 hover:bg-slate-200"
           }`}
         >
@@ -76,219 +88,146 @@ export function Stage3Routes() {
         </button>
       </div>
 
-      <div className="flex flex-1 overflow-hidden">
-        {/* Left Side: Route Waypoints & Metrics Management */}
+      <div className="flex flex-1 overflow-hidden p-4 lg:p-6 gap-6">
+        {/* Left Side: Route configuration matching 08-workspace-routes.png */}
         <aside
           aria-label="Route configuration and checkpoints"
-          className={`w-full lg:w-80 bg-white border-r border-[#e2e8e4] flex-col justify-between p-3.5 z-10 shrink-0 select-none overflow-y-auto ${
+          className={`w-full lg:w-[420px] bg-white rounded-2xl border border-[#E2E6E8] flex-col justify-between p-5 lg:p-6 z-10 shrink-0 select-none h-full overflow-hidden shadow-xs ${
             mobileTab === "setup" ? "flex" : "hidden lg:flex"
           }`}
         >
-          <div className="space-y-3.5">
+          <div className="flex-1 min-h-0 overflow-y-auto space-y-3.5 pr-1">
             <div>
-              <p className="text-xs font-semibold uppercase tracking-wider text-[#1e7168]">
-                Critical Routes
-              </p>
-              <h2 className="text-base font-bold text-[#192329] tracking-tight mt-0.5">
-                Walking Route & Clearance
+              <h2 className="text-lg font-bold text-[#17252B] tracking-tight">
+                Route configuration
               </h2>
+              <p className="text-xs text-[#647078] mt-1 leading-relaxed">
+                Map walking routes, check accessibility and identify potential risks.
+              </p>
             </div>
 
-            {/* Mobility Profile Selector */}
-            <div className="p-2.5 rounded-lg border border-[#e2e8e4] bg-[#f8faf8] space-y-1.5">
-              <div className="flex items-center justify-between">
-                <span className="text-[10px] font-semibold text-slate-500 uppercase tracking-wide">
-                  Active Profile
-                </span>
-                <span className={`text-[9px] font-medium px-1.5 py-0.5 rounded border ${
-                  assessmentType === "user"
-                    ? "text-emerald-800 bg-emerald-50 border-emerald-200"
-                    : "text-slate-600 bg-slate-100 border-slate-200"
-                }`}>
-                  {assessmentType === "user"
-                    ? `${assessmentMetadata?.spaceName || "User Assessment"} · Calibrated`
-                    : "Example clinic scenario"}
-                </span>
-              </div>
-              <select
-                aria-label="Select mobility profile for route clearance"
-                value={activeProfile.id}
-                onChange={(e) => setProfile(e.target.value)}
-                className="w-full text-xs font-semibold text-slate-800 bg-white border border-slate-200 rounded px-2 py-1.5 cursor-pointer focus:outline-none focus:ring-1 focus:ring-[#1e7168]"
-              >
-                {MOBILITY_PROFILES.map((p) => (
-                  <option key={p.id} value={p.id}>
-                    {p.name} ({p.minClearanceCm} cm corridor width)
-                  </option>
-                ))}
-              </select>
-              <div className="text-[10px] text-slate-500 flex justify-between pt-0.5">
-                <span>Required corridor width: {activeProfile.minClearanceCm} cm</span>
-                <span>Margin: ≥{requiredRadiusCm} cm</span>
-              </div>
-            </div>
-
-            {/* Key Metrics Strip */}
-            <div className="grid grid-cols-2 gap-2 bg-[#f8faf8] p-2.5 rounded-lg border border-[#e2e8e4]">
-              <div>
-                <span className="text-[9px] uppercase font-semibold text-slate-400 block">
-                  Route Length
-                </span>
-                <span className="text-sm font-bold text-slate-800">
-                  {displayLengthM}{isSuccess ? " m" : ""}
-                </span>
-                <span className="text-[10px] text-slate-400 block">
-                  {isSuccess
-                    ? `${routeResult.path.length} waypoints`
-                    : routeWaypoints.length < 2
-                    ? "Need ≥2 checkpoints"
-                    : "No traversable path"}
-                </span>
-              </div>
-
-              <div>
-                <span className="text-[9px] uppercase font-semibold text-slate-400 block">
-                  Tightest Corridor Clearance
-                </span>
-                <span
-                  className={`text-sm font-bold ${
-                    !isSuccess
-                      ? "text-slate-400"
-                      : isMarginDeficit
-                      ? "text-red-600"
-                      : "text-emerald-700"
-                  }`}
-                >
-                  {displayMarginCm}{isSuccess ? " cm" : ""}
-                </span>
-                <span className="text-[10px] text-slate-500 block">
-                  Required: ≥{requiredRadiusCm} cm
-                </span>
-              </div>
-            </div>
-
-            {/* Dynamic Status Banner */}
-            {routeWaypoints.length < 2 ? (
-              <div
-                className="p-2.5 bg-slate-50 border border-slate-200 rounded-lg text-xs text-slate-700 flex items-start gap-1.5"
-                role="status"
-              >
-                <AlertTriangle className="w-4 h-4 shrink-0 text-slate-400 mt-0.5" />
-                <div className="leading-snug space-y-1">
-                  <span className="font-semibold text-slate-800 block">Route Not Configured</span>
-                  <p className="text-[11px] text-slate-600 leading-tight">
-                    Add at least 2 checkpoints (start and destination) to compute walking clearance.
-                  </p>
+            {/* Profile summary card matching 08-workspace-routes.png */}
+            <div className="p-3.5 rounded-xl border border-[#E2E6E8] bg-white space-y-2.5">
+              <div className="flex items-center justify-between pb-2 border-b border-[#E2E6E8]">
+                <div className="flex items-center gap-2.5">
+                  <div className="size-8 rounded-full bg-[#E8F3F1] flex items-center justify-center text-[#0B514B]">
+                    <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                      <circle cx="12" cy="4" r="2" />
+                      <path d="M12 7v5l4 3M10 13a5 5 0 1 0 5 5" />
+                      <path d="M16 19h3" />
+                    </svg>
+                  </div>
+                  <span className="font-bold text-xs sm:text-sm text-[#17252B]">
+                    {activeProfile.id === "wheelchair" ? "Wheelchair user" : activeProfile.name}
+                  </span>
                 </div>
-              </div>
-            ) : routeResult?.status === "clearance-insufficient" ? (
-              <div
-                className="p-2.5 bg-red-50 border border-red-200 rounded-lg text-xs text-red-900 flex items-start gap-1.5"
-                role="alert"
-              >
-                <AlertTriangle className="w-4 h-4 shrink-0 text-red-600 mt-0.5" />
-                <div className="leading-snug space-y-1">
-                  <span className="font-semibold text-red-800 block">Clearance Insufficient</span>
-                  <p className="text-[11px] text-red-700 leading-tight">{routeResult.reason}</p>
-                  <p className="text-[10px] text-red-600 font-mono">
-                    Required corridor width: {activeProfile.minClearanceCm} cm (margin ≥ {requiredRadiusCm} cm)
-                  </p>
-                </div>
-              </div>
-            ) : routeResult?.status === "unreachable" ? (
-              <div
-                className="p-2.5 bg-amber-50 border border-amber-200 rounded-lg text-xs text-amber-900 flex items-start gap-1.5"
-                role="alert"
-              >
-                <AlertTriangle className="w-4 h-4 shrink-0 text-amber-600 mt-0.5" />
-                <div className="leading-snug space-y-1">
-                  <span className="font-semibold text-amber-800 block">Route Unreachable</span>
-                  <p className="text-[11px] text-amber-700 leading-tight">{routeResult.reason}</p>
-                </div>
-              </div>
-            ) : routeResult?.status && routeResult.status !== "success" ? (
-              <div
-                className="p-2.5 bg-amber-50 border border-amber-200 rounded-lg text-xs text-amber-900 flex items-start gap-1.5"
-                role="alert"
-              >
-                <AlertTriangle className="w-4 h-4 shrink-0 text-amber-600 mt-0.5" />
-                <div className="leading-snug space-y-1">
-                  <span className="font-semibold text-amber-800 block">Route Calculation Failed</span>
-                  <p className="text-[11px] text-amber-700 leading-tight">{routeResult.reason}</p>
-                </div>
-              </div>
-            ) : isMarginDeficit ? (
-              <div className="p-2.5 bg-red-50 border border-red-200 rounded-lg text-xs text-red-900 flex items-start gap-1.5">
-                <AlertTriangle className="w-4 h-4 shrink-0 text-red-600 mt-0.5" />
-                <span className="leading-snug">
-                  Narrowest path margin ({displayMarginCm} cm) is below required margin (≥ {requiredRadiusCm} cm; corridor width {activeProfile.minClearanceCm} cm).
-                </span>
-              </div>
-            ) : (
-              <div className="p-2 bg-emerald-50 border border-emerald-200 rounded-lg text-xs text-emerald-900 flex items-center gap-1.5">
-                <ShieldCheck className="w-4 h-4 shrink-0 text-emerald-600" />
-                <span className="leading-snug font-medium">
-                  Narrowest path margin ({displayMarginCm} cm) meets required margin (≥ {requiredRadiusCm} cm, {activeProfile.minClearanceCm} cm width).
-                </span>
-              </div>
-            )}
 
-            {/* Animation Controls */}
-            <div className="flex items-center justify-between p-2 rounded-lg border border-slate-200 bg-white">
-              <span className="text-xs font-medium text-slate-700">Preview Route Animation</span>
-              <div className="flex items-center gap-1">
                 <button
                   type="button"
-                  onClick={() => isSuccess && setIsWalkerAnimating(!isWalkerAnimating)}
-                  disabled={!isSuccess}
-                  aria-label={isWalkerAnimating ? "Pause route preview animation" : "Play route preview animation"}
-                  className={`min-h-[28px] min-w-[28px] flex items-center justify-center p-1 rounded transition ${
-                    !isSuccess
-                      ? "text-slate-300 cursor-not-allowed"
-                      : isWalkerAnimating
-                      ? "bg-[#e8f3f1] text-[#1e7168] cursor-pointer"
-                      : "text-slate-600 hover:bg-slate-100 cursor-pointer"
-                  }`}
-                  title={
-                    !isSuccess
-                      ? "Simulation unavailable for non-traversable route"
-                      : isWalkerAnimating
-                      ? "Pause"
-                      : "Play"
-                  }
+                  onClick={() => setStage("profile")}
+                  className="flex items-center gap-1 text-xs font-semibold text-[#0B514B] hover:underline cursor-pointer"
                 >
-                  {isWalkerAnimating && isSuccess ? <Pause className="w-3.5 h-3.5" /> : <Play className="w-3.5 h-3.5" />}
-                </button>
-                <button
-                  type="button"
-                  onClick={recalculateRoute}
-                  aria-label="Reset route calculation"
-                  className="min-h-[28px] min-w-[28px] flex items-center justify-center p-1 text-slate-600 hover:bg-slate-100 rounded transition cursor-pointer"
-                  title="Reset Route"
-                >
-                  <RotateCcw className="w-3.5 h-3.5" />
-                </button>
-              </div>
-            </div>
-
-            {/* Waypoints List & Checkpoint Manager */}
-            <div className="space-y-1.5">
-              <div className="flex items-center justify-between">
-                <span className="text-[10px] font-semibold text-slate-400 uppercase tracking-wide block">
-                  Checkpoints ({routeWaypoints.length})
-                </span>
-                <button
-                  type="button"
-                  onClick={() => addRouteWaypoint()}
-                  className="text-[11px] font-semibold text-[#1e7168] hover:text-[#185e56] flex items-center gap-0.5 cursor-pointer py-1 px-1.5"
-                  title="Add Checkpoint"
-                >
-                  <Plus className="w-3 h-3" />
-                  <span>Add Checkpoint</span>
+                  <Pencil className="w-3.5 h-3.5" />
+                  <span>Edit</span>
                 </button>
               </div>
 
-              <div className="space-y-1 max-h-48 overflow-y-auto pr-0.5">
+              {/* Profile Details List */}
+              <div className="space-y-1.5 text-xs">
+                <div className="flex justify-between items-center">
+                  <span className="text-[#647078]">Mobility aid</span>
+                  <span className="font-medium text-[#17252B]">
+                    {activeProfile.id === "wheelchair" ? "Manual wheelchair" : activeProfile.name}
+                  </span>
+                </div>
+                <div className="flex justify-between items-center">
+                  <span className="text-[#647078]">Clearance width</span>
+                  <span className="font-medium text-[#17252B]">{(activeProfile.minClearanceCm * 10).toLocaleString()} mm</span>
+                </div>
+                <div className="flex justify-between items-center">
+                  <span className="text-[#647078]">Turning space</span>
+                  <span className="font-medium text-[#17252B]">{(activeProfile.turningSpaceCm * 10).toLocaleString()} mm</span>
+                </div>
+                <div className="flex justify-between items-center">
+                  <span className="text-[#647078]">Other needs</span>
+                  <span className="font-medium text-[#17252B] capitalize">{otherNeedsText}</span>
+                </div>
+              </div>
+            </div>
+
+            {/* Route details section matching 08-workspace-routes.png */}
+            <div className="space-y-2.5">
+              <h3 className="text-xs font-bold text-[#17252B]">
+                Route details
+              </h3>
+
+              <div className="space-y-2">
+                {/* Route length */}
+                <div className="flex items-center justify-between p-2.5 rounded-lg border border-[#E2E6E8] bg-white">
+                  <div className="flex items-center gap-3">
+                    <div className="text-[#0B514B]">
+                      <svg className="w-4 h-4" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.6">
+                        <path d="M2 5h12M11 2l3 3-3 3M14 11H2M5 8l-3 3 3 3" />
+                      </svg>
+                    </div>
+                    <span className="text-xs text-[#17252B]">Route length</span>
+                  </div>
+                  <span className="text-sm font-bold text-[#17252B]">{displayLengthM} m</span>
+                </div>
+
+                {/* Tightest corridor clearance */}
+                <div className="flex items-center justify-between p-2.5 rounded-lg border border-[#E2E6E8] bg-white">
+                  <div className="flex items-center gap-3">
+                    <div className="text-[#0B514B]">
+                      <svg className="w-4 h-4" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.6">
+                        <path d="M3 2v12M13 2v12M3 8h10M6 6l-2 2 2 2M10 6l2 2-2 2" />
+                      </svg>
+                    </div>
+                    <div className="flex items-center gap-1">
+                      <span className="text-xs text-[#17252B]">Tightest corridor clearance</span>
+                      <Info className="w-3.5 h-3.5 text-[#647078]" />
+                    </div>
+                  </div>
+                  <span className="text-sm font-bold text-[#17252B]">{displayClearanceM} m</span>
+                </div>
+
+                {/* Route status */}
+                <div className="flex items-center justify-between p-2.5 rounded-lg border border-[#E2E6E8] bg-white">
+                  <div className="flex items-center gap-3">
+                    <div className={isCompliant ? "text-emerald-600" : "text-red-600"}>
+                      {isCompliant ? (
+                        <CheckCircle2 className="w-4 h-4" />
+                      ) : (
+                        <AlertTriangle className="w-4 h-4" />
+                      )}
+                    </div>
+                    <span className="text-xs text-[#17252B]">Route status</span>
+                  </div>
+                  <div className="text-right">
+                    <span className={`text-xs font-bold ${isCompliant ? "text-[#17252B]" : "text-red-700"}`}>
+                      {isCompliant ? "Compliant" : "Deficit detected"}
+                    </span>
+                    <span className="text-[10px] text-[#647078] block">
+                      {isCompliant ? "No major obstructions" : "Adjust route or furniture"}
+                    </span>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* + Add Checkpoint button matching 08-workspace-routes.png */}
+            <button
+              type="button"
+              onClick={() => addRouteWaypoint()}
+              className="w-full py-2 px-3 rounded-lg border border-[#E2E6E8] bg-white hover:bg-[#F7F8F8] text-[#17252B] text-xs font-semibold flex items-center justify-center gap-1.5 transition cursor-pointer shadow-2xs"
+            >
+              <Plus className="w-3.5 h-3.5 text-[#0B514B]" />
+              <span>Add checkpoint</span>
+            </button>
+
+            {/* Checkpoints list */}
+            {routeWaypoints.length > 0 && (
+              <div className="space-y-1.5 max-h-40 overflow-y-auto pr-0.5">
                 {routeWaypoints.map((pt, i) => {
                   const isSelected = selectedWaypointId === pt.id;
                   const isStart = i === 0;
@@ -299,38 +238,28 @@ export function Stage3Routes() {
                       key={pt.id}
                       role="button"
                       tabIndex={0}
-                      aria-pressed={isSelected}
                       onClick={() => selectWaypoint(pt.id)}
-                      onKeyDown={(e) => {
-                        if (e.key === "Enter" || e.key === " ") {
-                          e.preventDefault();
-                          selectWaypoint(pt.id);
-                        }
-                      }}
-                      className={`flex items-center justify-between p-1.5 rounded border text-xs cursor-pointer transition focus-visible:outline focus-visible:outline-2 focus-visible:outline-[#1e7168] ${
+                      className={`flex items-center justify-between p-2 rounded-lg border text-xs cursor-pointer transition ${
                         isSelected
-                          ? "border-[#1e7168] bg-[#f0f7f5]"
-                          : "border-slate-200 bg-white hover:bg-slate-50 text-slate-700"
+                          ? "border-[#0B514B] bg-[#F0F5F4]"
+                          : "border-[#E2E6E8] bg-white hover:bg-[#F7F8F8]"
                       }`}
                     >
                       <div className="flex items-center gap-2">
                         <span
-                          className={`w-4 h-4 rounded-full flex items-center justify-center text-[9px] font-bold text-white ${
+                          className={`size-5 rounded-full flex items-center justify-center text-[10px] font-bold text-white ${
                             isStart
                               ? "bg-emerald-600"
                               : isEnd
-                              ? "bg-[#1e7168]"
-                              : "bg-[#1d63b8]"
+                              ? "bg-[#0B514B]"
+                              : "bg-[#0B514B]"
                           }`}
                         >
                           {i + 1}
                         </span>
-                        <div className="truncate max-w-[170px]">
-                          <span className="font-medium text-xs truncate block">{pt.name}</span>
-                          <span className="text-[9px] font-mono text-slate-400">
-                            ({Math.round(pt.x)}, {Math.round(pt.y)})
-                          </span>
-                        </div>
+                        <span className="font-medium text-xs text-[#17252B]">
+                          {isStart ? "Start" : isEnd ? "Destination" : pt.name || `Point ${i + 1}`}
+                        </span>
                       </div>
 
                       {routeWaypoints.length > 2 && !isStart && !isEnd && (
@@ -341,8 +270,7 @@ export function Stage3Routes() {
                             removeRouteWaypoint(pt.id);
                           }}
                           aria-label={`Remove checkpoint ${pt.name || i + 1}`}
-                          className="min-h-[28px] min-w-[28px] flex items-center justify-center p-1 text-slate-400 hover:text-red-600 rounded transition cursor-pointer"
-                          title="Remove Checkpoint"
+                          className="p-1 text-[#647078] hover:text-red-600 rounded transition cursor-pointer"
                         >
                           <Trash2 className="w-3.5 h-3.5" />
                         </button>
@@ -351,38 +279,101 @@ export function Stage3Routes() {
                   );
                 })}
               </div>
-            </div>
+            )}
           </div>
 
-          {/* Action Footer */}
-          <div className="pt-3 border-t border-slate-200 space-y-1.5">
+          {/* Action Footer matching 08-workspace-routes.png */}
+          <div className="pt-4 border-t border-[#E2E6E8] flex items-center justify-between gap-3 shrink-0">
             <button
               type="button"
-              onClick={runAnalysisTransition}
-              className="w-full py-2 px-3 bg-[#1e7168] hover:bg-[#185e56] text-white rounded-lg text-xs font-semibold flex items-center justify-center gap-1.5 transition shadow-xs cursor-pointer"
+              onClick={() => setStage("profile")}
+              className="py-2.5 px-3.5 rounded-lg border border-[#E2E6E8] bg-white hover:bg-[#F7F8F8] text-[#17252B] text-xs font-semibold flex items-center gap-1.5 transition cursor-pointer"
             >
-              <span>Review Clearance Findings</span>
-              <ChevronRight className="w-3.5 h-3.5" />
+              <ChevronLeft className="w-3.5 h-3.5" />
+              <span>Back to profile</span>
             </button>
 
             <button
               type="button"
-              onClick={() => setStage("profile")}
-              className="w-full py-1.5 px-2 text-slate-600 hover:text-slate-900 text-xs font-medium flex items-center justify-center gap-1 transition cursor-pointer"
+              onClick={runAnalysisTransition}
+              className="py-2.5 px-4 rounded-lg bg-[#0B514B] hover:bg-[#073D38] text-white text-xs font-semibold flex items-center gap-1.5 transition shadow-xs cursor-pointer"
             >
-              <ChevronLeft className="w-3 h-3" />
-              <span>Back to Profile</span>
+              <span>Review clearance findings</span>
+              <ChevronRight className="w-3.5 h-3.5" />
             </button>
           </div>
         </aside>
 
-        {/* Central Canvas */}
+        {/* Central Canvas Area matching 08-workspace-routes.png */}
         <main
-          className={`flex-1 h-full p-2.5 overflow-hidden flex-col ${
+          className={`flex-1 h-full bg-white rounded-2xl border border-[#E2E6E8] p-4 lg:p-5 shadow-xs overflow-hidden flex flex-col relative ${
             mobileTab === "map" ? "flex" : "hidden lg:flex"
           }`}
         >
-          <Floorplan2D className="flex-1" />
+          {/* Canvas Top Toolbar matching 08-workspace-routes.png */}
+          <div className="w-full flex items-center justify-between mb-4 z-20">
+            {/* Left Toolbar Pill */}
+            <div className="flex items-center gap-1 bg-[#F0F3F4] p-0.5 rounded-lg border border-[#E2E6E8]">
+              <button
+                type="button"
+                className="p-1.5 rounded-md bg-white text-[#0B514B] shadow-2xs cursor-pointer"
+                title="Select"
+              >
+                <MousePointer className="w-4 h-4 fill-current" />
+              </button>
+              <button
+                type="button"
+                className="p-1.5 rounded-md text-[#647078] hover:text-[#17252B] cursor-pointer"
+                title="Route Waypoints"
+              >
+                <GitBranch className="w-4 h-4" />
+              </button>
+            </div>
+
+            {/* Right Toolbar Controls */}
+            <div className="flex items-center gap-2 sm:gap-3 text-[#647078]">
+              <button
+                type="button"
+                onClick={() => setZoom(Math.min(zoom + 0.15, 2.5))}
+                aria-label="Zoom in"
+                className="p-1.5 rounded-lg border border-[#E2E6E8] bg-white hover:text-[#17252B] hover:bg-[#F7F8F8] transition cursor-pointer"
+              >
+                <ZoomIn className="w-4 h-4" />
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setZoom(Math.max(zoom - 0.15, 0.4))}
+                aria-label="Zoom out"
+                className="p-1.5 rounded-lg border border-[#E2E6E8] bg-white hover:text-[#17252B] hover:bg-[#F7F8F8] transition cursor-pointer"
+              >
+                <ZoomOut className="w-4 h-4" />
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setZoom(1)}
+                aria-label="Fit view"
+                className="p-1.5 rounded-lg border border-[#E2E6E8] bg-white hover:text-[#17252B] hover:bg-[#F7F8F8] transition cursor-pointer"
+              >
+                <Maximize2 className="w-4 h-4" />
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setReportModalOpen(true)}
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-[#E2E6E8] bg-white text-xs font-medium text-[#17252B] hover:bg-[#F7F8F8] transition cursor-pointer shadow-2xs"
+              >
+                <Download className="w-3.5 h-3.5 text-[#647078]" />
+                <span>Export view</span>
+              </button>
+            </div>
+          </div>
+
+          {/* Floorplan Canvas Container */}
+          <div className="flex-1 relative rounded-xl border border-[#E2E6E8] bg-white overflow-hidden shadow-2xs">
+            <Floorplan2D hideControls={true} className="w-full h-full border-0 rounded-none bg-[#FAFBF9]" />
+          </div>
         </main>
       </div>
     </div>

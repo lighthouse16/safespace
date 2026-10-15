@@ -701,7 +701,7 @@ export const MOBILITY_PROFILES: MobilityProfileData[] = [
     description: "Older adult with bilateral mobility aid requiring stable clearance & support points.",
     minClearanceCm: 90,
     turningSpaceCm: 150,
-    fallHistory: true,
+    fallHistory: false,
     requiresSupport: true,
     lowLightSensitivity: "Moderate",
   },

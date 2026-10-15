@@ -12,7 +12,7 @@ export type EnvironmentType =
   | "other";
 
 export const ENVIRONMENT_TYPE_LABELS: Record<EnvironmentType, string> = {
-  residence: "Residence",
+  residence: "Residential",
   clinic: "Clinic or care facility",
   rehab: "Rehabilitation facility",
   mall: "Shopping mall or public indoor space",

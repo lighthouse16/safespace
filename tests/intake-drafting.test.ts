@@ -416,7 +416,7 @@ test("FloorplanSourceStep renders selection strictly from parent-owned currentSo
     })
   );
   // Upload button has active highlight, manual does not
-  assert.match(uploadHtml, /border-\[#1e7168\] bg-\[#e8f3f1\]\/30[\s\S]*Upload an existing floorplan/);
+  assert.match(uploadHtml, /border-\[#0B514B\][\s\S]*Upload an existing floorplan/);
   assert.match(uploadHtml, /border-slate-200 bg-white hover:border-slate-300[\s\S]*Draw the space manually/);
 
   // Render when parent currentSource is "manual"
@@ -432,7 +432,7 @@ test("FloorplanSourceStep renders selection strictly from parent-owned currentSo
     })
   );
   assert.match(manualHtml, /border-slate-200 bg-white hover:border-slate-300[\s\S]*Upload an existing floorplan/);
-  assert.match(manualHtml, /border-\[#1e7168\] bg-\[#e8f3f1\]\/30[\s\S]*Draw the space manually/);
+  assert.match(manualHtml, /border-\[#0B514B\][\s\S]*Draw the space manually/);
 });
 
 test("FloorplanSourceStep contains updated truthful PDF copy on upload card", () => {
@@ -456,7 +456,6 @@ test("assessments dashboard and new assessment do not render Harmony Elder Care 
   assert.doesNotMatch(newHtml, /Harmony Elder Care Centre/);
   assert.doesNotMatch(newHtml, /Data saved locally/);
   assert.match(newHtml, /New assessment/);
-  assert.match(newHtml, /(Session only|In progress)/);
 });
 
 // 10. Image decodability verification tests

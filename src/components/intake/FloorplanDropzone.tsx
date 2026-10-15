@@ -165,63 +165,68 @@ export function FloorplanDropzone({
           onDrop={handleDrop}
           onDragOver={handleDragOver}
           onDragLeave={handleDragLeave}
-          className={`flex flex-col items-center justify-center rounded-xl border-2 border-dashed p-8 text-center transition ${
+          className={`flex flex-col items-center justify-center rounded-2xl border border-dashed p-8 text-center transition ${
             dragOver
-              ? "border-[#1e7168] bg-[#e8f3f1]"
-              : "border-slate-300 bg-slate-50 hover:bg-slate-100/60"
+              ? "border-[#0B514B] bg-[#F7F8F8] ring-2 ring-[#0B514B]/20"
+              : "border-[#CBD5E1] bg-white hover:bg-[#F7F8F8]"
           }`}
         >
-          <div className="size-10 rounded-full bg-white border border-slate-200 grid place-items-center text-slate-500 shadow-2xs">
+          <div className="mx-auto flex size-12 items-center justify-center text-[#17252B]">
             <svg
-              className="size-5"
-              fill="none"
+              className="size-10"
               viewBox="0 0 24 24"
+              fill="none"
               stroke="currentColor"
+              strokeWidth="1.8"
+              strokeLinecap="round"
+              strokeLinejoin="round"
               aria-hidden="true"
             >
-              <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                strokeWidth={1.5}
-                d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"
-              />
+              <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
+              <polyline points="14 2 14 8 20 8" />
+              <path d="M12 18v-6" />
+              <path d="m9 15 3-3 3 3" />
             </svg>
           </div>
 
-          <div className="mt-3 text-sm font-semibold text-[#192329]">
-            Drag and drop floorplan here, or browse
+          <div className="mt-3 text-sm font-bold text-[#17252B]">
+            Drag and drop your floorplan here
           </div>
-          <p className="mt-1 text-xs text-[#64748b]">
-            Supported formats: PNG, JPEG, SVG (visual drafting) or PDF (preview only) up to 25 MB
+          <p className="mt-1 text-xs text-[#647078]">
+            Or select a file from your computer
           </p>
 
-          <Button
+          <button
             type="button"
-            variant="secondary"
-            size="sm"
             onClick={handleTriggerInput}
-            className="mt-4"
+            className="mt-4 inline-flex items-center justify-center rounded-xl border border-[#E2E6E8] bg-white px-4 py-2.5 text-xs font-semibold text-[#17252B] shadow-2xs hover:bg-[#F7F8F8] transition cursor-pointer"
           >
             Select floorplan file
-          </Button>
+          </button>
 
-          <div className="mt-4 text-[11px] text-[#94a3b8]">
+          <p className="mt-4 text-[11px] text-[#8C9BA5]">
+            Supported formats: PDF, PNG, JPG, DWG
+          </p>
+          <p className="mt-0.5 text-[11px] text-[#8C9BA5]">
+            Maximum file size: 50 MB
+          </p>
+          <p className="sr-only">
             Selected file stays on this device. No file is sent to external servers.
-          </div>
+          </p>
         </div>
       ) : (
         <div className="rounded-xl border border-slate-200 bg-white p-5 shadow-xs space-y-4">
           <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
             <div className="min-w-0">
               <div className="flex items-center gap-2">
-                <span className="font-semibold text-xs text-[#192329] truncate max-w-sm">
+                <span className="font-semibold text-xs text-[#17252B] truncate max-w-sm">
                   {currentFile.name}
                 </span>
                 <span className="rounded bg-slate-100 px-2 py-0.5 text-[10px] font-medium text-slate-600 border border-slate-200 uppercase">
                   {currentFile.isPdf ? "PDF" : currentFile.name.split(".").pop()}
                 </span>
               </div>
-              <div className="mt-0.5 text-[11px] text-[#64748b]">
+              <div className="mt-0.5 text-[11px] text-[#647078]">
                 {formatFileSize(currentFile.size)} · Kept on this device
               </div>
             </div>
@@ -281,13 +286,13 @@ export function FloorplanDropzone({
                       />
                     </svg>
                   </div>
-                  <div className="mt-2 text-xs font-semibold text-[#192329]">
+                  <div className="mt-2 text-xs font-semibold text-[#17252B]">
                     {currentFile.name}
                   </div>
-                  <div className="mt-0.5 text-[11px] text-[#64748b]">
+                  <div className="mt-0.5 text-[11px] text-[#647078]">
                     {formatFileSize(currentFile.size)} · PDF document
                   </div>
-                  <p className="mt-2 text-[11px] text-[#64748b] max-w-sm">
+                  <p className="mt-2 text-[11px] text-[#647078] max-w-sm">
                     Embedded preview unavailable in this browser. File metadata recorded.
                   </p>
                 </div>

@@ -7,34 +7,34 @@
 export const tokens = {
   colors: {
     // Canvas & Surfaces
-    canvas: "#f7f8f6",
+    canvas: "#F7F8F8",
     surface: "#ffffff",
     surfaceSubtle: "#f1f5f3",
     surfaceMuted: "#eaf0ed",
     surfaceHover: "#f8faf9",
 
     // Borders & Dividers
-    border: "#e2e8e4",
+    border: "#E2E6E8",
     borderSubtle: "#eef2ef",
     borderStrong: "#cbd5e1",
-    divider: "#e2e8e4",
+    divider: "#E2E6E8",
 
     // Text & Foreground
     text: {
-      primary: "#192329",
+      primary: "#17252B",
       secondary: "#475569",
-      muted: "#64748b",
+      muted: "#647078",
       subtle: "#94a3b8",
       inverse: "#ffffff",
     },
 
     // Brand & Primary Action (Single Controlled Teal)
     primary: {
-      default: "#1e7168",
-      hover: "#175b54",
-      active: "#124741",
-      surface: "#e8f3f1",
-      surfaceHover: "#d9ece8",
+      default: "#0B514B",
+      hover: "#073D38",
+      active: "#073D38",
+      surface: "#F7F8F8",
+      surfaceHover: "#E2E6E8",
       border: "#b8d9d4",
       contrast: "#ffffff",
     },

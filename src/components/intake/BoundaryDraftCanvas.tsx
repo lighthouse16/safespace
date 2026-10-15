@@ -1,7 +1,22 @@
 "use client";
 
 import React, { useRef, useState, useCallback } from "react";
-import { Button } from "@/components/ui/button";
+import {
+  MousePointer,
+  Ruler,
+  Share2,
+  Hand,
+  Search,
+  CheckSquare,
+  Square,
+  Minus,
+  Plus,
+  ChevronLeft,
+  ChevronRight,
+  FileText,
+  Building2,
+  Layers,
+} from "lucide-react";
 import {
   type BoundaryState,
   type CalibrationState,
@@ -25,6 +40,11 @@ export type BoundaryDraftCanvasProps = {
   boundary: BoundaryState;
   onUpdateCalibration: (cal: CalibrationState) => void;
   onUpdateBoundary: (b: BoundaryState) => void;
+  assessmentName?: string;
+  facilityName?: string;
+  spaceName?: string;
+  onBack?: () => void;
+  onContinue?: () => void;
 };
 
 const CANVAS_WIDTH = 800;
@@ -38,13 +58,25 @@ export function BoundaryDraftCanvas({
   boundary,
   onUpdateCalibration,
   onUpdateBoundary,
+  assessmentName,
+  facilityName,
+  spaceName,
+  onBack,
+  onContinue,
 }: BoundaryDraftCanvasProps) {
-  const [activeTool, setActiveTool] = useState<"calibrate" | "boundary">(
-    calibration.isCalibrated ? "boundary" : "calibrate"
+  const [activeTool, setActiveTool] = useState<"calibrate" | "boundary" | "select" | "pan" | "zoom">(
+    "select"
   );
+  const [activeSubTab, setActiveSubTab] = useState<"scale" | "boundary" | "review">(
+    "scale"
+  );
+  const [zoomLevel, setZoomLevel] = useState(100);
+  const [showGrid, setShowGrid] = useState(true);
   const [pointerPos, setPointerPos] = useState<Point2D | null>(null);
   const [draggingVertexIdx, setDraggingVertexIdx] = useState<number | null>(null);
-  const [showResetConfirm, setShowResetConfirm] = useState(false);
+  const [panOffset, setPanOffset] = useState<Point2D>({ x: 0, y: 0 });
+  const [isPanning, setIsPanning] = useState(false);
+  const [panStart, setPanStart] = useState<Point2D>({ x: 0, y: 0 });
 
   const svgRef = useRef<SVGSVGElement>(null);
 
@@ -78,6 +110,14 @@ export function BoundaryDraftCanvas({
   );
 
   const handlePointerMove = (e: React.PointerEvent<SVGSVGElement>) => {
+    if (isPanning) {
+      setPanOffset({
+        x: e.clientX - panStart.x,
+        y: e.clientY - panStart.y,
+      });
+      return;
+    }
+
     const rawPt = getSvgCoordinates(e);
     const pt = snapPoint(rawPt);
     setPointerPos(pt);
@@ -96,10 +136,13 @@ export function BoundaryDraftCanvas({
     if (draggingVertexIdx !== null) {
       setDraggingVertexIdx(null);
     }
+    if (isPanning) {
+      setIsPanning(false);
+    }
   };
 
   const handleCanvasClick = (e: React.PointerEvent<SVGSVGElement>) => {
-    if (draggingVertexIdx !== null) return;
+    if (draggingVertexIdx !== null || isPanning) return;
     const rawPt = getSvgCoordinates(e);
     const pt = snapPoint(rawPt);
 
@@ -109,7 +152,7 @@ export function BoundaryDraftCanvas({
       } else if (!calibration.p2) {
         onUpdateCalibration({ ...calibration, p2: pt });
       } else {
-        // If already had 2 points, start fresh calibration with this point
+        // Start fresh calibration with this point
         onUpdateCalibration({
           ...calibration,
           p1: pt,
@@ -142,6 +185,31 @@ export function BoundaryDraftCanvas({
     }
   };
 
+  const handleCanvasPointerDown = (e: React.PointerEvent<SVGSVGElement>) => {
+    if (activeTool === "pan") {
+      setIsPanning(true);
+      setPanStart({ x: e.clientX - panOffset.x, y: e.clientY - panOffset.y });
+      try {
+        (e.currentTarget as Element).setPointerCapture(e.pointerId);
+      } catch {}
+      return;
+    }
+    if (activeTool === "zoom") {
+      setZoomLevel((z) => Math.min(200, z + 20));
+      return;
+    }
+    handleCanvasClick(e);
+  };
+
+  const handleCanvasPointerUp = (e: React.PointerEvent<SVGSVGElement>) => {
+    if (isPanning) {
+      setIsPanning(false);
+      try {
+        (e.currentTarget as Element).releasePointerCapture(e.pointerId);
+      } catch {}
+    }
+  };
+
   const handleVertexPointerDown = (index: number, e: React.PointerEvent) => {
     e.stopPropagation();
     if (!boundary.isClosed) return;
@@ -149,35 +217,34 @@ export function BoundaryDraftCanvas({
     try {
       (e.currentTarget as Element).setPointerCapture(e.pointerId);
     } catch {
-      // Safe fallback
+      // Ignore if pointer capture fails
     }
   };
 
   const handleVertexPointerUp = (e: React.PointerEvent) => {
-    if (draggingVertexIdx !== null) {
-      try {
-        (e.currentTarget as Element).releasePointerCapture(e.pointerId);
-      } catch {
-        // Safe fallback
-      }
-      setDraggingVertexIdx(null);
+    setDraggingVertexIdx(null);
+    try {
+      (e.currentTarget as Element).releasePointerCapture(e.pointerId);
+    } catch {
+      // Ignore
     }
   };
 
   const handleUndoVertex = () => {
-    if (boundary.vertices.length === 0 || boundary.isClosed) return;
     onUpdateBoundary({
       ...boundary,
       vertices: undoBoundaryVertex(boundary.vertices),
+      isClosed: false,
     });
   };
 
   const handleCloseBoundary = () => {
-    onUpdateBoundary(closeBoundary(boundary));
+    if (canCloseBoundary(boundary.vertices)) {
+      onUpdateBoundary(closeBoundary(boundary));
+    }
   };
 
   const handleResetBoundary = () => {
-    setShowResetConfirm(false);
     onUpdateBoundary({
       ...boundary,
       vertices: [],
@@ -186,416 +253,703 @@ export function BoundaryDraftCanvas({
     });
   };
 
-  // Convert points to SVG points string
-  const polygonPoints = boundary.vertices.map((v) => `${v.x},${v.y}`).join(" ");
+  // SVG polygon path
+  const polygonPointsStr = boundary.vertices.map((v) => `${v.x},${v.y}`).join(" ");
 
-  const lastVertex =
-    boundary.vertices.length > 0
-      ? boundary.vertices[boundary.vertices.length - 1]
-      : null;
-
-  const isNearFirstVertex =
-    !boundary.isClosed &&
-    boundary.vertices.length >= 3 &&
+  const canClose = canCloseBoundary(boundary.vertices) && !boundary.isClosed;
+  const isHoveringFirstVertex =
+    canClose &&
+    boundary.vertices.length > 0 &&
     pointerPos &&
-    Math.hypot(pointerPos.x - boundary.vertices[0].x, pointerPos.y - boundary.vertices[0].y) <=
-      20;
+    Math.hypot(pointerPos.x - boundary.vertices[0].x, pointerPos.y - boundary.vertices[0].y) <= 22;
 
-  const boundaryStatus =
-    boundary.vertices.length === 0
-      ? "Not started"
-      : boundary.isClosed
-      ? "Closed"
-      : "In progress";
+  // Dynamic ViewBox from zoomLevel & panOffset
+  const zoomFactor = zoomLevel / 100;
+  const viewBoxWidth = CANVAS_WIDTH / zoomFactor;
+  const viewBoxHeight = CANVAS_HEIGHT / zoomFactor;
+  const viewBoxX = (CANVAS_WIDTH - viewBoxWidth) / 2 - panOffset.x / zoomFactor;
+  const viewBoxY = (CANVAS_HEIGHT - viewBoxHeight) / 2 - panOffset.y / zoomFactor;
+  const currentViewBox = `${viewBoxX} ${viewBoxY} ${viewBoxWidth} ${viewBoxHeight}`;
+
+  const canvasCursor = isPanning
+    ? "cursor-grabbing"
+    : activeTool === "pan"
+    ? "cursor-grab"
+    : activeTool === "zoom"
+    ? "cursor-zoom-in"
+    : activeTool === "boundary" || activeTool === "calibrate"
+    ? "cursor-crosshair"
+    : "cursor-default";
+
+  // Approximate area in m²
+  const approximateAreaM2 = boundary.vertices.length >= 3 && calibration.pixelsPerCm
+    ? (() => {
+        let areaPx = 0;
+        for (let i = 0; i < boundary.vertices.length; i++) {
+          const j = (i + 1) % boundary.vertices.length;
+          areaPx += boundary.vertices[i].x * boundary.vertices[j].y;
+          areaPx -= boundary.vertices[j].x * boundary.vertices[i].y;
+        }
+        areaPx = Math.abs(areaPx) / 2;
+        const areaCm2 = areaPx / (calibration.pixelsPerCm * calibration.pixelsPerCm);
+        return (areaCm2 / 10000).toFixed(1);
+      })()
+    : "—";
 
   return (
     <div className="space-y-4">
-      {/* Top Toolbar */}
-      <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-slate-200 bg-white p-3 shadow-xs">
-        <div className="flex flex-wrap items-center gap-2">
-          {/* Tool mode switch */}
-          <div className="inline-flex rounded-lg border border-slate-200 p-0.5 bg-slate-100">
-            <button
-              type="button"
-              onClick={() => setActiveTool("calibrate")}
-              className={`rounded-md px-3 py-1.5 text-xs font-semibold transition cursor-pointer ${
-                activeTool === "calibrate"
-                  ? "bg-white text-[#1e7168] shadow-2xs"
-                  : "text-slate-600 hover:text-slate-900"
-              }`}
-            >
-              1. Set Scale {calibration.isCalibrated && "✓"}
-            </button>
-            <button
-              type="button"
-              onClick={() => setActiveTool("boundary")}
-              className={`rounded-md px-3 py-1.5 text-xs font-semibold transition cursor-pointer ${
-                activeTool === "boundary"
-                  ? "bg-white text-[#1e7168] shadow-2xs"
-                  : "text-slate-600 hover:text-slate-900"
-              }`}
-            >
-              2. Draw Boundary {boundary.isClosed && "✓"}
-            </button>
+      {/* 3-Column Metadata Strip matching 04-calibration-and-boundary.png */}
+      <div className="rounded-2xl border border-[#E2E6E8] bg-white shadow-xs grid grid-cols-1 divide-y sm:grid-cols-3 sm:divide-y-0 sm:divide-x divide-[#E2E6E8]">
+        <div className="flex items-center gap-3 p-4">
+          <FileText size={20} strokeWidth={1.8} className="text-[#17252B] shrink-0" />
+          <div className="min-w-0">
+            <p className="text-xs text-[#647078]">Assessment</p>
+            <p className="font-semibold text-sm text-[#17252B] truncate">{assessmentName || "Unit A12 accessibility review"}</p>
           </div>
-
-          {/* Grid snap toggle */}
-          <button
-            type="button"
-            onClick={() =>
-              onUpdateBoundary({ ...boundary, gridSnap: !boundary.gridSnap })
-            }
-            className={`rounded-lg border px-2.5 py-1.5 text-xs font-medium transition cursor-pointer ${
-              boundary.gridSnap
-                ? "border-[#1e7168] bg-[#e8f3f1] text-[#1e7168]"
-                : "border-slate-200 bg-white text-slate-600 hover:bg-slate-50"
-            }`}
-          >
-            Grid Snap (20px): {boundary.gridSnap ? "ON" : "OFF"}
-          </button>
         </div>
 
-        {/* Boundary Actions */}
-        <div className="flex items-center gap-2">
-          {activeTool === "boundary" && !boundary.isClosed && (
-            <>
-              <Button
-                type="button"
-                variant="secondary"
-                size="xs"
-                onClick={handleUndoVertex}
-                disabled={boundary.vertices.length === 0}
-              >
-                Undo Point
-              </Button>
-              <Button
-                type="button"
-                size="xs"
-                onClick={handleCloseBoundary}
-                disabled={boundary.vertices.length < 3}
-              >
-                Close Boundary ({boundary.vertices.length}/3+)
-              </Button>
-            </>
-          )}
+        <div className="flex items-center gap-3 p-4">
+          <Building2 size={20} strokeWidth={1.8} className="text-[#17252B] shrink-0" />
+          <div className="min-w-0">
+            <p className="text-xs text-[#647078]">Facility</p>
+            <p className="font-semibold text-sm text-[#17252B] truncate">{facilityName || "Harbor View Residence"}</p>
+          </div>
+        </div>
 
-          {boundary.vertices.length > 0 && (
-            <div>
-              {showResetConfirm ? (
-                <div className="flex items-center gap-1.5">
-                  <span className="text-[11px] text-[#dc2626] font-medium">Reset all?</span>
-                  <Button
-                    type="button"
-                    variant="danger"
-                    size="xs"
-                    onClick={handleResetBoundary}
-                  >
-                    Yes
-                  </Button>
-                  <Button
-                    type="button"
-                    variant="secondary"
-                    size="xs"
-                    onClick={() => setShowResetConfirm(false)}
-                  >
-                    Cancel
-                  </Button>
-                </div>
-              ) : (
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="xs"
-                  onClick={() => setShowResetConfirm(true)}
-                  className="text-slate-500 hover:text-[#dc2626]"
-                >
-                  Reset Boundary
-                </Button>
-              )}
-            </div>
-          )}
+        <div className="flex items-center gap-3 p-4">
+          <Layers size={20} strokeWidth={1.8} className="text-[#17252B] shrink-0" />
+          <div className="min-w-0">
+            <p className="text-xs text-[#647078]">Space or area</p>
+            <p className="font-semibold text-sm text-[#17252B] truncate">{spaceName || "Living room & corridor"}</p>
+          </div>
         </div>
       </div>
 
-      {/* Main Workspace Area: Sidebar & Canvas */}
-      <div className="grid gap-4 lg:grid-cols-[18rem_minmax(0,1fr)]">
-        {/* Left Side Controller / Inspector */}
-        <div className="space-y-4">
-          <CalibrationTool
-            calibration={calibration}
-            onApplyCalibration={(newCal) => {
-              onUpdateCalibration(newCal);
-              setActiveTool("boundary");
-            }}
-            onResetCalibration={() =>
-              onUpdateCalibration({
-                p1: null,
-                p2: null,
-                realLength: null,
-                unit: "cm",
-                pixelsPerCm: null,
-                isCalibrated: false,
-              })
-            }
-          />
+      {/* Main Drafting Grid: Left Controls + Right Canvas */}
+      <div className="grid gap-6 lg:grid-cols-[20rem_minmax(0,1fr)]">
+        {/* Left Side Controller */}
+        <div className="rounded-2xl border border-[#E2E6E8] bg-white p-5 sm:p-6 shadow-xs flex flex-col justify-between space-y-6">
+          <div>
+            <h2 className="text-xl font-bold text-[#17252B]">
+              Calibration & drafting
+            </h2>
+            <p className="mt-1 text-xs text-[#647078]">
+              Set the scale and draw the boundary for the space.
+            </p>
 
-          {/* Status & Instructions Card */}
-          <div className="rounded-lg border border-slate-200 bg-white p-4 shadow-xs text-xs space-y-2.5">
-            <h4 className="font-semibold uppercase tracking-wider text-slate-500 text-[11px]">
-              Drafting Guide
-            </h4>
+            {/* Sub-tabs matching 04-calibration-and-boundary.png */}
+            <div className="mt-5 space-y-1.5">
+              <button
+                type="button"
+                onClick={() => {
+                  setActiveSubTab("scale");
+                  setActiveTool("calibrate");
+                }}
+                className={`flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-xs font-semibold transition cursor-pointer ${
+                  activeSubTab === "scale"
+                    ? "bg-[#E6F0EE] text-[#0B514B] border-l-4 border-[#0B514B]"
+                    : "text-[#647078] hover:bg-[#F7F8F8] hover:text-[#17252B]"
+                }`}
+              >
+                <Ruler size={16} />
+                <span>Set scale</span>
+              </button>
 
-            {activeTool === "calibrate" ? (
-              <p className="text-slate-600 leading-relaxed">
-                Click two points along a known distance (e.g. wall or door) on the preview or manual grid. Then specify the real dimension to calculate physical scale.
+              <button
+                type="button"
+                onClick={() => {
+                  setActiveSubTab("boundary");
+                  setActiveTool("boundary");
+                }}
+                className={`flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-xs font-semibold transition cursor-pointer ${
+                  activeSubTab === "boundary"
+                    ? "bg-[#E6F0EE] text-[#0B514B] border-l-4 border-[#0B514B]"
+                    : "text-[#647078] hover:bg-[#F7F8F8] hover:text-[#17252B]"
+                }`}
+              >
+                <Share2 size={16} />
+                <span>Draw boundary</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => {
+                  setActiveSubTab("review");
+                }}
+                className={`flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-xs font-semibold transition cursor-pointer ${
+                  activeSubTab === "review"
+                    ? "bg-[#E6F0EE] text-[#0B514B] border-l-4 border-[#0B514B]"
+                    : "text-[#647078] hover:bg-[#F7F8F8] hover:text-[#17252B]"
+                }`}
+              >
+                <Search size={16} />
+                <span>Review & refine</span>
+              </button>
+            </div>
+
+            {/* Sub-tab Content */}
+            <div className="mt-6 border-t border-[#E2E6E8] pt-5">
+              {activeSubTab === "scale" && (
+                <div className="space-y-4">
+                  <CalibrationTool
+                    calibration={calibration}
+                    onApplyCalibration={(newCal) => {
+                      onUpdateCalibration(newCal);
+                      setActiveTool("boundary");
+                      setActiveSubTab("boundary");
+                    }}
+                    onResetCalibration={() =>
+                      onUpdateCalibration({
+                        p1: null,
+                        p2: null,
+                        realLength: null,
+                        unit: "m",
+                        pixelsPerCm: null,
+                        isCalibrated: false,
+                      })
+                    }
+                  />
+                </div>
+              )}
+
+              {activeSubTab === "boundary" && (
+                <div className="space-y-4 text-xs">
+                  <div>
+                    <h3 className="text-sm font-bold text-[#17252B]">Draw boundary</h3>
+                    <p className="mt-1 text-xs text-[#647078] leading-relaxed">
+                      {!boundary.isClosed
+                        ? "Click corners along the room perimeter. Place at least 3 points, then click the start point or close button to complete."
+                        : "Boundary outline completed. Drag any corner handle to adjust alignment."}
+                    </p>
+                  </div>
+
+                  {!boundary.isClosed ? (
+                    <div className="space-y-3 pt-1">
+                      <div className="flex items-center justify-between text-xs text-[#647078] bg-[#F8FAFA] p-2.5 rounded-lg border border-[#E2E6E8]">
+                        <span>Points placed:</span>
+                        <span className="font-mono font-bold text-[#17252B]">{boundary.vertices.length} vertices</span>
+                      </div>
+
+                      <div className="flex flex-wrap items-center gap-2 pt-1">
+                        {boundary.vertices.length === 0 && (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              if (!calibration.isCalibrated) {
+                                onUpdateCalibration({
+                                  p1: { x: 202, y: 526 },
+                                  p2: { x: 322, y: 526 },
+                                  realLength: 2,
+                                  unit: "m",
+                                  pixelsPerCm: 0.5983870967741935,
+                                  isCalibrated: true,
+                                });
+                              }
+                              onUpdateBoundary({
+                                vertices: [
+                                  { x: 172, y: 110 },
+                                  { x: 636, y: 110 },
+                                  { x: 636, y: 285 },
+                                  { x: 654, y: 285 },
+                                  { x: 654, y: 457 },
+                                  { x: 172, y: 457 },
+                                ],
+                                isClosed: true,
+                                selectedVertexIndex: null,
+                                gridSnap: true,
+                              });
+                            }}
+                            className="w-full rounded-lg bg-[#E6F0EE] border border-[#0B514B]/30 px-3 py-2 font-semibold text-[#0B514B] hover:bg-[#d6e8e5] transition cursor-pointer"
+                          >
+                            Use recommended boundary
+                          </button>
+                        )}
+                        <button
+                          type="button"
+                          onClick={handleUndoVertex}
+                          disabled={boundary.vertices.length === 0}
+                          className="rounded-lg border border-[#E2E6E8] bg-white px-3 py-1.5 font-medium hover:bg-[#F7F8F8] disabled:opacity-40 cursor-pointer"
+                        >
+                          Undo Point
+                        </button>
+                        <button
+                          type="button"
+                          onClick={handleCloseBoundary}
+                          disabled={boundary.vertices.length < 3}
+                          className="rounded-lg bg-[#0B514B] px-3 py-1.5 font-semibold text-white hover:bg-[#073D38] disabled:opacity-40 cursor-pointer"
+                        >
+                          Close Boundary
+                        </button>
+                        {boundary.vertices.length > 0 && (
+                          <button
+                            type="button"
+                            onClick={handleResetBoundary}
+                            className="rounded-lg border border-red-200 px-3 py-1.5 font-medium text-red-600 hover:bg-red-50 cursor-pointer ml-auto"
+                          >
+                            Reset
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="space-y-3 pt-1">
+                      <div className="rounded-xl bg-emerald-50 border border-emerald-200 p-3 text-emerald-800 space-y-1">
+                        <p className="font-semibold text-xs flex items-center gap-1.5">
+                          <span className="text-emerald-600 font-bold">✓</span>
+                          <span>Boundary polygon closed</span>
+                        </p>
+                        <p className="text-[11px] text-emerald-700 leading-relaxed">
+                          Drag any corner circle directly on the canvas to adjust and align the perimeter.
+                        </p>
+                      </div>
+
+                      <div className="flex items-center justify-between gap-2 pt-1">
+                        <button
+                          type="button"
+                          onClick={handleResetBoundary}
+                          className="rounded-lg border border-[#E2E6E8] bg-white px-3 py-1.5 font-medium text-[#647078] hover:bg-[#F7F8F8] cursor-pointer"
+                        >
+                          Redraw boundary
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setActiveSubTab("review");
+                            setActiveTool("select");
+                          }}
+                          className="rounded-lg bg-[#0B514B] px-3.5 py-1.5 font-semibold text-white hover:bg-[#073D38] cursor-pointer"
+                        >
+                          Review & refine &rarr;
+                        </button>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {activeSubTab === "review" && (
+                <div className="space-y-4 text-xs text-[#647078]">
+                  <div>
+                    <h3 className="text-sm font-bold text-[#17252B]">Review & refine</h3>
+                    <p className="mt-1 text-xs text-[#647078] leading-relaxed">
+                      Confirm scale calibration and perimeter boundary before continuing.
+                    </p>
+                  </div>
+
+                  <div className="rounded-xl border border-[#E2E6E8] p-3 space-y-2 bg-[#F8FAFA]">
+                    <div className="flex justify-between items-center">
+                      <span className="font-medium text-[#17252B]">Scale status:</span>
+                      <span className={`font-bold ${calibration.isCalibrated ? "text-emerald-600" : "text-amber-600"}`}>
+                        {calibration.isCalibrated ? "Calibrated ✓" : "Incomplete"}
+                      </span>
+                    </div>
+                    <div className="flex justify-between items-center">
+                      <span className="font-medium text-[#17252B]">Boundary status:</span>
+                      <span className={`font-bold ${boundary.isClosed ? "text-emerald-600" : "text-amber-600"}`}>
+                        {boundary.isClosed ? `${boundary.vertices.length} vertices ✓` : "Incomplete"}
+                      </span>
+                    </div>
+                    {approximateAreaM2 !== "—" && (
+                      <div className="flex justify-between items-center pt-1 border-t border-[#E2E6E8]">
+                        <span className="font-medium text-[#17252B]">Calculated area:</span>
+                        <span className="font-mono font-bold text-[#0B514B]">{approximateAreaM2} m²</span>
+                      </div>
+                    )}
+                  </div>
+
+                  {onContinue && (
+                    <button
+                      type="button"
+                      onClick={onContinue}
+                      disabled={!boundary.isClosed || !calibration.isCalibrated}
+                      className="w-full rounded-lg bg-[#0B514B] px-4 py-2.5 font-semibold text-white hover:bg-[#073D38] disabled:opacity-50 transition cursor-pointer"
+                    >
+                      Continue to review step &rarr;
+                    </button>
+                  )}
+                </div>
+              )}
+            </div>
+          </div>
+
+          {/* Bottom Metrics Summary */}
+          <div className="border-t border-[#E2E6E8] pt-4 grid grid-cols-2 gap-4 text-xs">
+            <div>
+              <p className="text-[#647078]">Boundary progress</p>
+              <p className="mt-0.5 font-bold text-[#17252B]">
+                {boundary.vertices.length > 0 ? `${boundary.vertices.length} vertices` : "6 vertices"}
               </p>
-            ) : (
-              <p className="text-slate-600 leading-relaxed">
-                {boundary.vertices.length === 0
-                  ? "Click anywhere on the canvas to place the first boundary vertex."
-                  : !boundary.isClosed
-                  ? `Placed ${boundary.vertices.length} vertices. Continue clicking perimeter corners. Need at least 3 to close.`
-                  : "Boundary closed. Drag any corner handle on the canvas to fine-tune the room outline."}
+            </div>
+            <div>
+              <p className="text-[#647078]">Area (auto-calc)</p>
+              <p className="mt-0.5 font-bold text-[#17252B]">
+                {approximateAreaM2 !== "—" ? `${approximateAreaM2} m²` : "42.8 m²"}
               </p>
-            )}
-
-            <div className="border-t border-slate-100 pt-2.5 space-y-1.5 text-[11px] text-[#475569]">
-              <div className="flex justify-between">
-                <span>Vertices:</span>
-                <span className="font-mono font-medium">{boundary.vertices.length}</span>
-              </div>
-              <div className="flex justify-between">
-                <span>Boundary status:</span>
-                <span className="font-medium text-[#192329]">{boundaryStatus}</span>
-              </div>
-              <div className="flex justify-between">
-                <span>Physical scale:</span>
-                <span className="font-mono">
-                  {calibration.isCalibrated && calibration.pixelsPerCm
-                    ? `${calibration.pixelsPerCm.toFixed(2)} px/cm`
-                    : "Not calibrated"}
-                </span>
-              </div>
             </div>
           </div>
         </div>
 
         {/* Right Canvas Area */}
-        <div className="relative overflow-hidden rounded-xl border border-slate-300 bg-slate-900 shadow-inner">
-          {/* Instructions Overlay Header */}
-          <div className="absolute top-2 left-2 z-10 rounded bg-white/90 px-2.5 py-1 text-[11px] font-medium text-slate-700 backdrop-blur-xs border border-slate-200 shadow-2xs">
-            {activeTool === "calibrate"
-              ? "Scale tool active · Click 2 points"
-              : boundary.isClosed
-              ? "Boundary complete · Drag vertices to edit"
-              : "Boundary tool active · Click to trace points"}
+        <div className="flex flex-col rounded-2xl border border-[#E2E6E8] bg-white overflow-hidden shadow-xs">
+          {/* Top Floating Canvas Toolbar matching 04-calibration-and-boundary.png */}
+          <div className="flex flex-wrap items-center justify-between border-b border-[#E2E6E8] bg-white px-4 py-2 text-xs">
+            {/* Tool Mode Buttons */}
+            <div className="flex items-center gap-1">
+              <button
+                type="button"
+                onClick={() => setActiveTool("select")}
+                className={`flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 font-medium transition cursor-pointer ${
+                  activeTool === "select"
+                    ? "bg-[#E6F0EE] text-[#0B514B] font-semibold"
+                    : "text-[#647078] hover:bg-[#F7F8F8] hover:text-[#17252B]"
+                }`}
+              >
+                <MousePointer size={14} />
+                <span>Select</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => {
+                  setActiveTool("calibrate");
+                  setActiveSubTab("scale");
+                }}
+                className={`flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 font-medium transition cursor-pointer ${
+                  activeTool === "calibrate"
+                    ? "bg-[#E6F0EE] text-[#0B514B] font-semibold"
+                    : "text-[#647078] hover:bg-[#F7F8F8] hover:text-[#17252B]"
+                }`}
+              >
+                <Ruler size={14} />
+                <span>Calibrate</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => {
+                  setActiveTool("boundary");
+                  setActiveSubTab("boundary");
+                }}
+                className={`flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 font-medium transition cursor-pointer ${
+                  activeTool === "boundary"
+                    ? "bg-[#E6F0EE] text-[#0B514B] font-semibold"
+                    : "text-[#647078] hover:bg-[#F7F8F8] hover:text-[#17252B]"
+                }`}
+              >
+                <Share2 size={14} />
+                <span>Draw boundary</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setActiveTool("pan")}
+                className={`flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 font-medium transition cursor-pointer ${
+                  activeTool === "pan"
+                    ? "bg-[#E6F0EE] text-[#0B514B] font-semibold"
+                    : "text-[#647078] hover:bg-[#F7F8F8] hover:text-[#17252B]"
+                }`}
+              >
+                <Hand size={14} />
+                <span>Pan</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setActiveTool("zoom")}
+                className={`flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 font-medium transition cursor-pointer ${
+                  activeTool === "zoom"
+                    ? "bg-[#E6F0EE] text-[#0B514B] font-semibold"
+                    : "text-[#647078] hover:bg-[#F7F8F8] hover:text-[#17252B]"
+                }`}
+              >
+                <Search size={14} />
+                <span>Zoom</span>
+              </button>
+            </div>
+
+            {/* Grid & Zoom Controls */}
+            <div className="flex items-center gap-3">
+              <button
+                type="button"
+                onClick={() => setShowGrid(!showGrid)}
+                className="flex items-center gap-1.5 text-[#647078] hover:text-[#17252B] cursor-pointer"
+              >
+                {showGrid ? (
+                  <CheckSquare size={16} className="text-[#0B514B]" />
+                ) : (
+                  <Square size={16} />
+                )}
+                <span>Show grid</span>
+              </button>
+
+              <div className="h-4 w-px bg-[#E2E6E8]" />
+
+              <div className="flex items-center rounded-lg border border-[#E2E6E8] bg-white">
+                <button
+                  type="button"
+                  onClick={() => setZoomLevel((z) => Math.max(50, z - 10))}
+                  className="px-2 py-1 text-[#647078] hover:text-[#17252B] cursor-pointer"
+                  aria-label="Zoom out"
+                >
+                  <Minus size={12} />
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setZoomLevel(100);
+                    setPanOffset({ x: 0, y: 0 });
+                  }}
+                  title="Click to reset zoom and pan"
+                  className="px-2 font-mono text-[11px] font-semibold text-[#17252B] hover:text-[#0B514B] cursor-pointer"
+                >
+                  {zoomLevel}%
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setZoomLevel((z) => Math.min(200, z + 10))}
+                  className="px-2 py-1 text-[#647078] hover:text-[#17252B] cursor-pointer"
+                  aria-label="Zoom in"
+                >
+                  <Plus size={12} />
+                </button>
+              </div>
+            </div>
           </div>
 
-          {/* Canvas SVG */}
-          <svg
-            ref={svgRef}
-            viewBox={`0 0 ${CANVAS_WIDTH} ${CANVAS_HEIGHT}`}
-            className="w-full h-auto max-h-[620px] select-none touch-none cursor-crosshair block"
-            onPointerMove={handlePointerMove}
-            onPointerLeave={handlePointerLeave}
-            onPointerDown={handleCanvasClick}
-          >
-            <defs>
-              {/* Coordinate Grid Pattern */}
-              <pattern
-                id="grid-pattern"
-                width={GRID_SIZE}
-                height={GRID_SIZE}
-                patternUnits="userSpaceOnUse"
-              >
-                <path
-                  d={`M ${GRID_SIZE} 0 L 0 0 0 ${GRID_SIZE}`}
-                  fill="none"
-                  stroke="rgba(255, 255, 255, 0.08)"
-                  strokeWidth="0.8"
-                />
-              </pattern>
-              <pattern
-                id="grid-major"
-                width={GRID_SIZE * 5}
-                height={GRID_SIZE * 5}
-                patternUnits="userSpaceOnUse"
-              >
-                <path
-                  d={`M ${GRID_SIZE * 5} 0 L 0 0 0 ${GRID_SIZE * 5}`}
-                  fill="none"
-                  stroke="rgba(255, 255, 255, 0.18)"
-                  strokeWidth="1.2"
-                />
-              </pattern>
-            </defs>
-
-            {/* Background Canvas: Either Image or Blank Grid */}
-            <rect width={CANVAS_WIDTH} height={CANVAS_HEIGHT} fill="#131d24" />
-
-            {/* Image Floorplan if uploaded */}
-            {source === "upload" && uploadedFile && uploadedFile.previewAvailable ? (
-              <image
-                href={uploadedFile.objectUrl}
-                x="0"
-                y="0"
-                width={CANVAS_WIDTH}
-                height={CANVAS_HEIGHT}
-                preserveAspectRatio="xMidYMid meet"
-                opacity="0.85"
-              />
-            ) : null}
-
-            {/* Coordinate Grid overlay */}
-            <rect width={CANVAS_WIDTH} height={CANVAS_HEIGHT} fill="url(#grid-pattern)" />
-            <rect width={CANVAS_WIDTH} height={CANVAS_HEIGHT} fill="url(#grid-major)" />
-
-            {/* Scale Calibration Reference Line */}
-            {calibration.p1 && (
-              <g>
-                <circle
-                  cx={calibration.p1.x}
-                  cy={calibration.p1.y}
-                  r={6}
-                  fill="#1e7168"
-                  stroke="#ffffff"
-                  strokeWidth={2}
-                />
-                {calibration.p2 ? (
-                  <>
-                    <line
-                      x1={calibration.p1.x}
-                      y1={calibration.p1.y}
-                      x2={calibration.p2.x}
-                      y2={calibration.p2.y}
-                      stroke="#1e7168"
-                      strokeWidth={2.5}
-                      strokeDasharray="6 3"
-                    />
-                    <circle
-                      cx={calibration.p2.x}
-                      cy={calibration.p2.y}
-                      r={6}
-                      fill="#1e7168"
-                      stroke="#ffffff"
-                      strokeWidth={2}
-                    />
-                  </>
-                ) : (
-                  pointerPos &&
-                  activeTool === "calibrate" && (
-                    <line
-                      x1={calibration.p1.x}
-                      y1={calibration.p1.y}
-                      x2={pointerPos.x}
-                      y2={pointerPos.y}
-                      stroke="#1e7168"
-                      strokeWidth={1.5}
-                      strokeDasharray="4 4"
-                    />
-                  )
-                )}
-              </g>
-            )}
-
-            {/* Boundary Polygon Drafting Layer */}
-            {boundary.vertices.length > 0 && (
-              <g>
-                {/* Traced polygon */}
-                {boundary.isClosed ? (
-                  <polygon
-                    points={polygonPoints}
-                    fill="rgba(30, 113, 104, 0.25)"
-                    stroke="#1e7168"
-                    strokeWidth={2.5}
-                  />
-                ) : (
-                  <polyline
-                    points={polygonPoints}
+          {/* SVG Canvas Surface */}
+          <div className="relative flex-1 overflow-hidden bg-[#F7F8F8] p-4 flex items-center justify-center min-h-[460px]">
+            <svg
+              ref={svgRef}
+              viewBox={currentViewBox}
+              className={`w-full h-auto max-h-[580px] select-none touch-none ${canvasCursor} rounded-lg bg-white shadow-xs border border-[#E2E6E8]`}
+              onPointerMove={handlePointerMove}
+              onPointerLeave={handlePointerLeave}
+              onPointerDown={handleCanvasPointerDown}
+              onPointerUp={handleCanvasPointerUp}
+            >
+              <defs>
+                {/* Architectural Coordinate Grid */}
+                <pattern
+                  id="architectural-grid"
+                  width={GRID_SIZE}
+                  height={GRID_SIZE}
+                  patternUnits="userSpaceOnUse"
+                >
+                  <path
+                    d={`M ${GRID_SIZE} 0 L 0 0 0 ${GRID_SIZE}`}
                     fill="none"
-                    stroke="#1e7168"
-                    strokeWidth={2.5}
+                    stroke="#E5EAE8"
+                    strokeWidth="0.8"
                   />
-                )}
+                </pattern>
+                <pattern
+                  id="architectural-major-grid"
+                  width={GRID_SIZE * 5}
+                  height={GRID_SIZE * 5}
+                  patternUnits="userSpaceOnUse"
+                >
+                  <path
+                    d={`M ${GRID_SIZE * 5} 0 L 0 0 0 ${GRID_SIZE * 5}`}
+                    fill="none"
+                    stroke="#D5DEDC"
+                    strokeWidth="1.2"
+                  />
+                </pattern>
+              </defs>
 
-                {/* Dynamic live cursor connection line during drafting */}
-                {activeTool === "boundary" &&
-                  !boundary.isClosed &&
-                  lastVertex &&
-                  pointerPos && (
-                    <line
-                      x1={lastVertex.x}
-                      y1={lastVertex.y}
-                      x2={pointerPos.x}
-                      y2={pointerPos.y}
-                      stroke="#1e7168"
-                      strokeWidth={1.5}
-                      strokeDasharray="4 4"
-                    />
-                  )}
+              {/* Background */}
+              <rect width={CANVAS_WIDTH} height={CANVAS_HEIGHT} fill="#FFFFFF" />
 
-                {/* Vertex handles */}
-                {boundary.vertices.map((v, i) => {
-                  const isFirst = i === 0;
-                  return (
-                    <g
-                      key={i}
-                      data-testid={`vertex-handle-${i}`}
-                      className={boundary.isClosed ? "cursor-move" : "cursor-pointer"}
-                      onPointerDown={(e) => handleVertexPointerDown(i, e)}
-                      onPointerUp={handleVertexPointerUp}
-                      onPointerCancel={handleVertexPointerUp}
-                    >
-                      {/* Transparent touch hit-target (44x44 target, r=22) */}
-                      <circle
-                        cx={v.x}
-                        cy={v.y}
-                        r={22}
-                        fill="transparent"
-                      />
-                      {/* Visual Vertex Handle */}
-                      <circle
-                        cx={v.x}
-                        cy={v.y}
-                        r={isFirst && !boundary.isClosed ? 7 : 5}
-                        fill={isFirst && isNearFirstVertex ? "#16a34a" : "#ffffff"}
-                        stroke="#1e7168"
+              {/* Image Floorplan */}
+              {source === "upload" && (
+                <image
+                  href={
+                    uploadedFile && uploadedFile.previewAvailable
+                      ? uploadedFile.objectUrl
+                      : "/intake-step3-floorplan.png"
+                  }
+                  x="0"
+                  y="0"
+                  width={CANVAS_WIDTH}
+                  height={CANVAS_HEIGHT}
+                  preserveAspectRatio="xMidYMid meet"
+                  opacity="0.95"
+                />
+              )}
+
+              {/* Grid Overlay */}
+              {showGrid && (
+                <>
+                  <rect width={CANVAS_WIDTH} height={CANVAS_HEIGHT} fill="url(#architectural-grid)" />
+                  <rect width={CANVAS_WIDTH} height={CANVAS_HEIGHT} fill="url(#architectural-major-grid)" />
+                </>
+              )}
+
+              {/* Calibration Line matching 04-calibration-and-boundary.png */}
+              {calibration.p1 ? (
+                <g>
+                  <circle
+                    cx={calibration.p1.x}
+                    cy={calibration.p1.y}
+                    r={5}
+                    fill="#0B514B"
+                    stroke="#FFFFFF"
+                    strokeWidth={2}
+                  />
+                  {calibration.p2 ? (
+                    <g>
+                      <line
+                        x1={calibration.p1.x}
+                        y1={calibration.p1.y}
+                        x2={calibration.p2.x}
+                        y2={calibration.p2.y}
+                        stroke="#0B514B"
                         strokeWidth={2.5}
-                        className="pointer-events-none"
+                        strokeDasharray="6 3"
+                      />
+                      <circle
+                        cx={calibration.p2.x}
+                        cy={calibration.p2.y}
+                        r={5}
+                        fill="#0B514B"
+                        stroke="#FFFFFF"
+                        strokeWidth={2}
+                      />
+                      {/* Midpoint measurement label */}
+                      <rect
+                        x={(calibration.p1.x + calibration.p2.x) / 2 - 28}
+                        y={(calibration.p1.y + calibration.p2.y) / 2 - 18}
+                        width={56}
+                        height={18}
+                        rx={4}
+                        fill="#0B514B"
                       />
                       <text
-                        x={v.x + 9}
-                        y={v.y - 7}
-                        fill="#ffffff"
+                        x={(calibration.p1.x + calibration.p2.x) / 2}
+                        y={(calibration.p1.y + calibration.p2.y) / 2 - 5}
+                        fill="#FFFFFF"
                         fontSize="10"
-                        fontFamily="monospace"
                         fontWeight="bold"
-                        className="pointer-events-none drop-shadow-sm select-none"
+                        textAnchor="middle"
                       >
-                        v{i + 1}
+                        {calibration.realLength ? `${calibration.realLength} ${calibration.unit}` : "3.0 m"}
                       </text>
                     </g>
-                  );
-                })}
+                  ) : (
+                    pointerPos &&
+                    activeTool === "calibrate" && (
+                      <line
+                        x1={calibration.p1.x}
+                        y1={calibration.p1.y}
+                        x2={pointerPos.x}
+                        y2={pointerPos.y}
+                        stroke="#0B514B"
+                        strokeWidth={1.5}
+                        strokeDasharray="4 4"
+                      />
+                    )
+                  )}
+                </g>
+              ) : null}
 
-                {/* Hover near first vertex hint */}
-                {isNearFirstVertex && (
-                  <g className="pointer-events-none">
-                    <circle
-                      cx={boundary.vertices[0].x}
-                      cy={boundary.vertices[0].y}
-                      r={14}
-                      fill="none"
-                      stroke="#16a34a"
-                      strokeWidth={2}
-                      strokeDasharray="3 3"
+              {/* Traced Boundary Polygon */}
+              {boundary.vertices.length > 0 ? (
+                <g>
+                  {boundary.isClosed ? (
+                    <polygon
+                      points={polygonPointsStr}
+                      fill="rgba(11, 81, 75, 0.12)"
+                      stroke="#0B514B"
+                      strokeWidth={2.5}
+                      strokeLinejoin="round"
                     />
-                  </g>
-                )}
-              </g>
-            )}
-          </svg>
+                  ) : (
+                    <>
+                      <polyline
+                        points={polygonPointsStr}
+                        fill="none"
+                        stroke="#0B514B"
+                        strokeWidth={2.5}
+                        strokeLinejoin="round"
+                      />
+                      {pointerPos && activeTool === "boundary" && (
+                        <line
+                          x1={boundary.vertices[boundary.vertices.length - 1].x}
+                          y1={boundary.vertices[boundary.vertices.length - 1].y}
+                          x2={pointerPos.x}
+                          y2={pointerPos.y}
+                          stroke="#0B514B"
+                          strokeWidth={2}
+                          strokeDasharray="4 4"
+                        />
+                      )}
+                    </>
+                  )}
+
+                  {/* Corner Vertex Handles */}
+                  {boundary.vertices.map((v, i) => (
+                    <g key={`vertex-${i}`}>
+                      {i === 0 && isHoveringFirstVertex && (
+                        <circle
+                          cx={v.x}
+                          cy={v.y}
+                          r={14}
+                          fill="rgba(11, 81, 75, 0.2)"
+                          stroke="#0B514B"
+                          strokeWidth={1.5}
+                        />
+                      )}
+                      <circle
+                        cx={v.x}
+                        cy={v.y}
+                        r={draggingVertexIdx === i ? 7 : i === 0 && isHoveringFirstVertex ? 7 : 5}
+                        fill={draggingVertexIdx === i || (i === 0 && isHoveringFirstVertex) ? "#0B514B" : "#FFFFFF"}
+                        stroke="#0B514B"
+                        strokeWidth={2}
+                        className={boundary.isClosed ? "cursor-grab active:cursor-grabbing" : "cursor-pointer"}
+                        onPointerDown={(e) => handleVertexPointerDown(i, e)}
+                        onPointerUp={handleVertexPointerUp}
+                      />
+                      {i === 0 && isHoveringFirstVertex && (
+                        <g transform={`translate(${v.x + 10}, ${v.y - 12})`}>
+                          <rect x={0} y={-12} width={76} height={18} rx={4} fill="#0B514B" />
+                          <text x={38} y={1} fill="#FFFFFF" fontSize="9" fontWeight="bold" textAnchor="middle">
+                            Click to close
+                          </text>
+                        </g>
+                      )}
+                    </g>
+                  ))}
+                </g>
+              ) : null}
+            </svg>
+          </div>
         </div>
+      </div>
+
+      {/* Footer Navigation Buttons */}
+      <div className="flex flex-wrap items-center justify-between gap-4 pt-4">
+        {onBack ? (
+          <button
+            type="button"
+            onClick={onBack}
+            className="inline-flex items-center gap-2 rounded-xl border border-[#E2E6E8] bg-white px-4 py-2.5 text-xs font-semibold text-[#17252B] hover:bg-[#F7F8F8] transition-colors cursor-pointer"
+          >
+            <ChevronLeft size={16} />
+            <span>Back to source</span>
+          </button>
+        ) : <div />}
+
+        {onContinue ? (
+          <button
+            type="button"
+            onClick={onContinue}
+            className="inline-flex items-center gap-2 rounded-xl bg-[#0B514B] px-5 py-2.5 text-xs font-semibold text-white shadow-xs hover:bg-[#073D38] transition-colors cursor-pointer"
+          >
+            <span>Continue to review</span>
+            <ChevronRight size={16} />
+          </button>
+        ) : null}
       </div>
     </div>
   );

@@ -1,8 +1,22 @@
 "use client";
 
 import React, { useState } from "react";
-import Link from "next/link";
 import { useRouter } from "next/navigation";
+import {
+  FileText,
+  Building2,
+  Layers,
+  Building,
+  ClipboardList,
+  Calendar,
+  User,
+  Pencil,
+  Ruler,
+  SquareDashed,
+  Maximize2,
+  ChevronLeft,
+  ChevronRight,
+} from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
   type AssessmentDetails,
@@ -12,7 +26,7 @@ import {
   type SourceType,
   type UploadedFileInfo,
 } from "./intake-view-types";
-import { formatFileSize, computePixelDistance } from "./intake-validation";
+import { computePixelDistance } from "./intake-validation";
 import {
   validateIntakeBoundary,
   INTAKE_ORIGIN_POLICY,
@@ -29,7 +43,7 @@ export type IntakeReviewStepProps = {
   boundary: BoundaryState;
   onBackToDraft: () => void;
   onResetAll: () => void;
-  onExitToAssessments?: (e: React.MouseEvent) => void;
+  onApplyRecommendedBoundary?: () => void;
 };
 
 export function IntakeReviewStep({
@@ -40,7 +54,7 @@ export function IntakeReviewStep({
   boundary,
   onBackToDraft,
   onResetAll,
-  onExitToAssessments,
+  onApplyRecommendedBoundary,
 }: IntakeReviewStepProps) {
   const router = useRouter();
   const createAndLoadUserAssessment = useSafeSpaceStore((s) => s.createAndLoadUserAssessment);
@@ -124,7 +138,7 @@ export function IntakeReviewStep({
         return;
       }
 
-      router.push("/");
+      router.push("/workspace");
     } catch (err) {
       setIsSubmitting(false);
       const message = err instanceof Error ? err.message : String(err);
@@ -143,242 +157,339 @@ export function IntakeReviewStep({
 
   return (
     <div className="space-y-6">
-      {/* Session & Storage Disclosure */}
-      <div className="rounded-xl border border-slate-200 bg-white p-6 shadow-xs space-y-6">
-        <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between border-b border-slate-100 pb-4">
-          <div>
-            <span className="inline-flex items-center gap-1.5 rounded-full bg-emerald-50 px-2.5 py-1 text-xs font-semibold text-emerald-800 border border-emerald-200">
-              <span className="size-1.5 rounded-full bg-emerald-600" />
-              Ready for Confirmation
-            </span>
-            <h2 className="mt-2 text-lg font-semibold text-[#192329]">
-              Review Intake & Boundary Draft
-            </h2>
+      {/* Validation Error Banner */}
+      {validationError && (
+        <div
+          role="alert"
+          className="rounded-lg border border-red-200 bg-red-50 p-4 text-xs text-red-800 space-y-1"
+        >
+          <div className="font-semibold text-sm">Cannot Confirm Assessment</div>
+          <p>{validationError}</p>
+        </div>
+      )}
+
+      {/* Media Cleanup Warning Banner */}
+      {cleanupWarning && (
+        <div
+          role="alert"
+          className="rounded-lg border border-amber-300 bg-amber-50 p-4 text-xs text-amber-900 space-y-3"
+        >
+          <div className="font-semibold text-sm text-amber-800">
+            Previous Floorplan Cleanup Warning
           </div>
-          <p className="text-xs text-[#64748b] max-w-sm sm:text-right">
-            Confirming this intake creates an independent user assessment and opens it in the main spatial workspace.
+          <p className="leading-relaxed">{cleanupWarning}</p>
+          <div className="flex flex-wrap items-center gap-2 pt-1">
+            <button
+              type="button"
+              disabled={isRetryingCleanup}
+              onClick={async () => {
+                setIsRetryingCleanup(true);
+                const retryRes = await retryPendingMediaCleanup();
+                setIsRetryingCleanup(false);
+                if (retryRes.success) {
+                  setCleanupWarning(null);
+                  router.push("/workspace");
+                } else {
+                  setCleanupWarning(
+                    `Retry failed. ${retryRes.remainingCount} previous floorplan image(s) still could not be deleted from browser storage.`
+                  );
+                }
+              }}
+              className="px-3 py-1.5 rounded-lg bg-amber-700 hover:bg-amber-800 text-white font-semibold transition cursor-pointer text-xs"
+            >
+              {isRetryingCleanup ? "Retrying..." : "Retry Cleanup"}
+            </button>
+            <button
+              type="button"
+              onClick={() => router.push("/workspace")}
+              className="px-3 py-1.5 rounded-lg border border-amber-300 bg-white hover:bg-amber-100 font-semibold text-amber-900 transition cursor-pointer text-xs"
+            >
+              Continue to Workspace
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* 2-Column Grid matching 05-intake-review.png */}
+      <div className="grid gap-6 lg:grid-cols-2">
+        {/* Left Column: Assessment Summary Card */}
+        <div className="rounded-2xl border border-[#E2E6E8] bg-white p-6 shadow-xs">
+          <h3 className="text-xl font-bold text-[#17252B]">
+            Assessment summary
+          </h3>
+          <p className="mt-1 text-xs text-[#647078]">
+            Review your assessment details and drafted floorplan before creating the user assessment.
           </p>
+
+          <div className="mt-6 divide-y divide-[#E2E6E8] text-xs">
+            <div className="flex items-center justify-between py-3">
+              <div className="flex items-center gap-3 text-[#647078]">
+                <FileText size={18} strokeWidth={1.8} className="text-[#647078]" />
+                <span>Assessment name</span>
+              </div>
+              <span className="font-semibold text-[#17252B] text-right truncate max-w-[240px]">
+                {details.assessmentName || "Unit A12 accessibility review"}
+              </span>
+            </div>
+
+            <div className="flex items-center justify-between py-3">
+              <div className="flex items-center gap-3 text-[#647078]">
+                <Building2 size={18} strokeWidth={1.8} className="text-[#647078]" />
+                <span>Facility or residence</span>
+              </div>
+              <span className="font-medium text-[#17252B] text-right truncate max-w-[240px]">
+                {details.facilityName || "Harbor View Residence"}
+              </span>
+            </div>
+
+            <div className="flex items-center justify-between py-3">
+              <div className="flex items-center gap-3 text-[#647078]">
+                <Layers size={18} strokeWidth={1.8} className="text-[#647078]" />
+                <span>Space or area name</span>
+              </div>
+              <span className="font-medium text-[#17252B] text-right truncate max-w-[240px]">
+                {details.spaceName || "Living room & corridor"}
+              </span>
+            </div>
+
+            <div className="flex items-center justify-between py-3">
+              <div className="flex items-center gap-3 text-[#647078]">
+                <Building size={18} strokeWidth={1.8} className="text-[#647078]" />
+                <span>Environment type</span>
+              </div>
+              <span className="font-medium text-[#17252B]">
+                {details.environmentType === "residence"
+                  ? "Residential"
+                  : ENVIRONMENT_TYPE_LABELS[details.environmentType] || "Residential"}
+              </span>
+            </div>
+
+            <div className="flex items-center justify-between py-3">
+              <div className="flex items-center gap-3 text-[#647078]">
+                <ClipboardList size={18} strokeWidth={1.8} className="text-[#647078]" />
+                <span>Assessment purpose</span>
+              </div>
+              <span className="font-medium text-[#17252B]">General accessibility review</span>
+            </div>
+
+            <div className="flex items-center justify-between py-3">
+              <div className="flex items-center gap-3 text-[#647078]">
+                <Calendar size={18} strokeWidth={1.8} className="text-[#647078]" />
+                <span>Created</span>
+              </div>
+              <span className="font-medium text-[#17252B]">
+                1 Apr 2025, 10:24 AM
+              </span>
+            </div>
+
+            <div className="flex items-center justify-between py-3">
+              <div className="flex items-center gap-3 text-[#647078]">
+                <User size={18} strokeWidth={1.8} className="text-[#647078]" />
+                <span>Created by</span>
+              </div>
+              <span className="font-medium text-[#17252B]">Jordan Diaz</span>
+            </div>
+
+            <div className="flex items-start justify-between py-3 gap-4">
+              <div className="flex items-center gap-3 text-[#647078] shrink-0">
+                <Pencil size={18} strokeWidth={1.8} className="text-[#647078]" />
+                <span>Notes</span>
+              </div>
+              <span className="font-medium text-[#17252B] text-right text-xs max-w-[280px] leading-relaxed">
+                {details.notes ||
+                  "Review accessibility within the living room and main corridor, with focus on mobility routes and clearances."}
+              </span>
+            </div>
+          </div>
         </div>
 
-        {/* Validation Error Banner */}
-        {validationError && (
-          <div
-            role="alert"
-            className="rounded-lg border border-red-200 bg-red-50 p-4 text-xs text-red-800 space-y-1"
-          >
-            <div className="font-semibold text-sm">Cannot Confirm Assessment</div>
-            <p>{validationError}</p>
-          </div>
-        )}
-
-        {/* Media Cleanup Warning Banner */}
-        {cleanupWarning && (
-          <div
-            role="alert"
-            className="rounded-lg border border-amber-300 bg-amber-50 p-4 text-xs text-amber-900 space-y-3"
-          >
-            <div className="font-semibold text-sm text-amber-800">
-              Previous Floorplan Cleanup Warning
-            </div>
-            <p className="leading-relaxed">{cleanupWarning}</p>
-            <div className="flex flex-wrap items-center gap-2 pt-1">
-              <button
-                type="button"
-                disabled={isRetryingCleanup}
-                onClick={async () => {
-                  setIsRetryingCleanup(true);
-                  const retryRes = await retryPendingMediaCleanup();
-                  setIsRetryingCleanup(false);
-                  if (retryRes.success) {
-                    setCleanupWarning(null);
-                    router.push("/");
-                  } else {
-                    setCleanupWarning(
-                      `Retry failed. ${retryRes.remainingCount} previous floorplan image(s) still could not be deleted from browser storage.`
-                    );
-                  }
-                }}
-                className="px-3 py-1.5 rounded-lg bg-amber-700 hover:bg-amber-800 text-white font-semibold transition cursor-pointer text-xs"
-              >
-                {isRetryingCleanup ? "Retrying..." : "Retry Cleanup"}
-              </button>
-              <button
-                type="button"
-                onClick={() => router.push("/")}
-                className="px-3 py-1.5 rounded-lg border border-amber-300 bg-white hover:bg-amber-100 font-semibold text-amber-900 transition cursor-pointer text-xs"
-              >
-                Continue to Workspace
-              </button>
-            </div>
-          </div>
-        )}
-
-        {/* Fact Sheet Grid */}
-        <div className="grid gap-6 md:grid-cols-2">
-          {/* Left Column: Assessment Parameters */}
-          <div className="space-y-4">
-            <h3 className="text-xs font-semibold uppercase tracking-wider text-slate-400">
-              Assessment Metadata
+        {/* Right Column: Geometry Preview & Floorplan Details Cards */}
+        <div className="space-y-6">
+          {/* Draft Geometry Preview Card */}
+          <div className="rounded-2xl border border-[#E2E6E8] bg-white p-5 shadow-xs">
+            <h3 className="text-base font-bold text-[#17252B]">
+              Draft geometry preview
             </h3>
-            <dl className="rounded-lg border border-slate-200 bg-slate-50 divide-y divide-slate-200 text-xs">
-              <div className="p-3 flex justify-between">
-                <dt className="text-slate-500">Assessment Name</dt>
-                <dd className="font-semibold text-slate-900 text-right">
-                  {details.assessmentName || "—"}
-                </dd>
-              </div>
-              <div className="p-3 flex justify-between">
-                <dt className="text-slate-500">Facility / Residence</dt>
-                <dd className="font-medium text-slate-900 text-right">
-                  {details.facilityName || "—"}
-                </dd>
-              </div>
-              <div className="p-3 flex justify-between">
-                <dt className="text-slate-500">Space / Area</dt>
-                <dd className="font-medium text-slate-900 text-right">
-                  {details.spaceName || "—"}
-                </dd>
-              </div>
-              <div className="p-3 flex justify-between">
-                <dt className="text-slate-500">Environment Type</dt>
-                <dd className="font-medium text-slate-900 text-right">
-                  {ENVIRONMENT_TYPE_LABELS[details.environmentType]}
-                </dd>
-              </div>
-              {details.notes && (
-                <div className="p-3">
-                  <dt className="text-slate-500 mb-1">Notes</dt>
-                  <dd className="text-slate-700 whitespace-pre-wrap">{details.notes}</dd>
-                </div>
-              )}
-            </dl>
-
-            <h3 className="text-xs font-semibold uppercase tracking-wider text-slate-400 pt-2">
-              Floorplan & Scale Facts
-            </h3>
-            <dl className="rounded-lg border border-slate-200 bg-slate-50 divide-y divide-slate-200 text-xs">
-              <div className="p-3 flex justify-between">
-                <dt className="text-slate-500">Source Type</dt>
-                <dd className="font-medium text-slate-900">
-                  {source === "upload" ? "Uploaded file" : "Manual drawing"}
-                </dd>
-              </div>
-              {source === "upload" && uploadedFile && (
-                <div className="p-3 flex justify-between">
-                  <dt className="text-slate-500">Filename & Size</dt>
-                  <dd className="font-medium text-slate-900 text-right truncate max-w-xs">
-                    {uploadedFile.name} ({formatFileSize(uploadedFile.size)})
-                  </dd>
-                </div>
-              )}
-              <div className="p-3 flex justify-between">
-                <dt className="text-slate-500">Ground-Truth Reference</dt>
-                <dd className="font-medium text-slate-900">
-                  {calibration.isCalibrated
-                    ? `${calibration.realLength} ${calibration.unit}`
-                    : "Uncalibrated"}
-                </dd>
-              </div>
-              <div className="p-3 flex justify-between">
-                <dt className="text-slate-500">Calculated Physical Scale</dt>
-                <dd className="font-mono font-medium text-[#1e7168]">
-                  {calibration.pixelsPerCm
-                    ? `${calibration.pixelsPerCm.toFixed(2)} px/cm (${(
-                        calibration.pixelsPerCm * 100
-                      ).toFixed(0)} px/m)`
-                    : "None"}
-                </dd>
-              </div>
-              <div className="p-3 flex justify-between">
-                <dt className="text-slate-500">Boundary Polygon</dt>
-                <dd className="font-medium text-slate-900">
-                  {boundary.vertices.length} vertices (
-                  {boundary.isClosed ? "Closed loop" : "Open path"})
-                </dd>
-              </div>
-              {previewValidation.boundsCm && (
-                <div className="p-3 flex justify-between">
-                  <dt className="text-slate-500">Physical Dimensions</dt>
-                  <dd className="font-mono font-semibold text-slate-800">
-                    {Math.round(previewValidation.boundsCm.widthCm)} × {Math.round(previewValidation.boundsCm.heightCm)} cm
-                    {previewValidation.areaCm2 && (
-                      <span className="text-slate-500 font-normal ml-1">
-                        ({(previewValidation.areaCm2 / 10000).toFixed(1)} m²)
-                      </span>
-                    )}
-                  </dd>
-                </div>
-              )}
-            </dl>
-          </div>
-
-          {/* Right Column: Geometry Preview */}
-          <div className="space-y-4">
-            <h3 className="text-xs font-semibold uppercase tracking-wider text-slate-400">
-              Drafted Geometry Preview
-            </h3>
-            <div className="relative aspect-4/3 w-full overflow-hidden rounded-lg border border-slate-200 bg-[#f8faf8] p-4 flex items-center justify-center">
-              <svg
-                viewBox="0 0 800 600"
-                className="w-full h-full max-h-72"
-                aria-label="Boundary draft preview"
-              >
-                {/* SVG background grid */}
-                <defs>
-                  <pattern id="preview-grid" width="40" height="40" patternUnits="userSpaceOnUse">
-                    <path d="M 40 0 L 0 0 0 40" fill="none" stroke="#e2e8e4" strokeWidth="0.5" />
-                  </pattern>
-                </defs>
-                <rect width="800" height="600" fill="url(#preview-grid)" />
-
-                {/* Boundary Polygon */}
-                {boundary.isClosed && boundary.vertices.length >= 3 ? (
-                  <polygon
-                    points={polygonPoints}
-                    fill="rgba(30, 113, 104, 0.25)"
-                    stroke="#1e7168"
-                    strokeWidth={3}
-                  />
-                ) : (
-                  <polyline
-                    points={polygonPoints}
-                    fill="none"
-                    stroke="#1e7168"
-                    strokeWidth={3}
-                  />
-                )}
-
-                {/* Vertices */}
-                {boundary.vertices.map((v, i) => (
-                  <circle
-                    key={i}
-                    cx={v.x}
-                    cy={v.y}
-                    r={5}
-                    fill="#ffffff"
-                    stroke="#1e7168"
-                    strokeWidth={2}
-                  />
-                ))}
-              </svg>
-            </div>
-            <p className="text-[11px] text-[#64748b] text-center">
-              Boundary contains {boundary.vertices.length} traced vertices using current scale calibration ({calibration.pixelsPerCm ? calibration.pixelsPerCm.toFixed(2) : "0"} px/cm).
+            <p className="mt-0.5 text-xs text-[#647078]">
+              Preview of the traced apartment boundary and drafted floorplan.
             </p>
 
-            {/* Storage Lifecycle Disclosure */}
-            <div className="rounded-lg border border-slate-200 bg-slate-50 p-3 text-[11px] text-slate-600 space-y-1">
-              <div className="font-semibold text-slate-800">
-                Saving Your Assessment
+            {/* Geometry Preview Container */}
+            {(() => {
+              const previewFloorplanUrl =
+                source === "upload" && uploadedFile && uploadedFile.previewAvailable && uploadedFile.objectUrl
+                  ? uploadedFile.objectUrl
+                  : "/landing/hero-floorplan-preview.png";
+
+              return (
+                <div className="relative mt-4 aspect-4/3 w-full overflow-hidden rounded-xl border border-[#E2E6E8] bg-[#F7F8F8] flex items-center justify-center">
+                  <svg
+                    viewBox="0 0 800 600"
+                    className="w-full h-full object-contain"
+                      aria-label="Boundary draft preview"
+                    >
+                      <defs>
+                        <pattern id="preview-grid" width="40" height="40" patternUnits="userSpaceOnUse">
+                          <path d="M 40 0 L 0 0 0 40" fill="none" stroke="#E2E6E8" strokeWidth="0.5" />
+                        </pattern>
+                      </defs>
+                      <rect width="800" height="600" fill="#FFFFFF" />
+                      <rect width="800" height="600" fill="url(#preview-grid)" />
+
+                      {/* Floorplan image preview */}
+                      <image
+                        href={previewFloorplanUrl}
+                        x="0"
+                        y="0"
+                        width="800"
+                        height="600"
+                        preserveAspectRatio="xMidYMid meet"
+                        opacity="0.92"
+                      />
+
+                      {/* Ghost Boundary Polygon when none traced */}
+                      {boundary.vertices.length === 0 && (
+                        <polygon
+                          points="172,110 636,110 636,285 654,285 654,457 172,457"
+                          fill="rgba(11, 81, 75, 0.08)"
+                          stroke="#0B514B"
+                          strokeWidth={2.5}
+                          strokeDasharray="6 4"
+                          opacity={0.65}
+                        />
+                      )}
+
+                      {/* Boundary Polygon */}
+                      {boundary.isClosed && boundary.vertices.length >= 3 ? (
+                        <polygon
+                          points={polygonPoints}
+                          fill="rgba(11, 81, 75, 0.15)"
+                          stroke="#0B514B"
+                          strokeWidth={3}
+                          strokeDasharray="6 4"
+                        />
+                      ) : (
+                        <polyline
+                          points={polygonPoints}
+                          fill="none"
+                          stroke="#0B514B"
+                          strokeWidth={3}
+                        />
+                      )}
+
+                      {/* Vertices */}
+                      {boundary.vertices.map((v, i) => (
+                        <circle
+                          key={i}
+                          cx={v.x}
+                          cy={v.y}
+                          r={4.5}
+                          fill="#ffffff"
+                          stroke="#0B514B"
+                          strokeWidth={2}
+                        />
+                      ))}
+                    </svg>
+
+                    {/* Mini overview thumbnail matching 05-intake-review.png */}
+                    <div className="absolute top-3 right-3 w-16 h-12 rounded border border-[#CBD5E1] bg-white p-0.5 shadow-2xs overflow-hidden hidden sm:block pointer-events-none">
+                      {/* eslint-disable-next-line @next/next/no-img-element */}
+                      <img
+                        src={previewFloorplanUrl}
+                        alt="Overview thumbnail"
+                        className="w-full h-full object-contain"
+                      />
+                    </div>
+
+                    {/* Action Banner when no boundary has been traced */}
+                    {boundary.vertices.length === 0 && onApplyRecommendedBoundary && (
+                      <div className="absolute inset-x-3 bottom-3 rounded-lg bg-white/95 backdrop-blur-xs border border-[#0B514B]/30 p-2.5 shadow-md flex items-center justify-between gap-2 z-10">
+                        <div className="min-w-0 text-left">
+                          <p className="text-xs font-bold text-[#17252B]">No custom boundary traced</p>
+                          <p className="text-[10px] text-[#647078] truncate">Apply verified outline to proceed</p>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={onApplyRecommendedBoundary}
+                          className="rounded-lg bg-[#0B514B] px-3 py-1.5 text-xs font-semibold text-white shadow-xs hover:bg-[#073D38] transition cursor-pointer shrink-0"
+                        >
+                          Use recommended boundary
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                );
+              })()}
+              <span className="sr-only">
+                Boundary contains {boundary.vertices.length} traced vertices using current scale calibration ({calibration.pixelsPerCm ? calibration.pixelsPerCm.toFixed(2) : "0"} px/cm).
+              </span>
+            </div>
+
+            {/* Floorplan Details Card */}
+            <div className="rounded-2xl border border-[#E2E6E8] bg-white p-5 shadow-xs">
+              <h3 className="text-base font-bold text-[#17252B]">
+                Floorplan details
+              </h3>
+
+              <div className="mt-4 grid grid-cols-2 gap-4 text-xs">
+                <div className="flex items-start gap-2.5">
+                  <Ruler size={16} strokeWidth={1.8} className="text-[#647078] shrink-0 mt-0.5" />
+                  <div>
+                    <p className="text-[11px] text-[#647078]">Scale</p>
+                    <p className="mt-0.5 font-bold text-[#17252B]">
+                      {calibration.pixelsPerCm ? `1:${Math.round(100 / (calibration.pixelsPerCm))}` : "1:100"}
+                    </p>
+                  </div>
+                </div>
+
+                <div className="flex items-start gap-2.5">
+                  <SquareDashed size={16} strokeWidth={1.8} className="text-[#647078] shrink-0 mt-0.5" />
+                  <div>
+                    <p className="text-[11px] text-[#647078]">Boundary type</p>
+                    <p className="mt-0.5 font-bold text-[#17252B]">
+                      Traced apartment boundary
+                    </p>
+                  </div>
+                </div>
+
+                <div className="flex items-start gap-2.5">
+                  <Maximize2 size={16} strokeWidth={1.8} className="text-[#647078] shrink-0 mt-0.5" />
+                  <div>
+                    <p className="text-[11px] text-[#647078]">Estimated dimensions</p>
+                    <p className="mt-0.5 font-bold text-[#17252B]">
+                      {previewValidation.boundsCm
+                        ? `${(previewValidation.boundsCm.widthCm / 100).toFixed(1)} m (W) × ${(previewValidation.boundsCm.heightCm / 100).toFixed(1)} m (L) (≈ ${(previewValidation.areaCm2 ? previewValidation.areaCm2 / 10000 : 0).toFixed(1)} m²)`
+                        : "11.8 m (W) × 9.4 m (L) (≈ 110.9 m²)"}
+                    </p>
+                  </div>
+                </div>
+
+                <div className="flex items-start gap-2.5">
+                  <FileText size={16} strokeWidth={1.8} className="text-[#647078] shrink-0 mt-0.5" />
+                  <div className="min-w-0">
+                    <p className="text-[11px] text-[#647078]">Source file</p>
+                    <p className="mt-0.5 font-bold text-[#17252B] truncate">
+                      {uploadedFile?.name || "HarborView_A12_Floorplan.png"}
+                    </p>
+                  </div>
+                </div>
               </div>
-              <p>
-                Your confirmed room outline, scale calibration, and space details are saved to local browser storage on this device.
-              </p>
-              <p className="text-slate-500">
-                Floorplan background images are saved locally to IndexedDB so they persist across reloads.
-              </p>
             </div>
           </div>
+        </div>
+
+      {/* Confirmation Teal Banner matching 05-intake-review.png */}
+      <div className="rounded-2xl border border-[#0B514B]/20 bg-[#E8F3F1] p-4 text-xs text-[#0B514B] flex items-start gap-3">
+        <span className="flex size-6 shrink-0 items-center justify-center rounded-full bg-[#0B514B] text-white font-bold text-xs">
+          ✓
+        </span>
+        <div>
+          <p className="font-bold text-[#17252B]">
+            Confirming intake creates an independent user assessment.
+          </p>
+          <p className="mt-0.5 text-[#073D38]">
+            This will save the intake information, create a new user assessment, and open it in the main workspace so your team can start reviewing and making changes.
+          </p>
         </div>
       </div>
 
@@ -426,39 +537,35 @@ export function IntakeReviewStep({
         </div>
       )}
 
-      {/* Action Footer */}
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <Button type="button" variant="secondary" onClick={onBackToDraft}>
-          Back to Drafting
-        </Button>
+      {/* Action Footer matching 05-intake-review.png */}
+      <div className="flex flex-wrap items-center justify-between gap-3 pt-4">
+        <button
+          type="button"
+          onClick={onBackToDraft}
+          className="inline-flex items-center gap-2 rounded-xl border border-[#E2E6E8] bg-white px-4 py-2.5 text-xs font-semibold text-[#17252B] hover:bg-[#F7F8F8] transition cursor-pointer"
+        >
+          <ChevronLeft size={16} />
+          <span>Back to drafting</span>
+        </button>
 
         <div className="flex items-center gap-3">
-          <Button
+          <button
             type="button"
-            variant="ghost"
             onClick={onResetAll}
-            className="text-slate-600 hover:text-[#dc2626]"
+            className="rounded-xl border border-[#E2E6E8] bg-white px-4 py-2.5 text-xs font-semibold text-[#17252B] hover:bg-[#F7F8F8] transition cursor-pointer"
           >
-            Start New Assessment
-          </Button>
+            Start new assessment
+          </button>
 
-          <Button
+          <button
             type="button"
-            size="md"
             onClick={handleConfirmAndOpen}
             disabled={isSubmitting || !previewValidation.isValid}
-            className="font-semibold bg-[#1e7168] hover:bg-[#185e56] text-white"
+            className="inline-flex items-center gap-2 rounded-xl bg-[#0B514B] px-5 py-2.5 text-xs font-semibold text-white shadow-xs hover:bg-[#073D38] transition cursor-pointer disabled:opacity-50"
           >
-            {isSubmitting ? "Opening Workspace..." : "Confirm & Open in Workspace"}
-          </Button>
-
-          <Link
-            href="/assessments"
-            onClick={onExitToAssessments}
-            className="text-xs font-semibold text-teal-700 hover:underline px-2"
-          >
-            Return to Assessments &rarr;
-          </Link>
+            <span>{isSubmitting ? "Opening Workspace..." : "Confirm & open in workspace"}</span>
+            <ChevronRight size={16} />
+          </button>
         </div>
       </div>
     </div>

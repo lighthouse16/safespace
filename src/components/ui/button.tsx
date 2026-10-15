@@ -4,15 +4,15 @@ import React, { forwardRef, type ButtonHTMLAttributes } from "react";
 
 const buttonVariants = {
   primary:
-    "bg-[#1e7168] text-white hover:bg-[#175b54] active:bg-[#124741] border border-transparent shadow-xs focus-visible:outline-[#1e7168]",
+    "bg-[#0B514B] text-white hover:bg-[#073D38] active:bg-[#073D38] border border-transparent shadow-xs focus-visible:outline-[#0B514B]",
   secondary:
-    "border border-[#cbd5e1] bg-white text-[#192329] hover:bg-[#f8fafc] active:bg-[#f1f5f9] shadow-xs focus-visible:outline-[#1e7168]",
+    "border border-[#cbd5e1] bg-white text-[#17252B] hover:bg-[#f8fafc] active:bg-[#f1f5f9] shadow-xs focus-visible:outline-[#0B514B]",
   ghost:
-    "text-[#475569] hover:bg-slate-100 active:bg-slate-200 hover:text-[#192329] border border-transparent focus-visible:outline-[#1e7168]",
+    "text-[#475569] hover:bg-slate-100 active:bg-slate-200 hover:text-[#17252B] border border-transparent focus-visible:outline-[#0B514B]",
   danger:
     "bg-[#dc2626] text-white hover:bg-[#b91c1c] active:bg-[#991b1b] border border-transparent shadow-xs focus-visible:outline-[#dc2626]",
   outline:
-    "border border-[#1e7168] bg-transparent text-[#1e7168] hover:bg-[#e8f3f1] active:bg-[#d9ece8] focus-visible:outline-[#1e7168]",
+    "border border-[#0B514B] bg-transparent text-[#0B514B] hover:bg-[#F7F8F8] active:bg-[#E2E6E8] focus-visible:outline-[#0B514B]",
 };
 
 export interface ButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
@@ -92,16 +92,16 @@ export const IconButton = forwardRef<HTMLButtonElement, IconButtonProps>(
     }[size];
 
     const variantClasses = {
-      ghost: "text-[#64748b] hover:bg-slate-100 hover:text-[#192329]",
-      secondary: "border border-[#cbd5e1] bg-white text-[#192329] hover:bg-[#f8fafc]",
-      primary: "bg-[#1e7168] text-white hover:bg-[#175b54]",
+      ghost: "text-[#647078] hover:bg-slate-100 hover:text-[#17252B]",
+      secondary: "border border-[#cbd5e1] bg-white text-[#17252B] hover:bg-[#f8fafc]",
+      primary: "bg-[#0B514B] text-white hover:bg-[#073D38]",
     }[variant];
 
     return (
       <button
         ref={ref}
         disabled={disabled}
-        className={`inline-grid place-items-center transition cursor-pointer select-none disabled:cursor-not-allowed disabled:opacity-50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#1e7168] ${sizeClasses} ${variantClasses} ${className}`}
+        className={`inline-grid place-items-center transition cursor-pointer select-none disabled:cursor-not-allowed disabled:opacity-50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#0B514B] ${sizeClasses} ${variantClasses} ${className}`}
         {...props}
       >
         {children}

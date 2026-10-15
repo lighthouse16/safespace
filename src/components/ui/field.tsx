@@ -17,7 +17,7 @@ export const Input = forwardRef<HTMLInputElement, InputHTMLAttributes<HTMLInputE
     const describedBy = [errorId, hintId].filter(Boolean).join(" ") || undefined;
 
     return (
-      <div className="grid gap-1.5 text-xs font-semibold text-[#192329]">
+      <div className="grid gap-1.5 text-xs font-semibold text-[#17252B] w-full min-w-0">
         <label htmlFor={fieldId} className="flex items-center justify-between cursor-pointer">
           <span>{label}</span>
           {optional && <span className="text-[11px] font-normal text-[#94a3b8]">Optional</span>}
@@ -27,7 +27,7 @@ export const Input = forwardRef<HTMLInputElement, InputHTMLAttributes<HTMLInputE
           id={fieldId}
           aria-invalid={!!error}
           aria-describedby={describedBy}
-          className={`min-h-9 rounded-lg border bg-white px-3 text-xs text-[#192329] outline-none transition placeholder:text-[#94a3b8] focus:border-[#1e7168] focus:ring-2 focus:ring-[#1e7168]/20 disabled:cursor-not-allowed disabled:bg-slate-50 disabled:text-[#94a3b8] ${
+          className={`w-full min-w-0 min-h-9 rounded-lg border bg-white px-3 text-xs text-[#17252B] outline-none transition placeholder:text-[#94a3b8] focus:border-[#0B514B] focus:ring-2 focus:ring-[#0B514B]/20 disabled:cursor-not-allowed disabled:bg-slate-50 disabled:text-[#94a3b8] ${
             error ? "border-[#dc2626]" : "border-[#cbd5e1]"
           } ${className}`}
           {...props}
@@ -37,7 +37,7 @@ export const Input = forwardRef<HTMLInputElement, InputHTMLAttributes<HTMLInputE
             {error}
           </span>
         ) : hint ? (
-          <span id={hintId} className="text-[11px] font-normal text-[#64748b]">
+          <span id={hintId} className="text-[11px] font-normal text-[#647078]">
             {hint}
           </span>
         ) : null}
@@ -58,7 +58,7 @@ export const Select = forwardRef<
   const describedBy = [errorId, hintId].filter(Boolean).join(" ") || undefined;
 
   return (
-    <div className="grid gap-1.5 text-xs font-semibold text-[#192329]">
+    <div className="grid gap-1.5 text-xs font-semibold text-[#17252B] w-full min-w-0">
       <label htmlFor={fieldId} className="flex items-center justify-between cursor-pointer">
         <span>{label}</span>
         {optional && <span className="text-[11px] font-normal text-[#94a3b8]">Optional</span>}
@@ -68,7 +68,7 @@ export const Select = forwardRef<
         id={fieldId}
         aria-invalid={!!error}
         aria-describedby={describedBy}
-        className={`min-h-9 rounded-lg border bg-white px-3 text-xs text-[#192329] outline-none transition focus:border-[#1e7168] focus:ring-2 focus:ring-[#1e7168]/20 disabled:cursor-not-allowed disabled:bg-slate-50 disabled:text-[#94a3b8] ${
+        className={`w-full min-w-0 min-h-9 rounded-lg border bg-white px-3 text-xs text-[#17252B] outline-none transition focus:border-[#0B514B] focus:ring-2 focus:ring-[#0B514B]/20 disabled:cursor-not-allowed disabled:bg-slate-50 disabled:text-[#94a3b8] ${
           error ? "border-[#dc2626]" : "border-[#cbd5e1]"
         } ${className}`}
         {...props}
@@ -80,7 +80,7 @@ export const Select = forwardRef<
           {error}
         </span>
       ) : hint ? (
-        <span id={hintId} className="text-[11px] font-normal text-[#64748b]">
+        <span id={hintId} className="text-[11px] font-normal text-[#647078]">
           {hint}
         </span>
       ) : null}
@@ -100,7 +100,7 @@ export const Textarea = forwardRef<
   const describedBy = [errorId, hintId].filter(Boolean).join(" ") || undefined;
 
   return (
-    <div className="grid gap-1.5 text-xs font-semibold text-[#192329]">
+    <div className="grid gap-1.5 text-xs font-semibold text-[#17252B]">
       <label htmlFor={fieldId} className="flex items-center justify-between cursor-pointer">
         <span>{label}</span>
         {optional && <span className="text-[11px] font-normal text-[#94a3b8]">Optional</span>}
@@ -110,7 +110,7 @@ export const Textarea = forwardRef<
         id={fieldId}
         aria-invalid={!!error}
         aria-describedby={describedBy}
-        className={`min-h-20 rounded-lg border bg-white p-3 text-xs text-[#192329] outline-none transition placeholder:text-[#94a3b8] focus:border-[#1e7168] focus:ring-2 focus:ring-[#1e7168]/20 disabled:cursor-not-allowed disabled:bg-slate-50 disabled:text-[#94a3b8] ${
+        className={`min-h-20 rounded-lg border bg-white p-3 text-xs text-[#17252B] outline-none transition placeholder:text-[#94a3b8] focus:border-[#0B514B] focus:ring-2 focus:ring-[#0B514B]/20 disabled:cursor-not-allowed disabled:bg-slate-50 disabled:text-[#94a3b8] ${
           error ? "border-[#dc2626]" : "border-[#cbd5e1]"
         } ${className}`}
         {...props}
@@ -120,7 +120,7 @@ export const Textarea = forwardRef<
           {error}
         </span>
       ) : hint ? (
-        <span id={hintId} className="text-[11px] font-normal text-[#64748b]">
+        <span id={hintId} className="text-[11px] font-normal text-[#647078]">
           {hint}
         </span>
       ) : null}

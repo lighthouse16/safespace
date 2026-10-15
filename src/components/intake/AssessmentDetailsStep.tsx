@@ -1,7 +1,8 @@
 "use client";
 
 import React, { useState } from "react";
-import { Button } from "@/components/ui/button";
+import Link from "next/link";
+import { ChevronRight, ChevronLeft } from "lucide-react";
 import { Input, Select, Textarea } from "@/components/ui/field";
 import {
   type AssessmentDetails,
@@ -12,11 +13,13 @@ import { validateAssessmentDetails } from "./intake-validation";
 
 export type AssessmentDetailsStepProps = {
   initialDetails: AssessmentDetails;
+  onChange?: (details: AssessmentDetails) => void;
   onContinue: (details: AssessmentDetails) => void;
 };
 
 export function AssessmentDetailsStep({
   initialDetails,
+  onChange,
   onContinue,
 }: AssessmentDetailsStepProps) {
   const [details, setDetails] = useState<AssessmentDetails>(initialDetails);
@@ -26,7 +29,9 @@ export function AssessmentDetailsStep({
     field: keyof AssessmentDetails,
     value: string
   ) => {
-    setDetails((prev) => ({ ...prev, [field]: value }));
+    const next = { ...details, [field]: value };
+    setDetails(next);
+    onChange?.(next);
     if (errors[field]) {
       setErrors((prev) => {
         const next = { ...prev };
@@ -49,62 +54,81 @@ export function AssessmentDetailsStep({
 
   return (
     <form onSubmit={handleSubmit} noValidate className="space-y-6">
-      <div className="rounded-xl border border-slate-200 bg-white p-6 shadow-xs">
-        <h2 className="text-base font-semibold text-[#192329]">
-          Assessment Details
+      <div className="rounded-2xl border border-[#E2E6E8] bg-white p-6 sm:p-8 shadow-xs">
+        {/* Step Badge */}
+        <div className="mb-4">
+          <span className="inline-block rounded-md bg-[#F0F3F4] px-2.5 py-1 text-xs font-semibold text-[#17252B]">
+            Step 1 of 4
+          </span>
+        </div>
+
+        <h2 className="text-2xl font-bold tracking-tight text-[#17252B]">
+          Assessment details
         </h2>
-        <p className="mt-1 text-xs text-[#64748b]">
-          Specify the facility and area parameters for this environmental evaluation.
+        <p className="mt-1.5 text-xs text-[#647078]">
+          Provide some basic information about the assessment and the space you&apos;re analysing.
         </p>
 
-        <div className="mt-6 grid gap-5 sm:grid-cols-2">
-          <div className="sm:col-span-2">
+        <div className="mt-8 space-y-5">
+          <div>
             <Input
               label="Assessment name"
               name="assessmentName"
-              placeholder="e.g. Annual Fall-Risk Survey 2026"
+              placeholder="e.g. Q1 2025 Fire Safety Assessment"
               value={details.assessmentName}
               onChange={(e) => handleChange("assessmentName", e.target.value)}
               error={errors.assessmentName}
               required
             />
+            <p className="mt-1 text-[11px] text-[#647078]">
+              A clear name to help you identify this assessment later.
+            </p>
           </div>
 
           <div>
             <Input
               label="Facility or residence name"
               name="facilityName"
-              placeholder="e.g. Pinecrest Senior Community"
+              placeholder="e.g. Riverside Apartments"
               value={details.facilityName}
               onChange={(e) => handleChange("facilityName", e.target.value)}
               error={errors.facilityName}
               required
             />
+            <p className="mt-1 text-[11px] text-[#647078]">
+              The name of the building, facility or residence.
+            </p>
           </div>
 
           <div>
             <Input
               label="Space or area name"
               name="spaceName"
-              placeholder="e.g. Activity Hall & North Corridor"
+              placeholder="e.g. Level 2, East Wing"
               value={details.spaceName}
               onChange={(e) => handleChange("spaceName", e.target.value)}
               error={errors.spaceName}
               required
             />
+            <p className="mt-1 text-[11px] text-[#647078]">
+              The specific space or area within the facility (optional).
+            </p>
           </div>
 
-          <div className="sm:col-span-2">
+          <div>
             <Select
               label="Environment type"
               name="environmentType"
-              value={details.environmentType}
+              value={details.environmentType || ""}
               onChange={(e) =>
                 handleChange("environmentType", e.target.value as EnvironmentType)
               }
               error={errors.environmentType}
               required
             >
+              <option value="" disabled>
+                Select an environment type
+              </option>
               {(Object.keys(ENVIRONMENT_TYPE_LABELS) as EnvironmentType[]).map(
                 (key) => (
                   <option key={key} value={key}>
@@ -113,13 +137,16 @@ export function AssessmentDetailsStep({
                 )
               )}
             </Select>
+            <p className="mt-1 text-[11px] text-[#647078]">
+              Choose the type of environment this assessment is for.
+            </p>
           </div>
 
-          <div className="sm:col-span-2">
+          <div>
             <Textarea
-              label="Notes or specific observations"
+              label="Notes"
               name="notes"
-              placeholder="Optional notes regarding floor transitions, known resident mobility aids, or assessment objectives..."
+              placeholder="Add any additional context, goals or notes (optional)."
               value={details.notes ?? ""}
               onChange={(e) => handleChange("notes", e.target.value)}
               optional
@@ -127,12 +154,25 @@ export function AssessmentDetailsStep({
             />
           </div>
         </div>
-      </div>
 
-      <div className="flex justify-end">
-        <Button type="submit" size="md">
-          Continue to Floorplan Source
-        </Button>
+        {/* Footer Actions */}
+        <div className="mt-8 flex flex-wrap items-center justify-between gap-4 pt-4">
+          <Link
+            href="/assessments"
+            className="inline-flex items-center gap-2 rounded-xl border border-[#E2E6E8] bg-white px-4 py-2.5 text-xs font-semibold text-[#17252B] hover:bg-[#F7F8F8] transition-colors"
+          >
+            <ChevronLeft size={16} />
+            <span>Back to assessments</span>
+          </Link>
+
+          <button
+            type="submit"
+            className="inline-flex items-center gap-2 rounded-xl bg-[#0B514B] px-5 py-2.5 text-xs font-semibold text-white shadow-xs hover:bg-[#073D38] transition-colors cursor-pointer"
+          >
+            <span>Continue to floorplan source</span>
+            <ChevronRight size={16} />
+          </button>
+        </div>
       </div>
     </form>
   );
