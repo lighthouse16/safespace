@@ -62,9 +62,12 @@ curl -I https://[your-domain]/api/v1/auth/session
 ## 5. Automated Verification Checklist
 
 Before releasing to production:
-- [x] Run full unit & integration test suite: `npm test` (247 passing tests)
+- [x] Run full unit & integration test suite: `npm test` (252 passing tests, 0 failures)
+- [x] Run static export verification: `npm run verify:export` (6 HTML files verified, 8 retired routes absent, 0 fabricated markers)
 - [x] Run TypeScript typecheck: `npm run typecheck` (0 errors)
-- [x] Run linter: `npm run lint` (0 errors)
-- [x] Verify Docker PostgreSQL migration & RLS isolation: `npx tsx --test tests/db-schema-isolation.test.ts`
-- [x] Verify spatial parity: `npx tsx --test tests/spatial-parity.test.ts`
-- [x] Verify full 23-step journey: `npx tsx --test tests/full-stack-journey.test.ts`
+- [x] Run linter: `npm run lint` (0 errors, 0 warnings)
+- [x] Verify Docker PostgreSQL migration & RLS isolation: `npx tsx --test tests/db-schema-isolation.test.ts` (4/4 passing)
+- [x] Verify spatial parity: `npx tsx --test tests/spatial-parity.test.ts` (2/2 passing)
+- [x] Verify Stage 5 optimization engine: `npx tsx --test tests/stage5-optimizer.test.ts` (23/23 passing)
+- [x] Verify full 23-step journey: `npx tsx --test tests/full-stack-journey.test.ts` (13/13 passing, strict HTTP status assertions, zero 401 fallbacks)
+

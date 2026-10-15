@@ -2,18 +2,38 @@
 
 import React, { useEffect, useState } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { AppShell } from "@/components/shell";
 import {
   loadPersistedAssessment,
+  savePersistedAssessment,
   saveActiveWorkspace,
   type PersistedAssessmentState,
 } from "@/lib/storage/persistence";
 import { useSafeSpaceStore } from "@/store/safespace-store";
+import { serverAssessmentService, type RemoteAssessmentSummary } from "@/lib/services/server-assessment-repository";
+
+function useSafeRouter() {
+  try {
+    return useRouter();
+  } catch {
+    return {
+      push: (url: string) => {
+        if (typeof window !== "undefined") {
+          window.location.href = url;
+        }
+      },
+    };
+  }
+}
 
 export default function AssessmentsPage() {
+  const router = useSafeRouter();
   const { hydrateFromStorage, clearUserAssessment, mediaCleanupWarning } = useSafeSpaceStore();
   const [savedAssessment, setSavedAssessment] = useState<PersistedAssessmentState | null>(null);
+  const [remoteAssessments, setRemoteAssessments] = useState<RemoteAssessmentSummary[]>([]);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  const [deleteTargetId, setDeleteTargetId] = useState<string | null>(null);
   const [deleteError, setDeleteError] = useState<string | null>(null);
   const [deletionWarning, setDeletionWarning] = useState<string | null>(null);
   const [openError, setOpenError] = useState<string | null>(null);
@@ -26,6 +46,12 @@ export default function AssessmentsPage() {
     } else {
       setSavedAssessment(null);
     }
+
+    serverAssessmentService.listAssessments().then((res) => {
+      if (res.success && res.assessments) {
+        setRemoteAssessments(res.assessments);
+      }
+    }).catch(() => {});
   }, []);
 
   const [isDeleting, setIsDeleting] = useState(false);
@@ -41,20 +67,49 @@ export default function AssessmentsPage() {
     hydrateFromStorage();
   };
 
+  const handleOpenRemoteAssessment = async (id: string) => {
+    setOpenError(null);
+    const loadRes = await serverAssessmentService.getAssessment(id);
+    if (loadRes.success) {
+      savePersistedAssessment(loadRes.data);
+      saveActiveWorkspace("user");
+      hydrateFromStorage();
+      router.push("/workspace");
+    } else {
+      setOpenError(loadRes.error || "Failed to load assessment from cloud storage.");
+    }
+  };
+
+
   const handleConfirmDelete = async () => {
     setDeleteError(null);
     setIsDeleting(true);
     try {
-      const res = await clearUserAssessment();
-      if (!res.success) {
-        setDeleteError(res.error || "Failed to remove assessment data from this device.");
-        return;
+      if (deleteTargetId) {
+        const delRes = await serverAssessmentService.deleteAssessment(deleteTargetId);
+        if (!delRes.success) {
+          setDeleteError(delRes.error || "Failed to remove assessment from cloud.");
+          setIsDeleting(false);
+          return;
+        }
+        setRemoteAssessments((prev) => prev.filter((a) => a.id !== deleteTargetId));
       }
-      setSavedAssessment(null);
+
+      if (!deleteTargetId || savedAssessment?.metadata?.id === deleteTargetId) {
+        const res = await clearUserAssessment();
+        if (!res.success && !deleteTargetId) {
+          setDeleteError(res.error || "Failed to remove assessment data from this device.");
+          setIsDeleting(false);
+          return;
+        }
+        setSavedAssessment(null);
+        if (res.warning) {
+          setDeletionWarning(res.warning);
+        }
+      }
+
       setShowDeleteConfirm(false);
-      if (res.warning) {
-        setDeletionWarning(res.warning);
-      }
+      setDeleteTargetId(null);
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
       setDeleteError(`Deletion error: ${msg}`);
@@ -62,6 +117,7 @@ export default function AssessmentsPage() {
       setIsDeleting(false);
     }
   };
+
 
   return (
     <AppShell
@@ -130,9 +186,67 @@ export default function AssessmentsPage() {
           </div>
         )}
 
+        {/* Cloud Synced Assessments */}
+        {remoteAssessments.length > 0 && (
+          <section aria-labelledby="remote-assessments-heading" className="space-y-3">
+            <div className="flex items-center justify-between">
+              <h2
+                id="remote-assessments-heading"
+                className="text-xs font-semibold uppercase tracking-wider text-[#0B514B]"
+              >
+                Cloud Synced Assessments ({remoteAssessments.length})
+              </h2>
+              <span className="text-[11px] text-emerald-700 font-medium">
+                Cloud Connected
+              </span>
+            </div>
+
+            <div className="space-y-3">
+              {remoteAssessments.map((item) => (
+                <div
+                  key={item.id}
+                  className="overflow-hidden rounded-xl border border-emerald-200 bg-white shadow-xs p-5 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between"
+                >
+                  <div className="space-y-1">
+                    <div className="flex flex-wrap items-baseline gap-x-2 gap-y-1">
+                      <span className="font-semibold text-sm text-[#17252B]">{item.name}</span>
+                      <span className="text-xs text-slate-600">
+                        {item.facilityName || "Custom Facility"} · {item.spaceName || "Room"} ({item.environmentType})
+                      </span>
+                    </div>
+                    {item.notes && <p className="text-xs text-slate-600 line-clamp-1">{item.notes}</p>}
+                    <p className="text-[11px] text-slate-400">
+                      Updated: {new Date(item.updatedAt).toLocaleString()}
+                    </p>
+                  </div>
+                  <div className="flex items-center gap-2 shrink-0">
+                    <button
+                      onClick={() => {
+                        setDeleteTargetId(item.id);
+                        setDeleteError(null);
+                        setShowDeleteConfirm(true);
+                      }}
+                      className="rounded-lg border border-red-200 bg-white px-3 py-1.5 text-xs font-semibold text-red-600 hover:bg-red-50 transition cursor-pointer"
+                    >
+                      Delete
+                    </button>
+                    <button
+                      onClick={() => handleOpenRemoteAssessment(item.id)}
+                      className="rounded-lg bg-[#0B514B] px-3.5 py-1.5 text-xs font-semibold text-white hover:bg-[#073D38] transition cursor-pointer"
+                    >
+                      Open in workspace &rarr;
+                    </button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </section>
+        )}
+
         {/* Real User Assessment or Empty State */}
-        {savedAssessment ? (
+        {savedAssessment && remoteAssessments.every((r) => r.id !== savedAssessment.metadata?.id) ? (
           <section aria-labelledby="saved-assessment-heading" className="space-y-3">
+
             <div className="flex items-center justify-between">
               <h2
                 id="saved-assessment-heading"

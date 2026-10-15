@@ -25,13 +25,53 @@ export async function POST(request: Request, context: RouteContext) {
       );
     }
 
-    const { imageBase64, imageMimeType, scaleInfo } = result.data;
+    let hasAccess = false;
+    let supabaseClient = null;
+    try {
+      const supabase = await createRouteHandlerClient(request);
+      supabaseClient = supabase;
+      const { data: assessment, error: aErr } = await supabase
+        .from("assessments")
+        .select("id, user_id")
+        .eq("id", id)
+        .maybeSingle();
+
+      if (!aErr && assessment) {
+        if (assessment.user_id !== user.id) {
+          return NextResponse.json({ error: "Access denied" }, { status: 403 });
+        }
+        hasAccess = true;
+      }
+    } catch {
+      // Supabase unconfigured / table missing
+    }
+
+    if (!hasAccess) {
+      const { serverAssessmentStore } = await import("@/lib/server/assessment-store");
+      const local = serverAssessmentStore.get(id, user.id);
+      if (!local) {
+        return NextResponse.json({ error: "Assessment not found" }, { status: 404 });
+      }
+    }
+
+    const { imageBase64, imageMimeType, pixelsPerCm, scaleInfo } = result.data;
+    const effectiveScale = pixelsPerCm ?? scaleInfo?.pixelsPerCm;
+
+    // Strict calibration scale requirement
+    if (!effectiveScale || effectiveScale <= 0) {
+      return NextResponse.json(
+        {
+          error: "Calibration scale required. Floorplan image must be calibrated with a real-world reference dimension before interpreting spatial dimensions.",
+        },
+        { status: 400 }
+      );
+    }
 
     // Run Gemini interpretation
     const interpRes = await interpretFloorplanWithGemini({
       imageBase64,
       imageMimeType,
-      pixelsPerCm: scaleInfo?.pixelsPerCm,
+      pixelsPerCm: effectiveScale,
     });
 
     if (!interpRes.success || !interpRes.data) {
@@ -41,20 +81,28 @@ export async function POST(request: Request, context: RouteContext) {
       );
     }
 
-    // Persist audit record in ai_analyses
-    try {
-      const supabase = await createRouteHandlerClient(request);
-      const inputHash = crypto.createHash("sha256").update(imageBase64.slice(0, 1000)).digest("hex");
-      await supabase.from("ai_analyses").insert({
-        assessment_id: id,
-        type: "interpretation",
-        model_name: interpRes.data.model,
-        input_hash: inputHash,
-        raw_response: interpRes.data,
-        parsed_result: interpRes.data.elements,
-      });
-    } catch {
-      // Audit log error does not prevent returning analysis
+    // Explicit audit record in ai_analyses
+    let auditPersisted = false;
+    let auditError: string | null = null;
+    if (supabaseClient) {
+      try {
+        const inputHash = crypto.createHash("sha256").update(imageBase64.slice(0, 1000)).digest("hex");
+        const { error: insErr } = await supabaseClient.from("ai_analyses").insert({
+          assessment_id: id,
+          type: "interpretation",
+          model_name: interpRes.data.model,
+          input_hash: inputHash,
+          raw_response: interpRes.data,
+          parsed_result: interpRes.data.elements,
+        });
+        if (insErr) {
+          auditError = insErr.message;
+        } else {
+          auditPersisted = true;
+        }
+      } catch (err: unknown) {
+        auditError = err instanceof Error ? err.message : "Audit log exception";
+      }
     }
 
     return NextResponse.json({
@@ -63,6 +111,8 @@ export async function POST(request: Request, context: RouteContext) {
       rawCount: interpRes.data.rawCount,
       filteredCount: interpRes.data.filteredCount,
       model: interpRes.data.model,
+      auditPersisted,
+      auditError,
     });
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : "Internal server error";

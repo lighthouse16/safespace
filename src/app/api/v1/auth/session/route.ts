@@ -1,12 +1,11 @@
 import { NextResponse } from "next/server";
-import { createRouteHandlerClient } from "@/lib/server/supabase";
+import { getAuthenticatedUser } from "@/lib/server/supabase";
 
 export async function GET(request: Request) {
   try {
-    const supabase = await createRouteHandlerClient(request);
-    const { data: { user }, error } = await supabase.auth.getUser();
+    const user = await getAuthenticatedUser(request);
 
-    if (error || !user) {
+    if (!user) {
       return NextResponse.json({ authenticated: false, user: null });
     }
 
@@ -23,3 +22,4 @@ export async function GET(request: Request) {
     return NextResponse.json({ error: message }, { status: 500 });
   }
 }
+

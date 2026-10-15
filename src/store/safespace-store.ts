@@ -45,6 +45,9 @@ import {
 import type { PersistedFloorplanImage } from "@/lib/storage/image-db";
 import type { DeletionResult } from "@/lib/storage/coordinated-storage";
 import { browserAssessmentRepository } from "@/lib/services/assessment-repository";
+import { serverAssessmentService } from "@/lib/services/server-assessment-repository";
+
+
 
 import {
   isValidFootprintPlacement,
@@ -333,7 +336,7 @@ function persistUserMutation(
       }
     }
 
-    const saveRes = savePersistedAssessment({
+    const payload: PersistedAssessmentState = {
       schemaVersion: SAFESPACE_STORAGE_VERSION,
       assessmentType: "user",
       metadata: state.assessmentMetadata,
@@ -347,9 +350,14 @@ function persistUserMutation(
       appliedCandidateId: state.appliedCandidateId,
       appliedSceneFingerprint: state.appliedSceneFingerprint,
       hasFloorplanImage,
-    });
+    };
+
+    const saveRes = savePersistedAssessment(payload);
     if (saveRes.success) {
       set({ storageStatus: "saved", storageError: null, hasFloorplanImage });
+      if (typeof window !== "undefined" && state.assessmentMetadata?.id) {
+        serverAssessmentService.saveAssessment(state.assessmentMetadata.id, payload).catch(() => {});
+      }
       return { success: true };
     } else {
       set({ storageStatus: "error", storageError: saveRes.error });
@@ -1544,6 +1552,13 @@ export const useSafeSpaceStore = create<SafeSpaceState>((set, get) => ({
         : null,
     });
 
+    if (typeof window !== "undefined") {
+      serverAssessmentService.saveAssessment(metadata.id, savePayload).catch(() => {});
+      if (imageFile) {
+        serverAssessmentService.uploadMedia(metadata.id, imageFile as File).catch(() => {});
+      }
+    }
+
     return {
       success: true,
       isSaved: true,
@@ -1553,6 +1568,7 @@ export const useSafeSpaceStore = create<SafeSpaceState>((set, get) => ({
       cleanupDebtDurable,
     };
   },
+
 
   loadDemoAssessment: (initialStage?: unknown) => {
     get().resetToDemo(initialStage);

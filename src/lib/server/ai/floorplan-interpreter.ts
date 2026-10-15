@@ -120,6 +120,14 @@ Do NOT invent objects that are not visible. Be precise.`;
     const canvasW = params.canvasWidth || 1000;
     const canvasH = params.canvasHeight || 800;
 
+    if (!params.pixelsPerCm || params.pixelsPerCm <= 0) {
+      return {
+        success: false,
+        error: "Calibration scale required: cannot compute real-world centimeters without valid scale calibration.",
+      };
+    }
+
+    const ppm = params.pixelsPerCm;
     const validCandidates: InterpretedElementCandidate[] = [];
 
     for (let i = 0; i < rawElements.length; i++) {
@@ -138,13 +146,11 @@ Do NOT invent objects that are not visible. Be precise.`;
       const widthPx = ((xmax - xmin) / 1000) * canvasW;
       const heightPx = ((ymax - ymin) / 1000) * canvasH;
 
-      // Estimate real-world cm dimensions using pixelsPerCm
-      const widthCm = params.pixelsPerCm ? Math.round(widthPx / params.pixelsPerCm) : 80;
-      const depthCm = params.pixelsPerCm ? Math.round(heightPx / params.pixelsPerCm) : 80;
-
-      // Center position
-      const centerX = leftPx + widthPx / 2;
-      const centerY = topPx + heightPx / 2;
+      // Exact coordinate and dimension conversion to real-world centimeters
+      const widthCm = Math.round(widthPx / ppm);
+      const depthCm = Math.round(heightPx / ppm);
+      const centerXCm = Math.round((leftPx + widthPx / 2) / ppm);
+      const centerYCm = Math.round((topPx + heightPx / 2) / ppm);
 
       // Enforce physical constraints: reject impossibly small or oversized noise
       if (widthCm < 15 || depthCm < 15 || widthCm > 600 || depthCm > 600) {
@@ -155,8 +161,8 @@ Do NOT invent objects that are not visible. Be precise.`;
         id: `ai-item-${Date.now()}-${i}`,
         name: el.name || `Detected ${el.category}`,
         category: el.category as SpatialFurniture["category"],
-        x: Math.round(centerX),
-        y: Math.round(centerY),
+        x: centerXCm,
+        y: centerYCm,
         width: Math.max(20, widthCm),
         depth: Math.max(20, depthCm),
         rotation: 0,

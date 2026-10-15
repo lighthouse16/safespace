@@ -142,9 +142,10 @@ export const AIFloorplanInterpretationRequestSchema = z.object({
   userConsent: z.literal(true),
   imageMimeType: z.enum(["image/png", "image/jpeg", "image/webp"]),
   imageBase64: z.string().min(1),
+  pixelsPerCm: z.number().optional(),
   scaleInfo: z
     .object({
-      pixelsPerCm: z.number().positive().optional(),
+      pixelsPerCm: z.number().optional(),
     })
     .optional(),
 });

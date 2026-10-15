@@ -107,6 +107,7 @@ export async function applyServerCandidate(params: {
       furniture: currentFurniture,
       waypoints,
       boundary: boundary || null,
+      profileId: mobRes.data?.profile || "manual-wheelchair",
       minClearanceCm: mobRes.data?.passage_width_cm,
       turningSpaceCm: mobRes.data?.turning_space_cm,
     });
@@ -124,28 +125,20 @@ export async function applyServerCandidate(params: {
       return { success: false, error: `Candidate ${params.candidateId} not found in stored alternatives` };
     }
 
-    // Transactional-style apply:
-    // 1. Update optimizations row with snapshot_before_apply and applied_at
-    await supabase
-      .from("optimizations")
-      .update({
-        selected_candidate_id: params.candidateId,
-        snapshot_before_apply: currentFurniture,
-        applied_at: new Date().toISOString(),
-      })
-      .eq("id", optRes.data.id);
+    // Call PostgreSQL atomic RPC function
+    const { data: rpcRes, error: rpcErr } = await supabase.rpc("apply_layout_candidate", {
+      p_assessment_id: params.assessmentId,
+      p_candidate_id: params.candidateId,
+      p_expected_fingerprint: params.expectedSceneFingerprint,
+      p_new_furniture: candidate.furniture,
+    });
 
-    // 2. Update scenes with candidate's furniture
-    const { error: updateErr } = await supabase
-      .from("scenes")
-      .update({
-        furniture: candidate.furniture,
-        updated_at: new Date().toISOString(),
-      })
-      .eq("assessment_id", params.assessmentId);
+    if (rpcErr) {
+      return { success: false, error: rpcErr.message };
+    }
 
-    if (updateErr) {
-      return { success: false, error: updateErr.message };
+    if (rpcRes && typeof rpcRes === "object" && "success" in rpcRes && !rpcRes.success) {
+      return { success: false, error: (rpcRes as { error?: string }).error || "Failed to apply layout candidate" };
     }
 
     return { success: true };
@@ -161,41 +154,18 @@ export async function revertServerCandidate(params: {
   try {
     const supabase = await createRouteHandlerClient(params.request);
 
-    // Get latest applied optimization
-    const { data: opt, error: optErr } = await supabase
-      .from("optimizations")
-      .select("*")
-      .eq("assessment_id", params.assessmentId)
-      .not("applied_at", "is", null)
-      .order("applied_at", { ascending: false })
-      .limit(1)
-      .maybeSingle();
+    // Call PostgreSQL atomic RPC function
+    const { data: rpcRes, error: rpcErr } = await supabase.rpc("revert_layout_candidate", {
+      p_assessment_id: params.assessmentId,
+    });
 
-    if (optErr || !opt || !opt.snapshot_before_apply) {
-      return { success: false, error: "No applied layout candidate available to revert" };
+    if (rpcErr) {
+      return { success: false, error: rpcErr.message };
     }
 
-    // Restore baseline furniture
-    const { error: restoreErr } = await supabase
-      .from("scenes")
-      .update({
-        furniture: opt.snapshot_before_apply,
-        updated_at: new Date().toISOString(),
-      })
-      .eq("assessment_id", params.assessmentId);
-
-    if (restoreErr) {
-      return { success: false, error: restoreErr.message };
+    if (rpcRes && typeof rpcRes === "object" && "success" in rpcRes && !rpcRes.success) {
+      return { success: false, error: (rpcRes as { error?: string }).error || "Failed to revert layout candidate" };
     }
-
-    // Mark optimization as reverted
-    await supabase
-      .from("optimizations")
-      .update({
-        reverted_at: new Date().toISOString(),
-        selected_candidate_id: null,
-      })
-      .eq("id", opt.id);
 
     return { success: true };
   } catch (err: unknown) {

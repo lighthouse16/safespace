@@ -5,18 +5,24 @@
 create extension if not exists "uuid-ossp";
 create extension if not exists "pgcrypto";
 
--- Supabase auth.uid() compatibility helper for standard PostgreSQL
-create schema if not exists auth;
-create table if not exists auth.users (
-  id uuid primary key default gen_random_uuid(),
-  email text unique,
-  raw_user_meta_data jsonb default '{}'::jsonb,
-  created_at timestamptz default now()
-);
-
-create or replace function auth.uid() returns uuid as $$
-  select nullif(current_setting('request.jwt.claim.sub', true), '')::uuid;
-$$ language sql stable;
+-- Safe Supabase Auth compatibility guard (only defined on standalone PostgreSQL without Supabase Auth)
+do $$
+begin
+  if not exists (select 1 from information_schema.schemata where schema_name = 'auth') then
+    create schema auth;
+  end if;
+  if not exists (select 1 from information_schema.tables where table_schema = 'auth' and table_name = 'users') then
+    create table auth.users (
+      id uuid primary key default gen_random_uuid(),
+      email text unique,
+      raw_user_meta_data jsonb default '{}'::jsonb,
+      created_at timestamptz default now()
+    );
+  end if;
+  if not exists (select 1 from pg_proc join pg_namespace on pg_proc.pronamespace = pg_namespace.oid where proname = 'uid' and nspname = 'auth') then
+    execute 'create function auth.uid() returns uuid as $uidfn$ select nullif(current_setting(''request.jwt.claim.sub'', true), '''')::uuid; $uidfn$ language sql stable;';
+  end if;
+end $$;
 
 -- 1. User Profiles
 create table if not exists public.profiles (
@@ -293,3 +299,282 @@ begin
       using (bucket_id = 'floorplans' and (storage.foldername(name))[1] = auth.uid()::text);
   end if;
 end $$;
+
+-- 11. Transactional RPC Functions for Complete Write Atomicity
+
+-- Atomic save of complete assessment state bundle (metadata + scene + calibration + mobility + route)
+create or replace function public.save_assessment_bundle(
+  p_assessment_id uuid,
+  p_name text,
+  p_facility text default '',
+  p_space text default '',
+  p_environment text default 'residential',
+  p_notes text default '',
+  p_boundary jsonb default '[]'::jsonb,
+  p_furniture jsonb default '[]'::jsonb,
+  p_calibration jsonb default null,
+  p_mobility jsonb default null,
+  p_route jsonb default null,
+  p_user_id uuid default auth.uid()
+)
+returns jsonb
+language plpgsql
+security definer
+as $$
+declare
+  v_owner uuid;
+begin
+  -- 1. Check assessment existence and enforce ownership
+  select user_id into v_owner from public.assessments where id = p_assessment_id;
+  if v_owner is null then
+    return jsonb_build_object('success', false, 'error', 'Assessment not found');
+  end if;
+  if p_user_id is not null and v_owner <> p_user_id then
+    return jsonb_build_object('success', false, 'error', 'Unauthorized');
+  end if;
+
+  -- 2. Update assessment record
+  update public.assessments
+  set name = p_name,
+      facility_name = coalesce(p_facility, ''),
+      space_name = coalesce(p_space, ''),
+      environment_type = coalesce(p_environment, 'residential'),
+      notes = coalesce(p_notes, ''),
+      updated_at = now()
+  where id = p_assessment_id;
+
+  -- 3. Upsert scene
+  insert into public.scenes (assessment_id, boundary, furniture, updated_at)
+  values (p_assessment_id, coalesce(p_boundary, '[]'::jsonb), coalesce(p_furniture, '[]'::jsonb), now())
+  on conflict (assessment_id) do update set
+    boundary = excluded.boundary,
+    furniture = excluded.furniture,
+    updated_at = now();
+
+  -- 4. Upsert calibration if provided
+  if p_calibration is not null and (p_calibration->>'pixels_per_meter') is not null then
+    insert into public.calibrations (
+      assessment_id,
+      pixels_per_meter,
+      raw_distance_px,
+      reference_distance_m
+    )
+    values (
+      p_assessment_id,
+      (p_calibration->>'pixels_per_meter')::double precision,
+      (p_calibration->>'raw_distance_px')::double precision,
+      (p_calibration->>'reference_distance_m')::double precision
+    )
+    on conflict (assessment_id) do update set
+      pixels_per_meter = excluded.pixels_per_meter,
+      raw_distance_px = excluded.raw_distance_px,
+      reference_distance_m = excluded.reference_distance_m;
+  end if;
+
+  -- 5. Upsert mobility config if provided
+  if p_mobility is not null and (p_mobility->>'turning_space_cm') is not null then
+    insert into public.mobility_configs (
+      assessment_id,
+      profile,
+      turning_space_cm,
+      passage_width_cm,
+      walker_width_cm,
+      clearance_tolerance_cm,
+      bed_side_access_cm,
+      door_threshold_max_cm,
+      reach_range_low_cm,
+      reach_range_high_cm,
+      notes
+    )
+    values (
+      p_assessment_id,
+      coalesce(p_mobility->>'profile', 'manual-wheelchair'),
+      (p_mobility->>'turning_space_cm')::integer,
+      (p_mobility->>'passage_width_cm')::integer,
+      (p_mobility->>'walker_width_cm')::integer,
+      coalesce((p_mobility->>'clearance_tolerance_cm')::integer, 0),
+      coalesce((p_mobility->>'bed_side_access_cm')::integer, 0),
+      coalesce((p_mobility->>'door_threshold_max_cm')::double precision, 0),
+      coalesce((p_mobility->>'reach_range_low_cm')::integer, 0),
+      coalesce((p_mobility->>'reach_range_high_cm')::integer, 0),
+      coalesce(p_mobility->>'notes', '')
+    )
+    on conflict (assessment_id) do update set
+      profile = excluded.profile,
+      turning_space_cm = excluded.turning_space_cm,
+      passage_width_cm = excluded.passage_width_cm,
+      walker_width_cm = excluded.walker_width_cm,
+      clearance_tolerance_cm = excluded.clearance_tolerance_cm,
+      bed_side_access_cm = excluded.bed_side_access_cm,
+      door_threshold_max_cm = excluded.door_threshold_max_cm,
+      reach_range_low_cm = excluded.reach_range_low_cm,
+      reach_range_high_cm = excluded.reach_range_high_cm,
+      notes = excluded.notes;
+  end if;
+
+  -- 6. Upsert route checkpoints if provided
+  if p_route is not null and (p_route->'checkpoints') is not null then
+    insert into public.routes (
+      assessment_id,
+      name,
+      checkpoints,
+      updated_at
+    )
+    values (
+      p_assessment_id,
+      coalesce(p_route->>'name', 'Primary Route'),
+      coalesce(p_route->'checkpoints', '[]'::jsonb),
+      now()
+    )
+    on conflict (assessment_id) do update set
+      name = excluded.name,
+      checkpoints = excluded.checkpoints,
+      updated_at = now();
+  end if;
+
+  return jsonb_build_object('success', true);
+exception
+  when others then
+    return jsonb_build_object('success', false, 'error', SQLERRM);
+end;
+$$;
+
+-- Atomic layout alternative application
+create or replace function public.apply_layout_candidate(
+  p_assessment_id uuid,
+  p_candidate_id text,
+  p_expected_fingerprint text,
+  p_new_furniture jsonb,
+  p_user_id uuid default auth.uid()
+)
+returns jsonb
+language plpgsql
+security definer
+as $$
+declare
+  v_owner uuid;
+  v_opt_id uuid;
+  v_current_furniture jsonb;
+  v_opt_candidates jsonb;
+  v_found boolean := false;
+  v_cand jsonb;
+begin
+  -- 1. Verify assessment and ownership
+  select user_id into v_owner from public.assessments where id = p_assessment_id;
+  if v_owner is null then
+    return jsonb_build_object('success', false, 'error', 'Assessment not found');
+  end if;
+  if p_user_id is not null and v_owner <> p_user_id then
+    return jsonb_build_object('success', false, 'error', 'Unauthorized');
+  end if;
+
+  -- 2. Fetch current scene furniture
+  select furniture into v_current_furniture from public.scenes where assessment_id = p_assessment_id;
+  if v_current_furniture is null then
+    return jsonb_build_object('success', false, 'error', 'Assessment scene not found');
+  end if;
+
+  -- 3. Fetch latest optimization
+  select id, candidates into v_opt_id, v_opt_candidates
+  from public.optimizations
+  where assessment_id = p_assessment_id
+  order by created_at desc
+  limit 1;
+
+  if v_opt_id is null then
+    return jsonb_build_object('success', false, 'error', 'No optimization alternatives found for this assessment');
+  end if;
+
+  -- 4. Verify candidate exists in candidates array
+  for v_cand in select * from jsonb_array_elements(v_opt_candidates)
+  loop
+    if v_cand->>'id' = p_candidate_id then
+      v_found := true;
+      exit;
+    end if;
+  end loop;
+
+  if not v_found then
+    return jsonb_build_object('success', false, 'error', 'Candidate ' || p_candidate_id || ' not found in alternatives');
+  end if;
+
+  -- 5. Atomically update optimizations and scene
+  update public.optimizations
+  set selected_candidate_id = p_candidate_id,
+      snapshot_before_apply = v_current_furniture,
+      applied_at = now()
+  where id = v_opt_id;
+
+  update public.scenes
+  set furniture = p_new_furniture,
+      updated_at = now()
+  where assessment_id = p_assessment_id;
+
+  update public.assessments
+  set updated_at = now()
+  where id = p_assessment_id;
+
+  return jsonb_build_object('success', true);
+exception
+  when others then
+    return jsonb_build_object('success', false, 'error', SQLERRM);
+end;
+$$;
+
+-- Atomic layout alternative revert
+create or replace function public.revert_layout_candidate(
+  p_assessment_id uuid,
+  p_user_id uuid default auth.uid()
+)
+returns jsonb
+language plpgsql
+security definer
+as $$
+declare
+  v_owner uuid;
+  v_opt_id uuid;
+  v_snapshot jsonb;
+begin
+  -- 1. Verify assessment and ownership
+  select user_id into v_owner from public.assessments where id = p_assessment_id;
+  if v_owner is null then
+    return jsonb_build_object('success', false, 'error', 'Assessment not found');
+  end if;
+  if p_user_id is not null and v_owner <> p_user_id then
+    return jsonb_build_object('success', false, 'error', 'Unauthorized');
+  end if;
+
+  -- 2. Fetch latest applied optimization
+  select id, snapshot_before_apply into v_opt_id, v_snapshot
+  from public.optimizations
+  where assessment_id = p_assessment_id
+    and applied_at is not null
+    and snapshot_before_apply is not null
+  order by applied_at desc
+  limit 1;
+
+  if v_opt_id is null or v_snapshot is null then
+    return jsonb_build_object('success', false, 'error', 'No applied layout candidate available to revert');
+  end if;
+
+  -- 3. Restore baseline furniture and record revert in single transaction
+  update public.scenes
+  set furniture = v_snapshot,
+      updated_at = now()
+  where assessment_id = p_assessment_id;
+
+  update public.optimizations
+  set reverted_at = now(),
+      selected_candidate_id = null
+  where id = v_opt_id;
+
+  update public.assessments
+  set updated_at = now()
+  where id = p_assessment_id;
+
+  return jsonb_build_object('success', true);
+exception
+  when others then
+    return jsonb_build_object('success', false, 'error', SQLERRM);
+end;
+$$;

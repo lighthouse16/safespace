@@ -103,8 +103,9 @@ export function IntakeReviewStep({
 
       const res = await createAndLoadUserAssessment({
         metadata: {
-          id: `assessment-${Date.now()}`,
+          id: typeof crypto !== "undefined" && typeof crypto.randomUUID === "function" ? crypto.randomUUID() : `assessment-${Date.now()}`,
           name: details.assessmentName.trim(),
+
           facilityName: details.facilityName.trim(),
           spaceName: details.spaceName.trim(),
           environmentType: details.environmentType,
