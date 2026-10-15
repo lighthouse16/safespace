@@ -130,7 +130,6 @@ export async function applyServerCandidate(params: {
       p_assessment_id: params.assessmentId,
       p_candidate_id: params.candidateId,
       p_expected_fingerprint: params.expectedSceneFingerprint,
-      p_new_furniture: candidate.furniture,
     });
 
     if (rpcErr) {

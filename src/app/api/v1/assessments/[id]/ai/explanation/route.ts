@@ -25,57 +25,35 @@ export async function POST(request: Request, context: RouteContext) {
       );
     }
 
-    let assessmentNameFromDb = "";
-    let hasAccess = false;
-    let supabaseClient = null;
+    const supabase = await createRouteHandlerClient(request);
+    const { data: assessment, error: aErr } = await supabase
+      .from("assessments")
+      .select("id, user_id, name")
+      .eq("id", id)
+      .maybeSingle();
 
-    try {
-      const supabase = await createRouteHandlerClient(request);
-      supabaseClient = supabase;
-      const { data: assessment, error: aErr } = await supabase
-        .from("assessments")
-        .select("id, user_id, name")
-        .eq("id", id)
-        .maybeSingle();
-
-      if (!aErr && assessment) {
-        if (assessment.user_id !== user.id) {
-          return NextResponse.json({ error: "Access denied" }, { status: 403 });
-        }
-        assessmentNameFromDb = assessment.name;
-        hasAccess = true;
-      }
-    } catch {
-      // Supabase unconfigured / table missing
+    if (aErr) {
+      return NextResponse.json({ error: aErr.message }, { status: 500 });
     }
 
-    if (!hasAccess) {
-      const { serverAssessmentStore } = await import("@/lib/server/assessment-store");
-      const local = serverAssessmentStore.get(id, user.id);
-      if (!local) {
-        return NextResponse.json({ error: "Assessment not found" }, { status: 404 });
-      }
-      assessmentNameFromDb = local.name;
+    if (!assessment) {
+      return NextResponse.json({ error: "Assessment not found" }, { status: 404 });
+    }
+
+    if (assessment.user_id !== user.id) {
+      return NextResponse.json({ error: "Access denied to foreign assessment" }, { status: 403 });
     }
 
     const { assessmentName, profileLabel, findings, metrics } = result.data;
 
-    // Fetch authoritative server evaluation to verify client-supplied findings
-    let evalRecord = null;
-    if (supabaseClient) {
-      try {
-        const { data } = await supabaseClient
-          .from("evaluations")
-          .select("*")
-          .eq("assessment_id", id)
-          .order("created_at", { ascending: false })
-          .limit(1)
-          .maybeSingle();
-        evalRecord = data;
-      } catch {
-        // Fallback to client metrics
-      }
-    }
+    // Fetch authoritative server evaluation from evaluations table
+    const { data: evalRecord } = await supabase
+      .from("evaluations")
+      .select("*")
+      .eq("assessment_id", id)
+      .order("created_at", { ascending: false })
+      .limit(1)
+      .maybeSingle();
 
     // Use authoritative server-verified evaluation when present, fallback to client-supplied validated schema
     const authoritativeFindings = evalRecord?.findings && Array.isArray(evalRecord.findings) && evalRecord.findings.length > 0
@@ -88,7 +66,7 @@ export async function POST(request: Request, context: RouteContext) {
       routeFeasibility: evalRecord?.route_accessibility ?? metrics?.routeFeasibility ?? "Infeasible",
     };
 
-    const effectiveName = assessmentNameFromDb || assessmentName;
+    const effectiveName = assessment.name || assessmentName;
     const explainRes = await explainFindingsWithGemini({
       assessmentName: effectiveName,
       profileLabel,
@@ -107,38 +85,44 @@ export async function POST(request: Request, context: RouteContext) {
       );
     }
 
-    // Explicit audit record in ai_analyses
+    // Persist audit record in ai_analyses
     let auditPersisted = false;
     let auditError: string | null = null;
-    if (supabaseClient) {
-      try {
-        const inputHash = crypto
-          .createHash("sha256")
-          .update(`${effectiveName}:${profileLabel}:${authoritativeFindings.length}`)
-          .digest("hex");
-        const { error: insErr } = await supabaseClient.from("ai_analyses").insert({
-          assessment_id: id,
-          type: "explanation",
-          model_name: explainRes.data.model,
-          input_hash: inputHash,
-          raw_response: explainRes.data,
-          parsed_result: explainRes.data,
-        });
-        if (insErr) {
-          auditError = insErr.message;
-        } else {
-          auditPersisted = true;
-        }
-      } catch (err: unknown) {
-        auditError = err instanceof Error ? err.message : "Audit log exception";
+    try {
+      const inputHash = crypto.createHash("sha256").update(JSON.stringify(authoritativeFindings)).digest("hex");
+      const { error: insErr } = await supabase.from("ai_analyses").insert({
+        assessment_id: id,
+        type: "explanation",
+        model_name: explainRes.data.model,
+        input_hash: inputHash,
+        raw_response: explainRes.data,
+        parsed_result: {
+          executiveSummary: explainRes.data.executiveSummary,
+          clinicalRiskNarrative: explainRes.data.clinicalRiskNarrative,
+          caregiverRecommendations: explainRes.data.caregiverRecommendations,
+        },
+      });
+      if (insErr) {
+        auditError = insErr.message;
+      } else {
+        auditPersisted = true;
       }
+    } catch (err: unknown) {
+      auditError = err instanceof Error ? err.message : "Failed to record audit log";
     }
 
     return NextResponse.json({
-      success: true,
-      explanation: explainRes.data,
-      auditPersisted,
-      auditError,
+      executiveSummary: explainRes.data.executiveSummary,
+      clinicalRiskNarrative: explainRes.data.clinicalRiskNarrative,
+      caregiverRecommendations: explainRes.data.caregiverRecommendations,
+      model: explainRes.data.model,
+      evidenceGrounding: {
+        serverVerified: Boolean(evalRecord),
+        findingsCount: authoritativeFindings.length,
+        auditPersisted,
+        auditError,
+      },
+      disclaimer: explainRes.data.disclaimer || "AI explanations are decision support suggestions. Spatial safety requirements must be verified against applicable accessibility standards.",
     });
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : "Internal server error";

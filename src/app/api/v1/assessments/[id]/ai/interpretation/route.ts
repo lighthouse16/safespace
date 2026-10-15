@@ -25,33 +25,23 @@ export async function POST(request: Request, context: RouteContext) {
       );
     }
 
-    let hasAccess = false;
-    let supabaseClient = null;
-    try {
-      const supabase = await createRouteHandlerClient(request);
-      supabaseClient = supabase;
-      const { data: assessment, error: aErr } = await supabase
-        .from("assessments")
-        .select("id, user_id")
-        .eq("id", id)
-        .maybeSingle();
+    const supabase = await createRouteHandlerClient(request);
+    const { data: assessment, error: aErr } = await supabase
+      .from("assessments")
+      .select("id, user_id")
+      .eq("id", id)
+      .maybeSingle();
 
-      if (!aErr && assessment) {
-        if (assessment.user_id !== user.id) {
-          return NextResponse.json({ error: "Access denied" }, { status: 403 });
-        }
-        hasAccess = true;
-      }
-    } catch {
-      // Supabase unconfigured / table missing
+    if (aErr) {
+      return NextResponse.json({ error: aErr.message }, { status: 500 });
     }
 
-    if (!hasAccess) {
-      const { serverAssessmentStore } = await import("@/lib/server/assessment-store");
-      const local = serverAssessmentStore.get(id, user.id);
-      if (!local) {
-        return NextResponse.json({ error: "Assessment not found" }, { status: 404 });
-      }
+    if (!assessment) {
+      return NextResponse.json({ error: "Assessment not found" }, { status: 404 });
+    }
+
+    if (assessment.user_id !== user.id) {
+      return NextResponse.json({ error: "Access denied to foreign assessment" }, { status: 403 });
     }
 
     const { imageBase64, imageMimeType, pixelsPerCm, scaleInfo } = result.data;
@@ -84,35 +74,35 @@ export async function POST(request: Request, context: RouteContext) {
     // Explicit audit record in ai_analyses
     let auditPersisted = false;
     let auditError: string | null = null;
-    if (supabaseClient) {
-      try {
-        const inputHash = crypto.createHash("sha256").update(imageBase64.slice(0, 1000)).digest("hex");
-        const { error: insErr } = await supabaseClient.from("ai_analyses").insert({
-          assessment_id: id,
-          type: "interpretation",
-          model_name: interpRes.data.model,
-          input_hash: inputHash,
-          raw_response: interpRes.data,
-          parsed_result: interpRes.data.elements,
-        });
-        if (insErr) {
-          auditError = insErr.message;
-        } else {
-          auditPersisted = true;
-        }
-      } catch (err: unknown) {
-        auditError = err instanceof Error ? err.message : "Audit log exception";
+    try {
+      const inputHash = crypto.createHash("sha256").update(imageBase64.slice(0, 1000)).digest("hex");
+      const { error: insErr } = await supabase.from("ai_analyses").insert({
+        assessment_id: id,
+        type: "interpretation",
+        model_name: interpRes.data.model,
+        input_hash: inputHash,
+        raw_response: interpRes.data,
+        parsed_result: interpRes.data.elements,
+      });
+      if (insErr) {
+        auditError = insErr.message;
+      } else {
+        auditPersisted = true;
       }
+    } catch (err: unknown) {
+      auditError = err instanceof Error ? err.message : "Failed to record audit log";
     }
 
     return NextResponse.json({
-      success: true,
       elements: interpRes.data.elements,
       rawCount: interpRes.data.rawCount,
       filteredCount: interpRes.data.filteredCount,
       model: interpRes.data.model,
+      scaleUsed: effectiveScale,
+      humanReviewRequired: true,
       auditPersisted,
       auditError,
+      disclaimer: "AI interpretations are assistance proposals and must be reviewed and accepted by a qualified assessor.",
     });
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : "Internal server error";

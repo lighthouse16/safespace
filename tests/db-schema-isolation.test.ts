@@ -2,9 +2,23 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { execSync } from "node:child_process";
 
+function getDbContainer(): string | null {
+  for (const name of ["supabase_db_hack4sdg", "safespace-test-db"]) {
+    try {
+      execSync(`docker exec ${name} pg_isready -U postgres`, { stdio: "ignore" });
+      return name;
+    } catch {}
+  }
+  return null;
+}
+
+const dbContainer = getDbContainer();
+const dbAvailable = dbContainer !== null;
+
 function runSql(sql: string): string {
+  if (!dbContainer) throw new Error("Database container unavailable");
   try {
-    return execSync("docker exec -i safespace-test-db psql -v ON_ERROR_STOP=1 -U postgres -t -A -q", {
+    return execSync(`docker exec -i ${dbContainer} psql -v ON_ERROR_STOP=1 -U postgres -t -A -q`, {
       input: sql,
       encoding: "utf-8",
     }).trim();
@@ -15,16 +29,6 @@ function runSql(sql: string): string {
   }
 }
 
-function isDbAvailable(): boolean {
-  try {
-    execSync("docker exec safespace-test-db pg_isready -U postgres", { stdio: "ignore" });
-    return true;
-  } catch {
-    return false;
-  }
-}
-
-const dbAvailable = isDbAvailable();
 
 test("DB Schema: auth.users insert triggers profile creation", (t) => {
   if (!dbAvailable) {
@@ -102,31 +106,24 @@ test("DB Schema: Row Level Security isolates User A assessments from User B", (t
   runSql(`DELETE FROM public.assessments WHERE id = '${assessmentA}';`);
   runSql(`INSERT INTO public.assessments (id, user_id, name) VALUES ('${assessmentA}', '${userA}', 'Confidential Patient Space');`);
 
-  // Ensure authenticated role exists
-  runSql(`
-    DO $$
-    BEGIN
-      IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'authenticated_role') THEN
-        CREATE ROLE authenticated_role;
-        GRANT USAGE ON SCHEMA public TO authenticated_role;
-        GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA public TO authenticated_role;
-      END IF;
-    END $$;
-  `);
+  // Ensure postgres can assume authenticated role
+  runSql(`GRANT authenticated TO postgres;`);
 
   // As User A: can view own assessment
   const countA = runSql(`
-    SET ROLE authenticated_role;
+    SET ROLE authenticated;
     SET "request.jwt.claim.sub" = '${userA}';
     SELECT count(*) FROM public.assessments WHERE id = '${assessmentA}';
+    RESET ROLE;
   `).split("\n").filter(Boolean).pop();
   assert.equal(countA, "1");
 
   // As non-superuser User B under RLS:
   const countB = runSql(`
-    SET ROLE authenticated_role;
+    SET ROLE authenticated;
     SET "request.jwt.claim.sub" = '${userB}';
     SELECT count(*) FROM public.assessments WHERE id = '${assessmentA}';
+    RESET ROLE;
   `).split("\n").filter(Boolean).pop();
   assert.equal(countB, "0", "User B must not see User A's assessment");
 });

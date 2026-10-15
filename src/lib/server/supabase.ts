@@ -1,48 +1,14 @@
 import { createServerClient, type CookieOptions } from "@supabase/ssr";
 import { createClient, type User } from "@supabase/supabase-js";
 import { cookies } from "next/headers";
-import crypto from "node:crypto";
 
-const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || "";
-const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || "";
-const supabaseServiceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY || "";
-const SESSION_SECRET = process.env.SESSION_SECRET || "safespace-production-session-secret-default-key-2026";
+const defaultLocalUrl = "http://127.0.0.1:54321";
+const defaultLocalAnonKey = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZS1kZW1vIiwicm9sZSI6ImFub24iLCJleHAiOjE5ODM4MTI5OTZ9.CRXP1A7WOeoJeXxjNni43kdQwgnWNReilDMblYTn_I0";
+const defaultLocalServiceKey = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZS1kZW1vIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImV4cCI6MTk4MzgxMjk5Nn0.EGIM96RAZx35lJzdJsyH-qQwv8Hdp7fsn3W0YpN81IU";
 
-export interface SessionPayload {
-  userId: string;
-  email: string;
-  fullName?: string;
-  exp: number;
-}
-
-export function signSessionToken(payload: Omit<SessionPayload, "exp">, expiresInSeconds = 7 * 24 * 3600): string {
-  const fullPayload: SessionPayload = {
-    ...payload,
-    exp: Math.floor(Date.now() / 1000) + expiresInSeconds,
-  };
-  const body = Buffer.from(JSON.stringify(fullPayload)).toString("base64url");
-  const hmac = crypto.createHmac("sha256", SESSION_SECRET).update(body).digest("base64url");
-  return `${body}.${hmac}`;
-}
-
-export function verifySessionToken(token: string): SessionPayload | null {
-  try {
-    const parts = token.split(".");
-    if (parts.length !== 2) return null;
-    const [body, signature] = parts;
-    const expected = crypto.createHmac("sha256", SESSION_SECRET).update(body).digest("base64url");
-    if (!crypto.timingSafeEqual(Buffer.from(signature), Buffer.from(expected))) {
-      return null;
-    }
-    const payload: SessionPayload = JSON.parse(Buffer.from(body, "base64url").toString("utf8"));
-    if (payload.exp && Math.floor(Date.now() / 1000) > payload.exp) {
-      return null;
-    }
-    return payload;
-  } catch {
-    return null;
-  }
-}
+export const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || defaultLocalUrl;
+export const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || defaultLocalAnonKey;
+export const supabaseServiceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY || defaultLocalServiceKey;
 
 /**
  * Creates an authenticated Supabase client for Route Handlers and Server Actions.
@@ -97,7 +63,7 @@ export async function createRouteHandlerClient(request?: Request) {
 }
 
 /**
- * Creates admin Supabase client with service role key if available.
+ * Creates admin Supabase client with service role key.
  */
 export function createAdminClient() {
   if (!supabaseUrl) {
@@ -113,66 +79,18 @@ export function createAdminClient() {
 }
 
 /**
- * Extracts and validates the authenticated user from the request.
- * Checks HMAC safespace_session cookie/bearer first, then Supabase auth.
+ * Extracts and strictly validates the authenticated user from the request using Supabase Auth.
+ * Returns null if token is missing, expired, forged, or unverified.
  */
 export async function getAuthenticatedUser(request?: Request): Promise<User | null> {
-  // 1. Check custom signed session cookie or Bearer header
-  const cookieHeader = request?.headers?.get("cookie");
-  const authHeader = request?.headers?.get("authorization");
-
-  let sessionToken: string | null = null;
-  if (authHeader?.startsWith("Bearer ")) {
-    const token = authHeader.substring(7);
-    if (token.includes(".")) {
-      sessionToken = token;
-    }
-  }
-
-  if (!sessionToken && cookieHeader) {
-    const match = cookieHeader.match(/safespace_session=([^;]+)/);
-    if (match) {
-      sessionToken = match[1];
-    }
-  }
-
-  if (!sessionToken) {
-    try {
-      const cookieStore = await cookies();
-      const c = cookieStore.get("safespace_session");
-      if (c?.value) {
-        sessionToken = c.value;
-      }
-    } catch {
-      // safe fallback if outside request context
-    }
-  }
-
-  if (sessionToken) {
-    const verified = verifySessionToken(sessionToken);
-    if (verified) {
-      return {
-        id: verified.userId,
-        email: verified.email,
-        app_metadata: {},
-        user_metadata: { full_name: verified.fullName || "" },
-        aud: "authenticated",
-        created_at: new Date().toISOString(),
-      } as unknown as User;
-    }
-  }
-
-  // 2. Fall back to Supabase auth client
   try {
     const supabase = await createRouteHandlerClient(request);
     const { data: { user }, error } = await supabase.auth.getUser();
-    if (!error && user) {
-      return user;
+    if (error || !user) {
+      return null;
     }
+    return user;
   } catch {
-    // Supabase unavailable or unconfigured
+    return null;
   }
-
-  return null;
 }
-

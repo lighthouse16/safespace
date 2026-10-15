@@ -44,6 +44,7 @@ export const serverAssessmentService = {
   },
 
   async createAssessment(payload: {
+    id?: string;
     name: string;
     facilityName?: string;
     spaceName?: string;

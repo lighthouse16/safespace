@@ -24,11 +24,12 @@ export async function POST(request: Request, context: RouteContext) {
       );
     }
 
-    const { candidateId, expectedSceneFingerprint } = result.data;
+    const { candidateId, expectedSceneFingerprint, sceneFingerprint } = result.data;
+    const targetFingerprint = (expectedSceneFingerprint || sceneFingerprint)!;
     const applyRes = await applyServerCandidate({
       assessmentId: id,
       candidateId,
-      expectedSceneFingerprint,
+      expectedSceneFingerprint: targetFingerprint,
       request,
     });
 

@@ -78,6 +78,7 @@ export const AssessmentMetadataSchema = z.object({
 });
 
 export const AssessmentCreateSchema = z.object({
+  id: z.string().uuid().optional(),
   name: z.string().trim().min(1, "Assessment name cannot be empty"),
   facilityName: z.string().optional().default(""),
   spaceName: z.string().optional().default(""),
@@ -128,15 +129,20 @@ export const SpatialOptimizeRequestSchema = z.object({
   boundary: Polygon2DSchema,
   furniture: z.array(SpatialFurnitureSchema),
   routeWaypoints: z.array(RouteWaypointSchema),
-  calibration: CalibrationProvenanceSchema,
+  calibration: CalibrationProvenanceSchema.optional(),
   profile: MobilityProfileDataSchema,
   maxCandidates: z.number().int().positive().max(10).optional().default(3),
 });
 
-export const SpatialApplyRequestSchema = z.object({
-  candidateId: z.string().min(1),
-  expectedSceneFingerprint: z.string().min(1),
-});
+export const SpatialApplyRequestSchema = z
+  .object({
+    candidateId: z.string().min(1),
+    expectedSceneFingerprint: z.string().min(1).optional(),
+    sceneFingerprint: z.string().min(1).optional(),
+  })
+  .refine((data) => !!(data.expectedSceneFingerprint || data.sceneFingerprint), {
+    message: "Either expectedSceneFingerprint or sceneFingerprint is required",
+  });
 
 export const AIFloorplanInterpretationRequestSchema = z.object({
   userConsent: z.literal(true),

@@ -101,6 +101,8 @@ export interface SafeSpaceState {
   hasFloorplanImage?: boolean;
   storageStatus: "idle" | "saved" | "error" | "quota_exceeded";
   storageError: string | null;
+  remoteSyncStatus: "idle" | "pending" | "synced" | "failed" | "conflicted";
+  remoteSyncError: string | null;
 
   // Workflow stage
   activeStage: WorkflowStage;
@@ -415,6 +417,8 @@ export const useSafeSpaceStore = create<SafeSpaceState>((set, get) => ({
   setFloorplanImageBlobUrl: (url) => set({ floorplanImageBlobUrl: url }),
   storageStatus: "idle",
   storageError: null,
+  remoteSyncStatus: "idle",
+  remoteSyncError: null,
   mediaCleanupWarning: null,
   clearMediaCleanupWarning: () => set({ mediaCleanupWarning: null }),
   retryPendingMediaCleanup: async () => {
@@ -1553,10 +1557,34 @@ export const useSafeSpaceStore = create<SafeSpaceState>((set, get) => ({
     });
 
     if (typeof window !== "undefined") {
-      serverAssessmentService.saveAssessment(metadata.id, savePayload).catch(() => {});
-      if (imageFile) {
-        serverAssessmentService.uploadMedia(metadata.id, imageFile as File).catch(() => {});
-      }
+      set({ remoteSyncStatus: "pending", remoteSyncError: null });
+      serverAssessmentService
+        .createAssessment({
+          id: metadata.id,
+          name: metadata.name,
+          facilityName: metadata.facilityName,
+          spaceName: metadata.spaceName,
+          environmentType: metadata.environmentType,
+          notes: metadata.notes,
+        })
+        .then(async (createRes) => {
+          if (!createRes.success) {
+            set({ remoteSyncStatus: "failed", remoteSyncError: createRes.error || "Remote creation failed" });
+            return;
+          }
+          const remoteSaveRes = await serverAssessmentService.saveAssessment(metadata.id, savePayload);
+          if (imageFile) {
+            await serverAssessmentService.uploadMedia(metadata.id, imageFile as File);
+          }
+          if (remoteSaveRes.success) {
+            set({ remoteSyncStatus: "synced", remoteSyncError: null });
+          } else {
+            set({ remoteSyncStatus: "failed", remoteSyncError: remoteSaveRes.error || "Remote sync failed" });
+          }
+        })
+        .catch((err: unknown) => {
+          set({ remoteSyncStatus: "failed", remoteSyncError: err instanceof Error ? err.message : "Sync error" });
+        });
     }
 
     return {

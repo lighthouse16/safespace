@@ -75,6 +75,13 @@ export async function interpretFloorplanWithGemini(params: {
   canvasHeight?: number;
   pixelsPerCm?: number;
 }): Promise<{ success: boolean; data?: FloorplanInterpretationResult; error?: string }> {
+  if (!params.pixelsPerCm || params.pixelsPerCm <= 0) {
+    return {
+      success: false,
+      error: "Calibration scale required. Floorplan image must be calibrated with a real-world reference dimension before interpreting spatial dimensions.",
+    };
+  }
+
   const ai = getGeminiClient();
   if (!ai) {
     return {
@@ -82,6 +89,7 @@ export async function interpretFloorplanWithGemini(params: {
       error: "Gemini API key is not configured on this server (GEMINI_API_KEY).",
     };
   }
+
 
   try {
     const prompt = `You are a clinical accessibility and spatial floorplan analyst.
