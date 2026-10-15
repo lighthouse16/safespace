@@ -226,6 +226,7 @@ create table if not exists public.optimizations (
   id uuid primary key default gen_random_uuid(),
   assessment_id uuid references public.assessments(id) on delete cascade not null,
   status text not null default 'generated',
+  scene_fingerprint text not null default '',
   candidates jsonb not null default '[]'::jsonb,
   selected_candidate_id text,
   applied_at timestamptz,
@@ -238,10 +239,19 @@ create index if not exists idx_optimizations_assessment_id on public.optimizatio
 
 alter table public.optimizations enable row level security;
 
-create policy "Users can manage optimizations of own assessments"
-  on public.optimizations for all
-  using (exists (select 1 from public.assessments a where a.id = assessment_id and a.user_id = auth.uid()))
+create policy "Users can view optimizations of own assessments"
+  on public.optimizations for select
+  using (exists (select 1 from public.assessments a where a.id = assessment_id and a.user_id = auth.uid()));
+
+create policy "Users can insert optimizations of own assessments"
+  on public.optimizations for insert
   with check (exists (select 1 from public.assessments a where a.id = assessment_id and a.user_id = auth.uid()));
+
+create policy "Users can delete optimizations of own assessments"
+  on public.optimizations for delete
+  using (exists (select 1 from public.assessments a where a.id = assessment_id and a.user_id = auth.uid()));
+
+revoke update on public.optimizations from public, anon, authenticated;
 
 -- 10. AI Analyses (Audit log for floorplan interpretations & explanations)
 create table if not exists public.ai_analyses (
@@ -325,12 +335,12 @@ declare
   v_auth_uid uuid := auth.uid();
   v_owner uuid;
 begin
-  -- 1. Enforce verified database identity
-  if v_auth_uid is null and current_user <> 'postgres' then
+  -- 1. Enforce verified non-null database identity
+  if v_auth_uid is null then
     return jsonb_build_object('success', false, 'error', 'Unauthorized: missing authenticated database identity');
   end if;
 
-  -- 2. Lock assessment row for update and enforce ownership
+  -- 2. Lock assessment row for update and enforce exact ownership
   select user_id into v_owner
   from public.assessments
   where id = p_assessment_id
@@ -340,7 +350,7 @@ begin
     return jsonb_build_object('success', false, 'error', 'Assessment not found');
   end if;
 
-  if v_auth_uid is not null and v_owner <> v_auth_uid then
+  if v_owner <> v_auth_uid then
     return jsonb_build_object('success', false, 'error', 'Unauthorized: access denied to foreign assessment');
   end if;
 
@@ -464,19 +474,24 @@ as $$
 declare
   v_auth_uid uuid := auth.uid();
   v_owner uuid;
-  v_opt_id uuid;
   v_current_furniture jsonb;
+  v_scene_updated_at timestamptz;
+  v_opt_id uuid;
   v_opt_candidates jsonb;
+  v_opt_fingerprint text;
+  v_opt_created_at timestamptz;
+  v_opt_applied_at timestamptz;
+  v_opt_snapshot jsonb;
   v_found boolean := false;
   v_cand jsonb;
   v_candidate_furniture jsonb;
 begin
-  -- 1. Enforce verified database identity
-  if v_auth_uid is null and current_user <> 'postgres' then
+  -- 1. Enforce verified non-null database identity
+  if v_auth_uid is null then
     return jsonb_build_object('success', false, 'error', 'Unauthorized: database identity required');
   end if;
 
-  -- 2. Lock assessment row for update and check ownership
+  -- 2. Lock assessment row for update and enforce exact ownership
   select user_id into v_owner
   from public.assessments
   where id = p_assessment_id
@@ -486,22 +501,18 @@ begin
     return jsonb_build_object('success', false, 'error', 'Assessment not found');
   end if;
 
-  if v_auth_uid is not null and v_owner <> v_auth_uid then
+  if v_owner <> v_auth_uid then
     return jsonb_build_object('success', false, 'error', 'Unauthorized: access denied to foreign assessment');
   end if;
 
-  -- 3. Lock scene row for update and fetch current furniture
-  select furniture into v_current_furniture
-  from public.scenes
-  where assessment_id = p_assessment_id
-  for update;
-
-  if v_current_furniture is null then
-    return jsonb_build_object('success', false, 'error', 'Assessment scene not found');
+  -- 3. Strictly require non-empty expected fingerprint
+  if p_expected_fingerprint is null or length(trim(p_expected_fingerprint)) = 0 then
+    return jsonb_build_object('success', false, 'error', 'Missing expected scene fingerprint');
   end if;
 
   -- 4. Lock optimizations row for update and fetch latest optimization record
-  select id, candidates into v_opt_id, v_opt_candidates
+  select id, candidates, scene_fingerprint, snapshot_before_apply, created_at, applied_at
+  into v_opt_id, v_opt_candidates, v_opt_fingerprint, v_opt_snapshot, v_opt_created_at, v_opt_applied_at
   from public.optimizations
   where assessment_id = p_assessment_id
   order by created_at desc
@@ -512,7 +523,35 @@ begin
     return jsonb_build_object('success', false, 'error', 'No optimization alternatives found for this assessment');
   end if;
 
-  -- 5. Locate candidate in immutable candidates array
+  -- 5. Reject replayed apply on already-applied candidate
+  if v_opt_applied_at is not null then
+    return jsonb_build_object('success', false, 'error', 'Optimization candidate has already been applied');
+  end if;
+
+  -- 6. Enforce authoritative scene fingerprint inside the transaction
+  if v_opt_fingerprint is distinct from p_expected_fingerprint then
+    return jsonb_build_object(
+      'success', false,
+      'error', 'Mismatched scene fingerprint: expected ' || coalesce(v_opt_fingerprint, 'none') || ', received ' || p_expected_fingerprint
+    );
+  end if;
+
+  -- 7. Lock scenes row for update and check for intervening modifications
+  select furniture, updated_at into v_current_furniture, v_scene_updated_at
+  from public.scenes
+  where assessment_id = p_assessment_id
+  for update;
+
+  if v_current_furniture is null then
+    return jsonb_build_object('success', false, 'error', 'Assessment scene not found');
+  end if;
+
+  if (v_opt_snapshot is not null and v_current_furniture::text <> v_opt_snapshot::text) or
+     (v_opt_snapshot is null and v_scene_updated_at > v_opt_created_at) then
+    return jsonb_build_object('success', false, 'error', 'Scene geometry changed since optimization was generated. Candidate rejected.');
+  end if;
+
+  -- 8. Locate candidate strictly within stored candidates array
   for v_cand in select * from jsonb_array_elements(v_opt_candidates)
   loop
     if v_cand->>'id' = p_candidate_id then
@@ -526,7 +565,7 @@ begin
     return jsonb_build_object('success', false, 'error', 'Candidate ' || p_candidate_id || ' not found in alternatives');
   end if;
 
-  -- 6. Atomically update optimizations and scene using ONLY stored candidate furniture
+  -- 9. Atomically apply candidate to optimization and scene
   update public.optimizations
   set selected_candidate_id = p_candidate_id,
       snapshot_before_apply = v_current_furniture,
@@ -564,12 +603,12 @@ declare
   v_opt_id uuid;
   v_snapshot jsonb;
 begin
-  -- 1. Enforce verified database identity
-  if v_auth_uid is null and current_user <> 'postgres' then
+  -- 1. Enforce verified non-null database identity
+  if v_auth_uid is null then
     return jsonb_build_object('success', false, 'error', 'Unauthorized: database identity required');
   end if;
 
-  -- 2. Lock assessment row for update and verify ownership
+  -- 2. Lock assessment row for update and verify exact ownership
   select user_id into v_owner
   from public.assessments
   where id = p_assessment_id
@@ -579,7 +618,7 @@ begin
     return jsonb_build_object('success', false, 'error', 'Assessment not found');
   end if;
 
-  if v_auth_uid is not null and v_owner <> v_auth_uid then
+  if v_owner <> v_auth_uid then
     return jsonb_build_object('success', false, 'error', 'Unauthorized: access denied to foreign assessment');
   end if;
 
@@ -608,6 +647,7 @@ begin
 
   update public.optimizations
   set reverted_at = now(),
+      applied_at = null,
       selected_candidate_id = null
   where id = v_opt_id;
 

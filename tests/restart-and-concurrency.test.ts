@@ -70,27 +70,51 @@ test("Durability & Concurrency: Row-level locking serializes concurrent candidat
     { id: "cand-a", name: "Option A", furniture: [{ id: "chair-1", x: 100, y: 100 }] },
     { id: "cand-b", name: "Option B", furniture: [{ id: "chair-1", x: 200, y: 200 }] },
   ]);
-  runSql(`INSERT INTO public.optimizations (assessment_id, status, candidates) VALUES ('${assessmentId}', 'generated', '${candidatesJson}'::jsonb);`);
+  const fingerprint = "fingerprint-concurrency-123";
+  runSql(`INSERT INTO public.optimizations (assessment_id, status, scene_fingerprint, candidates) VALUES ('${assessmentId}', 'generated', '${fingerprint}', '${candidatesJson}'::jsonb);`);
 
   runSql(`GRANT authenticated TO postgres;`);
 
-  // Transaction 1: Apply Candidate A
+  // Transaction 1: Apply Candidate A with authoritative fingerprint
   const resA = runSql(`
     SET ROLE authenticated;
     SET "request.jwt.claim.sub" = '${userId}';
-    SELECT public.apply_layout_candidate('${assessmentId}'::uuid, 'cand-a');
+    SELECT public.apply_layout_candidate('${assessmentId}'::uuid, 'cand-a', '${fingerprint}');
     RESET ROLE;
   `);
   assert.equal(JSON.parse(resA).success, true);
 
-  // Transaction 2: Apply Candidate B immediately
+  const appliedX = runSql(`SELECT furniture->0->>'x' FROM public.scenes WHERE assessment_id = '${assessmentId}';`);
+  assert.equal(appliedX, "100", "Candidate A furniture must be applied");
+
+  // Transaction 2: Replayed apply without revert must be rejected
   const resB = runSql(`
     SET ROLE authenticated;
     SET "request.jwt.claim.sub" = '${userId}';
-    SELECT public.apply_layout_candidate('${assessmentId}'::uuid, 'cand-b');
+    SELECT public.apply_layout_candidate('${assessmentId}'::uuid, 'cand-b', '${fingerprint}');
     RESET ROLE;
   `);
-  assert.equal(JSON.parse(resB).success, true);
+  const parsedB = JSON.parse(resB);
+  assert.equal(parsedB.success, false);
+  assert.match(parsedB.error, /already been applied/i);
+
+  // Revert Candidate A
+  const revertRes = runSql(`
+    SET ROLE authenticated;
+    SET "request.jwt.claim.sub" = '${userId}';
+    SELECT public.revert_layout_candidate('${assessmentId}'::uuid);
+    RESET ROLE;
+  `);
+  assert.equal(JSON.parse(revertRes).success, true);
+
+  // After revert, apply Candidate B
+  const resB2 = runSql(`
+    SET ROLE authenticated;
+    SET "request.jwt.claim.sub" = '${userId}';
+    SELECT public.apply_layout_candidate('${assessmentId}'::uuid, 'cand-b', '${fingerprint}');
+    RESET ROLE;
+  `);
+  assert.equal(JSON.parse(resB2).success, true);
 
   // Final furniture should be Candidate B
   const finalX = runSql(`SELECT furniture->0->>'x' FROM public.scenes WHERE assessment_id = '${assessmentId}';`);

@@ -19,11 +19,15 @@ export function TopAppBar() {
     assessmentType,
     storageStatus,
     storageError,
+    remoteSyncStatus,
+    remoteSyncError,
+    retryRemoteSync,
     mediaCleanupWarning,
     retryPendingMediaCleanup,
     clearMediaCleanupWarning,
   } = useSafeSpaceStore();
   const [retrying, setRetrying] = useState(false);
+  const [syncRetrying, setSyncRetrying] = useState(false);
 
   const activeIndex = stages.findIndex((s) => s.id === activeStage);
 
@@ -79,25 +83,69 @@ export function TopAppBar() {
               </p>
             )}
           </div>
-          <span
-            role={storageStatus === "error" || storageStatus === "quota_exceeded" ? "alert" : "status"}
-            title={storageError || undefined}
-            className={`shrink-0 self-start rounded-full px-2.5 py-1 text-xs font-semibold ${
-              storageStatus === "error" || storageStatus === "quota_exceeded"
-                ? "bg-red-50 text-red-800"
+          <div className="flex items-center gap-2 self-start shrink-0">
+            <span
+              role={storageStatus === "error" || storageStatus === "quota_exceeded" ? "alert" : "status"}
+              title={storageError || undefined}
+              className={`shrink-0 rounded-full px-2.5 py-1 text-xs font-semibold ${
+                storageStatus === "error" || storageStatus === "quota_exceeded"
+                  ? "bg-red-50 text-red-800"
+                  : assessmentType === "user" && storageStatus === "saved"
+                    ? "bg-emerald-50 text-emerald-800"
+                    : "bg-amber-50 text-amber-900"
+              }`}
+            >
+              {storageStatus === "error" || storageStatus === "quota_exceeded"
+                ? "Error"
                 : assessmentType === "user" && storageStatus === "saved"
-                  ? "bg-emerald-50 text-emerald-800"
-                  : "bg-amber-50 text-amber-900"
-            }`}
-          >
-            {storageStatus === "error" || storageStatus === "quota_exceeded"
-              ? "Error"
-              : assessmentType === "user" && storageStatus === "saved"
-                ? "Saved"
-                : assessmentType === "demo"
-                  ? "Demo · Unsaved"
-                  : "Unsaved"}
-          </span>
+                  ? "Saved"
+                  : assessmentType === "demo"
+                    ? "Demo · Unsaved"
+                    : "Unsaved"}
+            </span>
+
+            {assessmentType === "user" && remoteSyncStatus && remoteSyncStatus !== "idle" && (
+              <div className="flex items-center gap-1.5 text-xs">
+                <span
+                  title={remoteSyncError || undefined}
+                  className={`rounded-full px-2 py-0.5 font-medium ${
+                    remoteSyncStatus === "synced"
+                      ? "bg-teal-50 text-teal-800 border border-teal-200"
+                      : remoteSyncStatus === "pending"
+                        ? "bg-blue-50 text-blue-800 animate-pulse"
+                        : remoteSyncStatus === "conflicted"
+                          ? "bg-amber-50 text-amber-800 border border-amber-300"
+                          : "bg-rose-50 text-rose-800 border border-rose-200"
+                  }`}
+                >
+                  {remoteSyncStatus === "pending"
+                    ? "Syncing…"
+                    : remoteSyncStatus === "synced"
+                      ? "Cloud synced"
+                      : remoteSyncStatus === "conflicted"
+                        ? "Sync conflict"
+                        : "Sync failed"}
+                </span>
+                {(remoteSyncStatus === "failed" || remoteSyncStatus === "conflicted") && (
+                  <button
+                    type="button"
+                    disabled={syncRetrying}
+                    onClick={async () => {
+                      setSyncRetrying(true);
+                      try {
+                        await retryRemoteSync();
+                      } finally {
+                        setSyncRetrying(false);
+                      }
+                    }}
+                    className="text-xs text-[#0B514B] font-semibold underline hover:opacity-80 cursor-pointer"
+                  >
+                    {syncRetrying ? "Retrying…" : "Retry"}
+                  </button>
+                )}
+              </div>
+            )}
+          </div>
         </div>
 
         {/* Row 2: 5-Stage Stepper spanning full width */}
