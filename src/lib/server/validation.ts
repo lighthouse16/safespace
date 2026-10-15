@@ -160,12 +160,14 @@ export const AIFindingsExplanationRequestSchema = z.object({
   userConsent: z.literal(true),
   assessmentName: z.string(),
   profileLabel: z.string(),
-  findings: z.array(
-    z.object({
-      title: z.string(),
-      severity: z.string(),
-      description: z.string(),
-    })
-  ),
+  findings: z
+    .array(
+      z.object({
+        title: z.string(),
+        severity: z.string(),
+        description: z.string(),
+      })
+    )
+    .optional(),
   metrics: z.record(z.string(), z.unknown()).optional(),
 });

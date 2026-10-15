@@ -248,6 +248,7 @@ export interface SafeSpaceState {
   mediaCleanupWarning: string | null;
   retryPendingMediaCleanup: () => Promise<{ success: boolean; remainingCount: number }>;
   clearMediaCleanupWarning: () => void;
+  retryRemoteSync: () => Promise<{ success: boolean; error?: string }>;
 
   // Computed helper
   getSpatialFindings: () => SpatialEvaluationResult;
@@ -344,6 +345,8 @@ function getStoreSceneFingerprint(state: SafeSpaceState): string {
   });
 }
 
+let remoteSyncSequence = 0;
+
 function persistUserMutation(
   get: () => SafeSpaceState,
   set: (partial: Partial<SafeSpaceState>) => void
@@ -378,7 +381,31 @@ function persistUserMutation(
     if (saveRes.success) {
       set({ storageStatus: "saved", storageError: null, hasFloorplanImage });
       if (typeof window !== "undefined" && state.assessmentMetadata?.id) {
-        serverAssessmentService.saveAssessment(state.assessmentMetadata.id, payload).catch(() => {});
+        const currentSeq = ++remoteSyncSequence;
+        set({ remoteSyncStatus: "pending", remoteSyncError: null });
+        serverAssessmentService
+          .saveAssessment(state.assessmentMetadata.id, payload)
+          .then((res) => {
+            if (currentSeq !== remoteSyncSequence) return;
+            if (res.success) {
+              set({ remoteSyncStatus: "synced", remoteSyncError: null });
+            } else {
+              const isConflict =
+                res.error?.includes("409") ||
+                res.error?.toLowerCase().includes("conflict");
+              set({
+                remoteSyncStatus: isConflict ? "conflicted" : "failed",
+                remoteSyncError: res.error || "Remote sync failed",
+              });
+            }
+          })
+          .catch((err: unknown) => {
+            if (currentSeq !== remoteSyncSequence) return;
+            set({
+              remoteSyncStatus: "failed",
+              remoteSyncError: err instanceof Error ? err.message : "Sync error",
+            });
+          });
       }
       return { success: true };
     } else {
@@ -441,6 +468,48 @@ export const useSafeSpaceStore = create<SafeSpaceState>((set, get) => ({
   remoteSyncError: null,
   mediaCleanupWarning: null,
   clearMediaCleanupWarning: () => set({ mediaCleanupWarning: null }),
+  retryRemoteSync: async () => {
+    const state = get();
+    if (state.assessmentType !== "user" || !state.assessmentMetadata?.id) {
+      return { success: false, error: "No active user assessment to sync" };
+    }
+    const currentSeq = ++remoteSyncSequence;
+    set({ remoteSyncStatus: "pending", remoteSyncError: null });
+
+    const payload: PersistedAssessmentState = {
+      schemaVersion: SAFESPACE_STORAGE_VERSION,
+      assessmentType: "user",
+      metadata: state.assessmentMetadata,
+      canonicalBoundary: state.canonicalBoundary,
+      calibration: state.calibrationProvenance,
+      activeProfileId: state.activeProfile.id,
+      activeProfileSnapshot: state.activeProfile,
+      routeWaypoints: state.routeWaypoints,
+      furniture: state.furniture,
+      appliedLayoutBaseline: state.baselineFurnitureSnapshot,
+      appliedCandidateId: state.appliedCandidateId,
+      appliedSceneFingerprint: state.appliedSceneFingerprint,
+      hasFloorplanImage: state.hasFloorplanImage,
+    };
+
+    try {
+      const saveRes = await serverAssessmentService.saveAssessment(state.assessmentMetadata.id, payload);
+      if (currentSeq !== remoteSyncSequence) return { success: false, error: "Stale sync superseded" };
+      if (saveRes.success) {
+        set({ remoteSyncStatus: "synced", remoteSyncError: null });
+        return { success: true };
+      }
+      const isConflict = saveRes.error?.includes("409") || saveRes.error?.toLowerCase().includes("conflict");
+      const err = saveRes.error || "Remote sync failed";
+      set({ remoteSyncStatus: isConflict ? "conflicted" : "failed", remoteSyncError: err });
+      return { success: false, error: err };
+    } catch (err: unknown) {
+      if (currentSeq !== remoteSyncSequence) return { success: false, error: "Stale sync superseded" };
+      const msg = err instanceof Error ? err.message : "Sync error";
+      set({ remoteSyncStatus: "failed", remoteSyncError: msg });
+      return { success: false, error: msg };
+    }
+  },
   retryPendingMediaCleanup: async () => {
     const pending = getPendingMediaCleanups();
     if (pending.length === 0) {
@@ -1651,6 +1720,7 @@ export const useSafeSpaceStore = create<SafeSpaceState>((set, get) => ({
     });
 
     if (typeof window !== "undefined") {
+      const currentSeq = ++remoteSyncSequence;
       set({ remoteSyncStatus: "pending", remoteSyncError: null });
       serverAssessmentService
         .createAssessment({
@@ -1662,21 +1732,29 @@ export const useSafeSpaceStore = create<SafeSpaceState>((set, get) => ({
           notes: metadata.notes,
         })
         .then(async (createRes) => {
+          if (currentSeq !== remoteSyncSequence) return;
           if (!createRes.success) {
             set({ remoteSyncStatus: "failed", remoteSyncError: createRes.error || "Remote creation failed" });
             return;
           }
           const remoteSaveRes = await serverAssessmentService.saveAssessment(metadata.id, savePayload);
-          if (imageFile) {
-            await serverAssessmentService.uploadMedia(metadata.id, imageFile as File);
-          }
-          if (remoteSaveRes.success) {
-            set({ remoteSyncStatus: "synced", remoteSyncError: null });
-          } else {
+          if (currentSeq !== remoteSyncSequence) return;
+          if (!remoteSaveRes.success) {
             set({ remoteSyncStatus: "failed", remoteSyncError: remoteSaveRes.error || "Remote sync failed" });
+            return;
           }
+          if (imageFile) {
+            const mediaRes = await serverAssessmentService.uploadMedia(metadata.id, imageFile as File);
+            if (currentSeq !== remoteSyncSequence) return;
+            if (!mediaRes.success) {
+              set({ remoteSyncStatus: "failed", remoteSyncError: mediaRes.error || "Media upload failed" });
+              return;
+            }
+          }
+          set({ remoteSyncStatus: "synced", remoteSyncError: null });
         })
         .catch((err: unknown) => {
+          if (currentSeq !== remoteSyncSequence) return;
           set({ remoteSyncStatus: "failed", remoteSyncError: err instanceof Error ? err.message : "Sync error" });
         });
     }

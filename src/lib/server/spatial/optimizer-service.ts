@@ -60,6 +60,7 @@ export async function runServerOptimization(
       await supabase.from("optimizations").insert({
         assessment_id: params.assessmentId,
         status: result.status,
+        scene_fingerprint: fingerprint,
         candidates: result.candidates,
         snapshot_before_apply: params.furniture,
       });

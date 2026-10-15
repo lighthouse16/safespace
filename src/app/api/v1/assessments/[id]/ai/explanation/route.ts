@@ -44,10 +44,10 @@ export async function POST(request: Request, context: RouteContext) {
       return NextResponse.json({ error: "Access denied to foreign assessment" }, { status: 403 });
     }
 
-    const { assessmentName, profileLabel, findings, metrics } = result.data;
+    const { assessmentName, profileLabel } = result.data;
 
     // Fetch authoritative server evaluation from evaluations table
-    const { data: evalRecord } = await supabase
+    const { data: evalRecord, error: evalErr } = await supabase
       .from("evaluations")
       .select("*")
       .eq("assessment_id", id)
@@ -55,15 +55,41 @@ export async function POST(request: Request, context: RouteContext) {
       .limit(1)
       .maybeSingle();
 
-    // Use authoritative server-verified evaluation when present, fallback to client-supplied validated schema
-    const authoritativeFindings = evalRecord?.findings && Array.isArray(evalRecord.findings) && evalRecord.findings.length > 0
-      ? evalRecord.findings
-      : findings;
+    if (evalErr) {
+      return NextResponse.json({ error: evalErr.message }, { status: 500 });
+    }
 
+    if (!evalRecord || !evalRecord.findings || !Array.isArray(evalRecord.findings) || evalRecord.findings.length === 0) {
+      return NextResponse.json(
+        { error: "Missing server-generated spatial evaluation. An evaluation must be completed before requesting AI explanation." },
+        { status: 400 }
+      );
+    }
+
+    // Check for stale evaluation compared to scene updated_at
+    const { data: sceneRecord } = await supabase
+      .from("scenes")
+      .select("updated_at")
+      .eq("assessment_id", id)
+      .maybeSingle();
+
+    if (sceneRecord?.updated_at && evalRecord.created_at) {
+      const sceneTime = new Date(sceneRecord.updated_at).getTime();
+      const evalTime = new Date(evalRecord.created_at).getTime();
+      if (sceneTime > evalTime) {
+        return NextResponse.json(
+          { error: "Spatial evaluation is stale: scene geometry changed since last evaluation. Re-run spatial evaluation before generating AI explanation." },
+          { status: 400 }
+        );
+      }
+    }
+
+    // Derived strictly from authoritative server evaluation — NO client fallback
+    const authoritativeFindings = evalRecord.findings;
     const authoritativeMetrics = {
-      actionableDeficitsCount: evalRecord?.critical_issues_count ?? metrics?.actionableDeficitsCount ?? 0,
-      minimumClearanceCm: metrics?.minimumClearanceCm ?? null,
-      routeFeasibility: evalRecord?.route_accessibility ?? metrics?.routeFeasibility ?? "Infeasible",
+      actionableDeficitsCount: evalRecord.critical_issues_count ?? 0,
+      minimumClearanceCm: null,
+      routeFeasibility: evalRecord.route_accessibility || "adequate",
     };
 
     const effectiveName = assessment.name || assessmentName;
