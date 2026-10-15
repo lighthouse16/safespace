@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="64" height="64" viewBox="0 0 64 64" role="img" aria-labelledby="logo-title logo-desc">
+  <title id="logo-title">SafeSpace</title>
+  <desc id="logo-desc">Deep-teal six-facet geometric SafeSpace brand symbol with a transparent diamond center.</desc>
+  <g>
+    <polygon points="32,2 6,18 17,32 32,19" fill="#16736D" />
+    <polygon points="32,2 58,18 47,32 32,19" fill="#064846" />
+    <polygon points="58,18 58,46 47,32" fill="#043D3C" />
+    <polygon points="58,46 32,62 32,47 47,32" fill="#11766E" />
+    <polygon points="32,62 6,46 17,32 32,47" fill="#054541" />
+    <polygon points="6,46 6,18 17,32" fill="#0E6561" />
+  </g>
+</svg>

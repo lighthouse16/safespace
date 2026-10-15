@@ -1,0 +1,77 @@
+{
+  "synthetic": true,
+  "source": "original-approved-floorplan-visual-reference.png",
+  "room_topology": {
+    "northwest": "Living Room",
+    "northeast": "Bedroom",
+    "southwest": "Kitchen",
+    "south_centre": "Entry",
+    "southeast": "Bathroom",
+    "east_middle": "Corridor"
+  },
+  "alterations_from_original": [
+    "cropped inaccurate exterior dimensions and misleading printed scale bar",
+    "removed inaccurate room-size captions only; kept room names",
+    "applied 0.939119× horizontal correction to make nominal outer dimensions use an isotropic pixel/cm ratio",
+    "overlaid a geometrically exact 2.00 m calibration line"
+  ],
+  "format": {
+    "width_px": 1600,
+    "height_px": 1200,
+    "aspect_ratio": "4:3",
+    "supported": [
+      "PNG",
+      "SVG"
+    ],
+    "png_svg_visual_equivalence": "PNG directly rendered from self-contained SVG"
+  },
+  "metric_geometry": {
+    "nominal_outer_width_cm": 780,
+    "nominal_outer_height_cm": 620,
+    "derived_source_px_per_cm": 1.196774193548387,
+    "outer_left_right_top_bottom_source_pixels": [
+      337.84325306678784,
+      1271.3271240345298,
+      172,
+      914
+    ],
+    "outer_x_span_pixels": 933.483870967742,
+    "outer_y_span_pixels": 742
+  },
+  "calibration": {
+    "reference_cm": 200,
+    "source_start_pixels": [
+      404.0,
+      1052.0
+    ],
+    "source_end_pixels": [
+      643.3548387096774,
+      1052.0
+    ],
+    "source_bar_pixels": 239.35483870967744,
+    "expected_source_pixels_per_cm": 1.196774193548387,
+    "viewBox_800x600_start": [
+      202.0,
+      526.0
+    ],
+    "viewBox_800x600_end": [
+      321.6774193548387,
+      526.0
+    ],
+    "expected_intake_viewbox_pixels_per_cm": 0.5983870967741935,
+    "coordinate_model": "PNG 1600x1200 rendered with preserveAspectRatio=xMidYMid meet inside SVG 800x600; 0.5 map factor, no letterboxing"
+  },
+  "reviewer_check": [
+    "Upload PNG as actual File input; do not load hardcoded scene",
+    "Calibrate two reference dots using 200 cm; assert derived scale within rounding tolerance",
+    "Trace visually reachable region and author semantic walls/furniture/checkpoints as needed",
+    "Image remains registered after save, browser reload, Apply, Revert",
+    "Removal clears corresponding media without orphaning data"
+  ],
+  "limitations": [
+    "The original image was AI-generated and is not a verified survey; dimensions are intentionally a synthetic calibration model.",
+    "Physical lengths of room interiors, doors and furniture are not independently certified and all printed interior dimensions were removed.",
+    "Floorplan pixels are not parsed into semantic walls/furniture by the existing app.",
+    "Exterior perimeter is a picture/geometry verification guide, not an automatically valid walkable-space polygon."
+  ]
+}
