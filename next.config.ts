@@ -3,7 +3,7 @@ import type { NextConfig } from "next";
 const isGithubPages = process.env.GITHUB_ACTIONS === "true" || process.env.EXPORT_GH_PAGES === "true";
 
 const nextConfig: NextConfig = {
-  output: "export",
+  output: isGithubPages ? "export" : undefined,
   basePath: isGithubPages ? "/safespace" : "",
   images: {
     unoptimized: true,
