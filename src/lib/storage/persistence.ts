@@ -1,6 +1,6 @@
 import type { Point2D, Polygon2D } from "@/lib/spatial";
 import { isSimplePolygon, polygonArea, validatePolygon2D } from "@/lib/spatial";
-import type { MobilityProfileData, RouteWaypoint, SpatialFurniture } from "@/lib/spatial-model";
+import type { MobilityProfileData, RouteWaypoint, SpatialFurniture, SpatialWall, SpatialHazard } from "@/lib/spatial-model";
 
 export const SAFESPACE_STORAGE_VERSION = 1;
 export const SAFESPACE_STORAGE_KEY = "safespace_confirmed_assessment_v1";
@@ -38,6 +38,8 @@ export type PersistedAssessmentState = {
   activeProfileSnapshot?: MobilityProfileData | null;
   routeWaypoints: RouteWaypoint[];
   furniture: SpatialFurniture[];
+  walls?: SpatialWall[];
+  hazards?: SpatialHazard[];
   appliedLayoutBaseline?: SpatialFurniture[] | null;
   appliedCandidateId?: string | null;
   appliedSceneFingerprint?: string | null;
@@ -466,6 +468,36 @@ export function validatePersistedPayload(val: unknown): {
     furniture.push(f as SpatialFurniture);
   }
 
+  // Backward-compatible local-only CAD geometry. Reject malformed storage, never silently drop it.
+  const walls: SpatialWall[] = [];
+  if (obj.walls !== undefined) {
+    if (!Array.isArray(obj.walls)) return { isValid: false, error: "walls must be an array" };
+    for (const wall of obj.walls) {
+      if (!wall || typeof wall.id !== "string" || !wall.id ||
+          !wall.start || !wall.end ||
+          ![wall.start.x, wall.start.y, wall.end.x, wall.end.y, wall.thickness].every(
+            (v) => typeof v === "number" && Number.isFinite(v)
+          ) || wall.thickness <= 0) {
+        return { isValid: false, error: "Invalid saved wall geometry" };
+      }
+      walls.push(wall as SpatialWall);
+    }
+  }
+  const hazards: SpatialHazard[] = [];
+  if (obj.hazards !== undefined) {
+    if (!Array.isArray(obj.hazards)) return { isValid: false, error: "hazards must be an array" };
+    for (const note of obj.hazards) {
+      if (!note || typeof note.id !== "string" || !note.id ||
+          typeof note.title !== "string" || !note.title.trim() ||
+          !note.position || ![note.position.x, note.position.y].every(
+            (v) => typeof v === "number" && Number.isFinite(v)
+          )) {
+        return { isValid: false, error: "Invalid saved hazard observation" };
+      }
+      hazards.push(note as SpatialHazard);
+    }
+  }
+
   let appliedLayoutBaseline: SpatialFurniture[] | null = null;
   if (obj.appliedLayoutBaseline !== undefined && obj.appliedLayoutBaseline !== null) {
     if (!Array.isArray(obj.appliedLayoutBaseline)) {
@@ -537,6 +569,8 @@ export function validatePersistedPayload(val: unknown): {
       activeProfileSnapshot,
       routeWaypoints,
       furniture,
+      walls,
+      hazards,
       appliedLayoutBaseline,
       appliedCandidateId,
       appliedSceneFingerprint,
@@ -587,6 +621,8 @@ export function savePersistedAssessment(state: PersistedAssessmentState): Storag
       activeProfileSnapshot: state.activeProfileSnapshot,
       routeWaypoints: state.routeWaypoints,
       furniture: state.furniture,
+      walls: state.walls || [],
+      hazards: state.hazards || [],
       appliedLayoutBaseline: state.appliedLayoutBaseline ?? null,
       appliedCandidateId: state.appliedCandidateId ?? null,
       appliedSceneFingerprint: state.appliedSceneFingerprint ?? null,

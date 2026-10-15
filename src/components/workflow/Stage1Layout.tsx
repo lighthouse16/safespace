@@ -17,17 +17,42 @@ import {
   ChevronRight,
   Search,
   Sparkles,
+  Ruler,
+  Grip,
+  AlertTriangle,
+  Pencil,
+  X,
 } from "lucide-react";
+import type { FurnitureCategory } from "@/lib/spatial-model";
 import {
   AIInterpretationReviewModal,
   type InterpretedElementCandidate,
 } from "@/components/ai/AIInterpretationReviewModal";
 import { GenerateLayoutPanel } from "./GenerateLayoutPanel";
 
+type CatalogItem = { group: string; category: FurnitureCategory; name: string; dim: string };
+const ELEMENT_CATALOG: CatalogItem[] = [
+  { group: "Seating", category: "chair", name: "Standard Chair", dim: "55 × 55 cm" },
+  { group: "Seating", category: "bench", name: "Waiting Bench", dim: "140 × 45 cm" },
+  { group: "Work & Tables", category: "desk", name: "Reception Desk", dim: "120 × 70 cm" },
+  { group: "Work & Tables", category: "table", name: "Clinic Table", dim: "100 × 60 cm" },
+  { group: "Storage & Medical", category: "cabinet", name: "Storage Cabinet", dim: "90 × 45 cm" },
+  { group: "Storage & Medical", category: "medical-fixture", name: "Medical Fixture", dim: "60 × 60 cm" },
+  { group: "Safety & Support", category: "handrail", name: "Grab Handrail", dim: "150 × 8 cm" },
+  { group: "Safety & Support", category: "mat", name: "Anti-slip Mat", dim: "80 × 50 cm" },
+  { group: "Safety & Support", category: "light", name: "Safety Luminaire", dim: "30 × 30 cm" },
+  { group: "Decor", category: "plant", name: "Indoor Plant", dim: "40 × 40 cm" },
+];
+
 export function Stage1Layout() {
   const {
     furniture,
     selectedFurnitureId,
+    selectedHazardId,
+    hazards,
+    renameFurniture,
+    renameHazard,
+    deleteHazard,
     selectedTool,
     setSelectedTool,
     confirmFurniture,
@@ -59,6 +84,30 @@ export function Stage1Layout() {
 
   const [activeRightTab, setActiveRightTab] = useState<"fixtures" | "properties">("fixtures");
   const [showAddMenu, setShowAddMenu] = useState(false);
+  const [catalogSearch, setCatalogSearch] = useState("");
+  const [editingTarget, setEditingTarget] = useState<string | null>(null);
+  const [editingLabel, setEditingLabel] = useState("");
+  const startRename = (key: string, currentName: string) => {
+    setEditingTarget(key);
+    setEditingLabel(currentName);
+  };
+  const saveRename = (key: string, id: string, isHazard: boolean) => {
+    if (editingLabel.trim()) {
+      if (isHazard) renameHazard(id, editingLabel);
+      else renameFurniture(id, editingLabel);
+    }
+    setEditingTarget(null);
+  };
+  const addCatalogItem = (item: CatalogItem) => {
+    const before = useSafeSpaceStore.getState().furniture.length;
+    addFurniture(item.category);
+    const after = useSafeSpaceStore.getState();
+    if (after.furniture.length > before && after.selectedFurnitureId) {
+      renameFurniture(after.selectedFurnitureId, item.name);
+      setActiveRightTab("properties");
+      setShowAddMenu(false);
+    }
+  };
   const [mobileTab, setMobileTab] = useState<"canvas" | "drawer">("canvas");
   const [isInterpretingAI, setIsInterpretingAI] = useState(false);
   const [aiModalOpen, setAiModalOpen] = useState(false);
@@ -130,6 +179,10 @@ export function Stage1Layout() {
   };
 
   const selectedItem = furniture.find((f) => f.id === selectedFurnitureId);
+  const selectedHazard = hazards.find((h) => h.id === selectedHazardId);
+  const catalogResults = ELEMENT_CATALOG.filter((item) =>
+    (item.name + " " + item.group).toLowerCase().includes(catalogSearch.trim().toLowerCase())
+  );
   const unconfirmedCount = furniture.filter((f) => !f.isConfirmed).length;
 
   // Categorized fixture counts
@@ -367,11 +420,14 @@ export function Stage1Layout() {
                 <span className="text-[10px] font-medium mt-1">Select</span>
               </button>
 
-              {/* Wall */}
+              {/* Partition wall: draws actual route obstacles */}
               <button
                 type="button"
+                onClick={() => setSelectedTool("wall")}
                 aria-label="Wall tool"
-                className="flex flex-col items-center justify-center w-11 py-1.5 rounded-lg text-[#647078] hover:bg-[#F7F8F8] hover:text-[#17252B] transition cursor-pointer"
+                aria-pressed={selectedTool === "wall"}
+                className={"flex flex-col items-center justify-center w-11 py-1.5 rounded-lg transition cursor-pointer " +
+                  (selectedTool === "wall" ? "bg-[#E8F3F1] text-[#0B514B]" : "text-[#647078] hover:bg-[#F7F8F8]")}
               >
                 <svg className="w-4 h-4" viewBox="0 0 18 18" fill="none" stroke="currentColor" strokeWidth="1.6">
                   <path d="M2 4h14v10H2zM2 9h14M7 4v5M12 4v5M4 9v5M9 9v5M14 9v5" />
@@ -379,29 +435,21 @@ export function Stage1Layout() {
                 <span className="text-[10px] font-medium mt-1">Wall</span>
               </button>
 
-              {/* Door */}
-              <button
-                type="button"
-                aria-label="Door tool"
-                className="flex flex-col items-center justify-center w-11 py-1.5 rounded-lg text-[#647078] hover:bg-[#F7F8F8] hover:text-[#17252B] transition cursor-pointer"
-              >
-                <svg className="w-4 h-4" viewBox="0 0 18 18" fill="none" stroke="currentColor" strokeWidth="1.6">
-                  <path d="M4 2v14M4 2h10v14H4" />
-                  <path d="M4 16a10 10 0 0 1 10-10" strokeDasharray="2,2" />
-                </svg>
-                <span className="text-[10px] font-medium mt-1">Door</span>
+              {/* Manual safety observation pin */}
+              <button type="button" onClick={() => setSelectedTool("hazard")}
+                aria-label="Hazard pin tool" aria-pressed={selectedTool === "hazard"}
+                className={"flex flex-col items-center justify-center w-11 py-1.5 rounded-lg transition cursor-pointer " +
+                  (selectedTool === "hazard" ? "bg-[#E8F3F1] text-[#0B514B]" : "text-[#647078] hover:bg-[#F7F8F8]")}>
+                <AlertTriangle className="w-4 h-4" />
+                <span className="text-[10px] font-medium mt-1">Note</span>
               </button>
-
-              {/* Window */}
-              <button
-                type="button"
-                aria-label="Window tool"
-                className="flex flex-col items-center justify-center w-11 py-1.5 rounded-lg text-[#647078] hover:bg-[#F7F8F8] hover:text-[#17252B] transition cursor-pointer"
-              >
-                <svg className="w-4 h-4" viewBox="0 0 18 18" fill="none" stroke="currentColor" strokeWidth="1.6">
-                  <path d="M3 3h12v12H3zM9 3v12M3 9h12" />
-                </svg>
-                <span className="text-[10px] font-medium mt-1">Window</span>
+              {/* Tape measure: ephemeral calibrated measurement */}
+              <button type="button" onClick={() => setSelectedTool("measure")}
+                aria-label="Measure tool" aria-pressed={selectedTool === "measure"}
+                className={"flex flex-col items-center justify-center w-11 py-1.5 rounded-lg transition cursor-pointer " +
+                  (selectedTool === "measure" ? "bg-[#E8F3F1] text-[#0B514B]" : "text-[#647078] hover:bg-[#F7F8F8]")}>
+                <Ruler className="w-4 h-4" />
+                <span className="text-[10px] font-medium mt-1">Measure</span>
               </button>
 
               {/* Furniture */}
@@ -419,59 +467,40 @@ export function Stage1Layout() {
                 </button>
 
                 {showAddMenu && (
-                  <div className="absolute left-14 top-0 bg-white border border-[#E2E6E8] shadow-lg rounded-xl py-1.5 w-36 z-30 text-xs">
-                    <button
-                      type="button"
-                      onClick={() => {
-                        addFurniture("chair");
-                        setShowAddMenu(false);
-                      }}
-                      className="w-full px-3 py-1.5 text-left hover:bg-[#F7F8F8] text-[#17252B] cursor-pointer"
-                    >
-                      + Chair
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        addFurniture("table");
-                        setShowAddMenu(false);
-                      }}
-                      className="w-full px-3 py-1.5 text-left hover:bg-[#F7F8F8] text-[#17252B] cursor-pointer"
-                    >
-                      + Table
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        addFurniture("bench");
-                        setShowAddMenu(false);
-                      }}
-                      className="w-full px-3 py-1.5 text-left hover:bg-[#F7F8F8] text-[#17252B] cursor-pointer"
-                    >
-                      + Bench
-                    </button>
+                  <div className="absolute left-14 top-0 bg-white border border-[#E2E6E8] shadow-xl rounded-xl w-64 z-30 text-xs overflow-hidden">
+                    <div className="p-2 border-b border-[#E2E6E8] flex justify-between items-center bg-[#FAFBF9]">
+                      <span className="text-xs font-semibold text-[#17252B]">Furniture catalog</span>
+                      <button type="button" onClick={() => setShowAddMenu(false)} aria-label="Close catalog"><X className="w-4 h-4" /></button>
+                    </div>
+                    <label className="block px-2 pt-2 pb-1">
+                      <span className="sr-only">Search catalog</span>
+                      <input value={catalogSearch} onChange={(e) => setCatalogSearch(e.target.value)}
+                        placeholder="Search items…" className="w-full rounded-lg border border-[#E2E6E8] p-2 text-xs outline-[#0B514B]" />
+                    </label>
+                    <div className="max-h-64 overflow-y-auto p-1">
+                      {catalogResults.map((item) => (
+                        <button type="button" key={item.name} onClick={() => addCatalogItem(item)}
+                          className="w-full px-2 py-2 rounded-lg text-left hover:bg-[#E8F3F1] flex items-center justify-between gap-3">
+                          <span className="min-w-0">
+                            <span className="block font-medium text-[#17252B]">{item.name}</span>
+                            <span className="block text-[10px] text-[#647078]">{item.group}</span>
+                          </span>
+                          <span className="text-[9px] text-[#647078] font-mono shrink-0">{item.dim}</span>
+                        </button>
+                      ))}
+                      {catalogResults.length === 0 && <p className="p-3 text-[#647078]">No matching items.</p>}
+                    </div>
                   </div>
                 )}
               </div>
 
-              {/* Text */}
-              <button
-                type="button"
-                aria-label="Text tool"
-                className="flex flex-col items-center justify-center w-11 py-1.5 rounded-lg text-[#647078] hover:bg-[#F7F8F8] hover:text-[#17252B] transition cursor-pointer"
-              >
-                <span className="text-sm font-serif font-bold leading-none">T</span>
-                <span className="text-[10px] font-medium mt-1">Text</span>
-              </button>
-
-              {/* More */}
-              <button
-                type="button"
-                aria-label="More tools"
-                className="flex flex-col items-center justify-center w-11 py-1.5 rounded-lg text-[#647078] hover:bg-[#F7F8F8] hover:text-[#17252B] transition cursor-pointer"
-              >
-                <span className="text-sm tracking-widest font-bold leading-none">…</span>
-                <span className="text-[10px] font-medium mt-1">More</span>
+              {/* Pan replaces previously inactive Text / More placeholders */}
+              <button type="button" onClick={() => setSelectedTool("pan")}
+                aria-label="Pan tool" aria-pressed={selectedTool === "pan"}
+                className={"flex flex-col items-center justify-center w-11 py-1.5 rounded-lg transition cursor-pointer " +
+                  (selectedTool === "pan" ? "bg-[#E8F3F1] text-[#0B514B]" : "text-[#647078] hover:bg-[#F7F8F8]")}>
+                <Grip className="w-4 h-4" />
+                <span className="text-[10px] font-medium mt-1">Pan</span>
               </button>
             </aside>
 
@@ -595,7 +624,33 @@ export function Stage1Layout() {
                 <div className="h-px bg-[#E2E6E8] my-6" />
 
                 {/* Empty State vs Selected Item */}
-                {!selectedItem ? (
+                {selectedHazard ? (
+                  <div className="space-y-3.5 bg-[#FAFBF9] p-3.5 rounded-xl border border-[#E2E6E8]">
+                    <div className="flex items-center gap-2 text-amber-800 text-xs font-bold"><AlertTriangle className="w-4 h-4" /> Safety observation</div>
+                    {editingTarget === "hazard-" + selectedHazard.id ? (
+                      <form onSubmit={(event) => { event.preventDefault(); saveRename(editingTarget, selectedHazard.id, true); }}>
+                        <input aria-label="Rename hazard" autoFocus value={editingLabel} maxLength={160}
+                          onChange={(event) => setEditingLabel(event.target.value)}
+                          onBlur={() => saveRename(editingTarget, selectedHazard.id, true)}
+                          className="w-full rounded border border-[#0B514B] px-2 py-1 text-xs" />
+                      </form>
+                    ) : (
+                      <button type="button" title="Rename hazard"
+                        onClick={() => startRename("hazard-" + selectedHazard.id, selectedHazard.title)}
+                        className="flex items-center gap-1 text-left text-xs font-semibold hover:text-[#0B514B]">
+                        {selectedHazard.title}<Pencil className="w-3 h-3 shrink-0" />
+                      </button>
+                    )}
+                    <p className="text-[11px] text-[#647078]">{selectedHazard.plainDescription}</p>
+                    <p className="text-[10px] text-[#647078]">Position: {Math.round(selectedHazard.position.x)}, {Math.round(selectedHazard.position.y)} cm</p>
+                    <p className="text-[10px] text-amber-800">{selectedHazard.measuredEvidence}</p>
+                    {selectedHazard.code === "MANUAL" && (
+                      <button type="button" onClick={() => deleteHazard(selectedHazard.id)}
+                        className="inline-flex gap-1 items-center text-xs text-red-700 hover:underline"><Trash2 className="w-3 h-3" /> Remove note</button>
+                    )}
+                    <p className="text-[10px] text-[#647078]">User-authored notes are local to this browser until cloud support is implemented.</p>
+                  </div>
+                ) : !selectedItem ? (
                   <div className="flex flex-col items-center justify-center text-center py-6">
                     {/* Isometric 3D Cube Icon matching 06-workspace-layout.png */}
                     <svg className="w-10 h-10 text-[#647078] mb-3 stroke-current" viewBox="0 0 24 24" fill="none" strokeWidth="1.5">
@@ -613,7 +668,19 @@ export function Stage1Layout() {
                   <div className="space-y-3.5 bg-[#FAFBF9] p-3.5 rounded-xl border border-[#E2E6E8]">
                     <div className="flex items-start justify-between">
                       <div>
-                        <h3 className="font-bold text-xs text-[#17252B]">{selectedItem.name}</h3>
+                        {editingTarget === "fixture-" + selectedItem.id ? (
+                          <form onSubmit={(event) => { event.preventDefault(); saveRename(editingTarget, selectedItem.id, false); }}>
+                            <input autoFocus aria-label="Rename furniture" value={editingLabel}
+                              onChange={(event) => setEditingLabel(event.target.value)}
+                              onBlur={() => saveRename(editingTarget, selectedItem.id, false)}
+                              maxLength={120} className="w-full min-w-0 rounded border border-[#0B514B] px-1 text-xs" />
+                          </form>
+                        ) : (
+                          <button type="button" onClick={() => startRename("fixture-" + selectedItem.id, selectedItem.name)}
+                            title="Rename furniture" className="flex items-center gap-1 text-left font-bold text-xs text-[#17252B] hover:text-[#0B514B]">
+                            {selectedItem.name}<Pencil className="w-3 h-3 shrink-0" />
+                          </button>
+                        )}
                         <p className="text-[10px] text-[#647078] font-mono">
                           {selectedItem.code || "CUSTOM"}
                         </p>
@@ -706,7 +773,14 @@ export function Stage1Layout() {
             {/* Tab 2 Content: Properties */}
             {activeRightTab === "properties" && (
               <div className="p-5">
-                {selectedItem ? (
+                {selectedHazard ? (
+                  <div className="space-y-2 text-xs">
+                    <h3 className="font-bold text-[#17252B]">Safety observation</h3>
+                    <p className="text-[#17252B]">{selectedHazard.title}</p>
+                    <p className="text-[#647078]">{selectedHazard.measuredEvidence}</p>
+                    <p className="text-[#647078]">{selectedHazard.recommendation}</p>
+                  </div>
+                ) : selectedItem ? (
                   <div className="space-y-4">
                     <h3 className="text-sm font-bold text-[#17252B]">Selected Item Details</h3>
                     <div className="space-y-2 text-xs">

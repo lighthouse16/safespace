@@ -98,7 +98,7 @@ export function TopAppBar() {
               {storageStatus === "error" || storageStatus === "quota_exceeded"
                 ? "Error"
                 : assessmentType === "user" && storageStatus === "saved"
-                  ? "Saved"
+                  ? "Saved locally"
                   : assessmentType === "demo"
                     ? "Demo · Unsaved"
                     : "Unsaved"}
