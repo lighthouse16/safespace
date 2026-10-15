@@ -27,6 +27,7 @@ import {
   findInteriorProvisionalPoint,
   validatePolygon2D,
   isSimplePolygon,
+  isPointInPolygon,
   polygonArea,
   evaluateSpatialScene,
   type SpatialEvaluationResult,
@@ -76,7 +77,7 @@ const {
 
 export type WorkflowStage = "layout" | "profile" | "routes" | "analysis" | "improve";
 
-export type EditorTool = "select" | "pan" | "furniture" | "hazard" | "measure";
+export type EditorTool = "select" | "pan" | "furniture" | "hazard" | "measure" | "wall";
 
 export type AssessmentCreationResult = {
   success: boolean;
@@ -129,6 +130,12 @@ export interface SafeSpaceState {
   selectFurniture: (id: string | null) => void;
   selectHazard: (id: string | null) => void;
   selectFinding: (id: string | null) => void;
+  renameFurniture: (id: string, name: string) => void;
+  addManualHazard: (position: Point2D) => void;
+  renameHazard: (id: string, name: string) => void;
+  moveHazard: (id: string, position: Point2D) => void;
+  deleteHazard: (id: string) => void;
+  addPartitionWall: (start: Point2D, end: Point2D) => void;
 
   // View & Grid controls
   showGrid: boolean;
@@ -368,6 +375,8 @@ function persistUserMutation(
       activeProfileSnapshot: state.activeProfile,
       routeWaypoints: state.routeWaypoints,
       furniture: state.furniture,
+      walls: state.walls,
+      hazards: state.hazards,
       appliedLayoutBaseline: state.baselineFurnitureSnapshot,
       appliedCandidateId: state.appliedCandidateId,
       appliedSceneFingerprint: state.appliedSceneFingerprint,
@@ -376,9 +385,28 @@ function persistUserMutation(
 
     const saveRes = savePersistedAssessment(payload);
     if (saveRes.success) {
-      set({ storageStatus: "saved", storageError: null, hasFloorplanImage });
+      const unsupportedSceneDetails = state.walls.length > 0 || state.hazards.length > 0;
+      const syncNotice = "Walls and manually authored hazard notes are saved in this browser only. The cloud assessment API does not yet persist them.";
+      set({
+        storageStatus: "saved",
+        storageError: null,
+        hasFloorplanImage,
+        ...(unsupportedSceneDetails ? { remoteSyncStatus: "failed" as const, remoteSyncError: syncNotice } : {}),
+      });
       if (typeof window !== "undefined" && state.assessmentMetadata?.id) {
-        serverAssessmentService.saveAssessment(state.assessmentMetadata.id, payload).catch(() => {});
+        const assessmentId = state.assessmentMetadata.id;
+        serverAssessmentService.saveAssessment(assessmentId, payload).then((result) => {
+          if (get().assessmentId !== assessmentId) return;
+          if (!result.success) {
+            set({ remoteSyncStatus: "failed", remoteSyncError: result.error || "Cloud sync failed" });
+          } else if (!unsupportedSceneDetails) {
+            set({ remoteSyncStatus: "synced", remoteSyncError: null });
+          }
+        }).catch((error: unknown) => {
+          if (get().assessmentId === assessmentId) {
+            set({ remoteSyncStatus: "failed", remoteSyncError: error instanceof Error ? error.message : "Cloud sync failed" });
+          }
+        });
       }
       return { success: true };
     } else {
@@ -505,6 +533,91 @@ export const useSafeSpaceStore = create<SafeSpaceState>((set, get) => ({
     set({ selectedHazardId: id, selectedFurnitureId: null, selectedFindingId: null }),
   selectFinding: (id) =>
     set({ selectedFindingId: id, selectedHazardId: null, selectedFurnitureId: null }),
+
+  renameFurniture: (id, name) => {
+    const trimmed = name.trim().slice(0, 120);
+    if (!trimmed || !get().furniture.some((item) => item.id === id)) return;
+    const updated = get().furniture.map((item) => item.id === id ? { ...item, name: trimmed } : item);
+    set({ furniture: updated, ...invalidateOptimizationAndAppliedBaseline(updated) });
+    persistUserMutation(get, set);
+  },
+  addManualHazard: (position) => {
+    if (!Number.isFinite(position.x) || !Number.isFinite(position.y)) return;
+    const boundary = get().canonicalBoundary;
+    if (boundary && boundary.length >= 3 && !isPointInPolygon(position, boundary, true)) {
+      set({ placementError: "Cannot place a safety note outside the calibrated room boundary." });
+      return;
+    }
+    const id = "manual-hazard-" + crypto.randomUUID();
+    const note: SpatialHazard = {
+      id, code: "MANUAL", title: "Unverified safety observation", severity: "medium",
+      position, plainDescription: "A user-authored observation requiring independent review.",
+      measuredEvidence: "No physical measurement or automated assessment was supplied.",
+      detectionConfidence: 0, requiresReview: true,
+      recommendation: "Inspect the location and record verifiable evidence before drawing conclusions.",
+    };
+    set({ hazards: [...get().hazards, note], selectedHazardId: id, selectedFurnitureId: null, selectedFindingId: null });
+    persistUserMutation(get, set);
+  },
+  renameHazard: (id, name) => {
+    const trimmed = name.trim().slice(0, 160);
+    if (!trimmed || !get().hazards.some((note) => note.id === id)) return;
+    set({ hazards: get().hazards.map((note) => note.id === id ? { ...note, title: trimmed } : note) });
+    persistUserMutation(get, set);
+  },
+  moveHazard: (id, position) => {
+    if (!Number.isFinite(position.x) || !Number.isFinite(position.y)) return;
+    if (!get().hazards.some((note) => note.id === id && note.code === "MANUAL")) return;
+    set({ hazards: get().hazards.map((note) => note.id === id ? { ...note, position } : note) });
+    persistUserMutation(get, set);
+  },
+  deleteHazard: (id) => {
+    if (!get().hazards.some((note) => note.id === id && note.code === "MANUAL")) return;
+    set({ hazards: get().hazards.filter((note) => note.id !== id), selectedHazardId: null });
+    persistUserMutation(get, set);
+  },
+  addPartitionWall: (start, end) => {
+    const length = Math.hypot(end.x - start.x, end.y - start.y);
+    if (![start.x, start.y, end.x, end.y].every(Number.isFinite) || length < 10) {
+      set({ placementError: "A partition wall must be at least 10 cm long." });
+      return;
+    }
+    const state = get();
+    // A wall segment must stay inside the actual (potentially concave) floor polygon.
+    const outline = state.canonicalBoundary;
+    if (outline && outline.length >= 3) {
+      const steps = Math.max(1, Math.ceil(length / 10));
+      const contained = Array.from({ length: steps + 1 }, (_, i) => {
+        const t = i / steps;
+        return isPointInPolygon({ x: start.x + (end.x - start.x) * t, y: start.y + (end.y - start.y) * t }, outline, true);
+      }).every(Boolean);
+      if (!contained) {
+        set({ placementError: "Partition wall must remain inside the calibrated floor boundary." });
+        return;
+      }
+    }
+    const newHistory = [...state.history, cloneFurniture(state.furniture)].slice(-20);
+    const previous = {
+      historyLength: newHistory.length,
+      rooms: state.rooms, walls: state.walls, doors: state.doors,
+      canonicalBoundary: state.canonicalBoundary,
+    };
+    const updatedWalls: SpatialWall[] = [
+      ...state.walls,
+      { id: "manual-wall-" + crypto.randomUUID(), start, end, thickness: 12, isExterior: false },
+    ];
+    const routeResult = computeStoreRoute(
+      state.furniture, state.rooms, state.activeProfile, state.routeWaypoints,
+      updatedWalls, state.doors, state.canonicalBoundary
+    );
+    set({
+      walls: updatedWalls, history: newHistory, future: [],
+      structurePast: [...state.structurePast, previous].slice(-20), structureFuture: [],
+      routeResult, placementError: null,
+      ...invalidateOptimizationAndAppliedBaseline(state.furniture),
+    });
+    persistUserMutation(get, set);
+  },
 
   showGrid: true,
   setShowGrid: (val) =>
@@ -1770,7 +1883,7 @@ export const useSafeSpaceStore = create<SafeSpaceState>((set, get) => ({
         [],
         profile,
         data.routeWaypoints || [],
-        [],
+        data.walls || [],
         [],
         data.canonicalBoundary
       );
@@ -1800,9 +1913,9 @@ export const useSafeSpaceStore = create<SafeSpaceState>((set, get) => ({
         furniture: data.furniture || [],
         routeWaypoints: data.routeWaypoints || [],
         rooms: [],
-        walls: [],
+        walls: data.walls || [],
         doors: [],
-        hazards: [],
+        hazards: data.hazards || [],
         routeResult,
         baselineFurnitureSnapshot: data.appliedLayoutBaseline || null,
         appliedCandidateId: data.appliedCandidateId || null,

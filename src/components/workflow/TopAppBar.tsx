@@ -19,6 +19,8 @@ export function TopAppBar() {
     assessmentType,
     storageStatus,
     storageError,
+    remoteSyncStatus,
+    remoteSyncError,
     mediaCleanupWarning,
     retryPendingMediaCleanup,
     clearMediaCleanupWarning,
@@ -79,6 +81,7 @@ export function TopAppBar() {
               </p>
             )}
           </div>
+          <div className="flex flex-wrap items-center gap-2 self-start shrink-0">
           <span
             role={storageStatus === "error" || storageStatus === "quota_exceeded" ? "alert" : "status"}
             title={storageError || undefined}
@@ -93,11 +96,24 @@ export function TopAppBar() {
             {storageStatus === "error" || storageStatus === "quota_exceeded"
               ? "Error"
               : assessmentType === "user" && storageStatus === "saved"
-                ? "Saved"
+                ? "Saved locally"
                 : assessmentType === "demo"
                   ? "Demo · Unsaved"
                   : "Unsaved"}
           </span>
+          {assessmentType === "user" && remoteSyncStatus !== "idle" && (
+            <span role={remoteSyncStatus === "failed" || remoteSyncStatus === "conflicted" ? "alert" : "status"}
+              title={remoteSyncError || undefined}
+              className={"rounded-full px-2.5 py-1 text-xs font-semibold " +
+                (remoteSyncStatus === "synced" ? "bg-teal-50 text-teal-800" :
+                 remoteSyncStatus === "pending" ? "bg-blue-50 text-blue-800" :
+                 "bg-rose-50 text-rose-800")}>
+              {remoteSyncStatus === "synced" ? "Cloud synced" :
+                remoteSyncStatus === "pending" ? "Syncing" :
+                remoteSyncStatus === "conflicted" ? "Sync conflict" : "Cloud incomplete"}
+            </span>
+          )}
+          </div>
         </div>
 
         {/* Row 2: 5-Stage Stepper spanning full width */}

@@ -46,7 +46,6 @@ test("Authenticated API Lifecycle: End-to-end full product flow", async (t) => {
   await waitForServer(BASE_URL);
 
   let authHeader = "";
-  let userCookie = "";
   let userId = "";
   let assessmentId = "";
   const email = `doctor_${Date.now()}@example.com`;
@@ -73,8 +72,6 @@ test("Authenticated API Lifecycle: End-to-end full product flow", async (t) => {
     assert.ok(signinData.session?.access_token);
     authHeader = `Bearer ${signinData.session.access_token}`;
 
-    const setCookies = signinRes.headers.getSetCookie?.() || [];
-    userCookie = setCookies.join("; ");
   });
 
   await t.test("2. Session hydration validates authentic database user", async () => {

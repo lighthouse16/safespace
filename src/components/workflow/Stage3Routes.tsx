@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { useSafeSpaceStore } from "@/store/safespace-store";
 import { Floorplan2D } from "@/components/spatial/Floorplan2D";
 import {
@@ -35,6 +35,37 @@ export function Stage3Routes() {
   } = useSafeSpaceStore();
 
   const [mobileTab, setMobileTab] = useState<"map" | "setup">("map");
+  const sidebarRef = React.useRef<HTMLElement | null>(null);
+  const [sidebarWidth, setSidebarWidth] = useState(420);
+  const [resizingSidebar, setResizingSidebar] = useState(false);
+  useEffect(() => {
+    let frame: number | undefined;
+    try {
+      const saved = Number(window.localStorage.getItem("safespace_stage3_sidebar_width"));
+      if (Number.isFinite(saved) && saved >= 300 && saved <= 560) {
+        frame = window.requestAnimationFrame(() => setSidebarWidth(saved));
+      }
+    } catch { /* private browsing / disabled storage */ }
+    return () => { if (frame !== undefined) window.cancelAnimationFrame(frame); };
+  }, []);
+  useEffect(() => {
+    if (!resizingSidebar) return;
+    const onMove = (event: MouseEvent) => {
+      const left = sidebarRef.current?.getBoundingClientRect().left ?? 24;
+      setSidebarWidth(Math.max(300, Math.min(560, Math.round(event.clientX - left))));
+    };
+    const onUp = () => setResizingSidebar(false);
+    window.addEventListener("mousemove", onMove);
+    window.addEventListener("mouseup", onUp);
+    return () => {
+      window.removeEventListener("mousemove", onMove);
+      window.removeEventListener("mouseup", onUp);
+    };
+  }, [resizingSidebar]);
+  useEffect(() => {
+    try { window.localStorage.setItem("safespace_stage3_sidebar_width", String(sidebarWidth)); }
+    catch { /* optional preference */ }
+  }, [sidebarWidth]);
 
   const isSuccess = routeResult?.status === "success";
   const requiredRadiusCm = activeProfile.minClearanceCm / 2;
@@ -96,11 +127,13 @@ export function Stage3Routes() {
         </button>
       </div>
 
-      <div className="flex flex-1 overflow-hidden p-4 lg:p-6 gap-6">
+      <div className="flex flex-1 overflow-hidden p-4 lg:p-6 gap-6 relative">
         {/* Left Side: Route configuration matching 08-workspace-routes.png */}
         <aside
           aria-label="Route configuration and checkpoints"
-          className={`w-full lg:w-[420px] bg-white rounded-2xl border border-[#E2E6E8] flex-col justify-between p-5 lg:p-6 z-10 shrink-0 select-none h-full overflow-hidden shadow-xs ${
+          ref={sidebarRef}
+          style={{ "--route-sidebar-width": String(sidebarWidth) + "px" } as React.CSSProperties}
+          className={`w-full lg:w-[var(--route-sidebar-width)] bg-white rounded-2xl border border-[#E2E6E8] flex-col justify-between p-5 lg:p-6 z-10 shrink-0 select-none h-full overflow-hidden shadow-xs ${
             mobileTab === "setup" ? "flex" : "hidden lg:flex"
           }`}
         >
@@ -235,7 +268,7 @@ export function Stage3Routes() {
 
             {/* Checkpoints list */}
             {routeWaypoints.length > 0 && (
-              <div className="space-y-1.5 max-h-40 overflow-y-auto pr-0.5">
+              <div className="space-y-1.5 pr-0.5">
                 {routeWaypoints.map((pt, i) => {
                   const isSelected = selectedWaypointId === pt.id;
                   const isStart = i === 0;
@@ -253,7 +286,7 @@ export function Stage3Routes() {
                           : "border-[#E2E6E8] bg-white hover:bg-[#F7F8F8]"
                       }`}
                     >
-                      <div className="flex items-center gap-2">
+                      <div className="flex items-center gap-2 min-w-0 flex-1">
                         <span
                           className={`size-5 rounded-full flex items-center justify-center text-[10px] font-bold text-white ${
                             isStart
@@ -265,7 +298,7 @@ export function Stage3Routes() {
                         >
                           {i + 1}
                         </span>
-                        <span className="font-medium text-xs text-[#17252B]">
+                        <span className="font-medium text-xs text-[#17252B] min-w-0 truncate">
                           {isStart ? "Start" : isEnd ? "Destination" : pt.name || `Point ${i + 1}`}
                         </span>
                       </div>
@@ -311,6 +344,26 @@ export function Stage3Routes() {
             </button>
           </div>
         </aside>
+
+        <div
+          role="separator"
+          aria-label="Resize route configuration panel"
+          aria-orientation="vertical"
+          aria-valuemin={300}
+          aria-valuemax={560}
+          aria-valuenow={sidebarWidth}
+          tabIndex={0}
+          onMouseDown={(event) => { event.preventDefault(); setResizingSidebar(true); }}
+          onKeyDown={(event) => {
+            if (event.key === "ArrowLeft" || event.key === "ArrowRight") {
+              event.preventDefault();
+              setSidebarWidth((w) => Math.max(300, Math.min(560, w + (event.key === "ArrowRight" ? 20 : -20))));
+            }
+          }}
+          className="hidden lg:flex w-2 -mx-4 cursor-col-resize items-center justify-center hover:bg-[#E8F3F1] focus-visible:outline-2 focus-visible:outline-[#0B514B] rounded-sm shrink-0"
+        >
+          <div className="h-10 w-0.5 rounded-full bg-[#9CAFAA]" />
+        </div>
 
         {/* Central Canvas Area matching 08-workspace-routes.png */}
         <main

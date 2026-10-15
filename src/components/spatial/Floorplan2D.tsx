@@ -45,6 +45,10 @@ export function Floorplan2D({
     routeWaypoints,
     selectedFurnitureId,
     selectedHazardId,
+    hazards,
+    addManualHazard,
+    addPartitionWall,
+    moveHazard,
     selectedFindingId,
     selectFurniture,
     selectHazard,
@@ -125,7 +129,7 @@ export function Floorplan2D({
   // Dragging state
   const [draggingItem, setDraggingItem] = useState<{
     id: string;
-    type: "furniture" | "waypoint";
+    type: "furniture" | "waypoint" | "hazard";
     offsetX: number;
     offsetY: number;
   } | null>(null);
@@ -133,6 +137,19 @@ export function Floorplan2D({
   const [isPanning, setIsPanning] = useState(false);
   const [panStart, setPanStart] = useState<Point2D>({ x: 0, y: 0 });
   const [hoveredWaypointId, setHoveredWaypointId] = useState<string | null>(null);
+  // Tape measurements are view annotations; no false claim of cloud persistence.
+  const [measurements, setMeasurements] = useState<Array<{ id: string; start: Point2D; end: Point2D }>>([]);
+  const [drawing, setDrawing] = useState<{
+    tool: "wall" | "measure"; start: Point2D; current: Point2D;
+  } | null>(null);
+  const snapCanvasPoint = (point: Point2D): Point2D => snapToGrid
+    ? { x: Math.round(point.x / 10) * 10, y: Math.round(point.y / 10) * 10 }
+    : point;
+  const constrainCanvasPoint = (start: Point2D, point: Point2D, withShift: boolean): Point2D => {
+    if (!withShift) return point;
+    return Math.abs(point.x - start.x) >= Math.abs(point.y - start.y)
+      ? { x: point.x, y: start.y } : { x: start.x, y: point.y };
+  };
 
   // Walker animation along computed route only (Stage 3 & 4)
   const [walkerT, setWalkerT] = useState(0);
@@ -219,18 +236,28 @@ export function Floorplan2D({
     const rawX = clientX - rect.left;
     const rawY = clientY - rect.top;
 
-    const scaleX = vbW / (rect.width * zoom);
-    const scaleY = vbH / (rect.height * zoom);
-
-    const x = vbX + (rawX - panOffset.x) * scaleX;
-    const y = vbY + (rawY - panOffset.y) * scaleY;
-    return { x, y };
+    // SVG preserveAspectRatio defaults to xMidYMid meet; account for letterboxing.
+    // getBoundingClientRect already includes CSS pan/zoom, so do not subtract pan twice.
+    const scale = Math.min(rect.width / vbW, rect.height / vbH) || 1;
+    const offsetX = (rect.width - vbW * scale) / 2;
+    const offsetY = (rect.height - vbH * scale) / 2;
+    return { x: vbX + (rawX - offsetX) / scale, y: vbY + (rawY - offsetY) / scale };
   };
 
   const handleMouseDown = (e: React.MouseEvent) => {
     if (selectedTool === "pan" || e.button === 1 || e.altKey) {
       setIsPanning(true);
       setPanStart({ x: e.clientX - panOffset.x, y: e.clientY - panOffset.y });
+      return;
+    }
+    if (e.button !== 0 || readOnly || stage !== "layout") return;
+    const point = snapCanvasPoint(clientToSvgCoords(e.clientX, e.clientY));
+    if (selectedTool === "hazard") {
+      addManualHazard(point);
+      return;
+    }
+    if (selectedTool === "measure" || selectedTool === "wall") {
+      setDrawing({ tool: selectedTool, start: point, current: point });
     }
   };
 
@@ -243,6 +270,11 @@ export function Floorplan2D({
       return;
     }
 
+    if (drawing && !readOnly) {
+      const point = snapCanvasPoint(clientToSvgCoords(e.clientX, e.clientY));
+      setDrawing({ ...drawing, current: constrainCanvasPoint(drawing.start, point, e.shiftKey) });
+      return;
+    }
     if (!draggingItem || readOnly) return;
 
     const coords = clientToSvgCoords(e.clientX, e.clientY);
@@ -266,16 +298,40 @@ export function Floorplan2D({
       handleMove(draggingItem.id, targetX, targetY);
     } else if (draggingItem.type === "waypoint") {
       moveRouteWaypoint(draggingItem.id, targetX, targetY);
+    } else if (draggingItem.type === "hazard") {
+      moveHazard(draggingItem.id, { x: targetX, y: targetY });
     }
   };
 
-  const handleMouseUp = () => {
+  const handleMouseUp = (e: React.MouseEvent) => {
+    if (drawing && !readOnly) {
+      const end = constrainCanvasPoint(
+        drawing.start,
+        snapCanvasPoint(clientToSvgCoords(e.clientX, e.clientY)),
+        e.shiftKey
+      );
+      if (Math.hypot(end.x - drawing.start.x, end.y - drawing.start.y) >= 10) {
+        if (drawing.tool === "wall") addPartitionWall(drawing.start, end);
+        else setMeasurements((items) => [...items, { id: crypto.randomUUID(), start: drawing.start, end }]);
+      }
+      setDrawing(null);
+    }
     setIsPanning(false);
     setDraggingItem(null);
   };
 
+  const startDragHazard = (e: React.MouseEvent, id: string, point: Point2D) => {
+    if (readOnly || stage !== "layout" || selectedTool !== "select") return;
+    const hazard = hazards.find((note) => note.id === id);
+    if (!hazard || hazard.code !== "MANUAL") return;
+    e.stopPropagation();
+    selectHazard(id);
+    const coords = clientToSvgCoords(e.clientX, e.clientY);
+    setDraggingItem({ id, type: "hazard", offsetX: coords.x - point.x, offsetY: coords.y - point.y });
+  };
+
   const startDragFurniture = (e: React.MouseEvent, item: SpatialFurniture) => {
-    if (readOnly || item.isFixed || selectedTool === "pan") return;
+    if (readOnly || item.isFixed || selectedTool !== "select") return;
     e.stopPropagation();
     selectFurniture(item.id);
 
@@ -289,7 +345,7 @@ export function Floorplan2D({
   };
 
   const startDragWaypoint = (e: React.MouseEvent, pt: RouteWaypoint) => {
-    if (readOnly || stage !== "routes" || selectedTool === "pan") return;
+    if (readOnly || stage !== "routes" || selectedTool !== "select") return;
     e.stopPropagation();
     selectWaypoint(pt.id);
 
@@ -312,7 +368,10 @@ export function Floorplan2D({
   // Keyboard controls
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement ||
+          (e.target instanceof HTMLElement && e.target.isContentEditable)) return;
       if (e.key === "Escape") {
+        setDrawing(null);
         selectFurniture(null);
         selectHazard(null);
         selectWaypoint(null);
@@ -360,6 +419,7 @@ export function Floorplan2D({
       className={`relative flex flex-col h-full w-full select-none overflow-hidden bg-[#fafbf9] border border-[#e2e7e3] rounded-lg ${className}`}
       onMouseMove={handleMouseMove}
       onMouseUp={handleMouseUp}
+      onMouseLeave={() => { setDrawing(null); setIsPanning(false); setDraggingItem(null); }}
     >
       {/* Floating Canvas Controls */}
       {!hideControls && (
@@ -1042,6 +1102,24 @@ export function Floorplan2D({
           })}
         </g>
 
+        {/* User-authored notes are not engine-verified risk findings. */}
+        {stage === "layout" && hazards.length > 0 && (
+          <g id="manual-observation-layer">
+            {hazards.filter((note) => note.code === "MANUAL").map((note) => (
+              <g key={note.id} transform={"translate(" + note.position.x + "," + note.position.y + ")"}
+                 role="button" tabIndex={0} aria-label={"User note: " + note.title}
+                 onFocus={() => selectHazard(note.id)}
+                 onMouseDown={(event) => startDragHazard(event, note.id, note.position)}
+                 onClick={(event) => { event.stopPropagation(); selectHazard(note.id); }}
+                 className="cursor-move">
+                <circle r={selectedHazardId === note.id ? 12 : 10}
+                  fill="#b45309" stroke="#fff" strokeWidth="2"/>
+                <text textAnchor="middle" dominantBaseline="middle" fill="#fff" fontWeight="bold" fontSize="11">!</text>
+              </g>
+            ))}
+          </g>
+        )}
+
         {/* 11. Spatial Finding Markers (Stage 4 Analysis and Stage 5 Improve/Before matching 09-workspace-analysis.png) */}
         {(stage === "analysis" || stage === "improve" || stage === "before") && layerToggles.hazards && (
           <g id="hazard-markers-layer">
@@ -1167,6 +1245,44 @@ export function Floorplan2D({
                 </g>
               );
             })}
+          </g>
+        )}
+
+        {/* Local tape measurements and partition-wall preview use calibrated cm coordinates. */}
+        {stage === "layout" && (
+          <g id="manual-cad-overlay" pointerEvents="none">
+            {measurements.map((m) => {
+              const dx = m.end.x - m.start.x;
+              const dy = m.end.y - m.start.y;
+              return (
+                <g key={m.id}>
+                  <line x1={m.start.x} y1={m.start.y} x2={m.end.x} y2={m.end.y}
+                    stroke="#0f766e" strokeDasharray="5 3" strokeWidth="1.5" />
+                  <circle cx={m.start.x} cy={m.start.y} r="3" fill="#0f766e" />
+                  <circle cx={m.end.x} cy={m.end.y} r="3" fill="#0f766e" />
+                  <text x={(m.start.x + m.end.x) / 2} y={(m.start.y + m.end.y) / 2 - 8}
+                    fill="#115e59" fontSize="11" fontWeight="bold" textAnchor="middle"
+                    paintOrder="stroke" stroke="white" strokeWidth="3">
+                    {Math.round(Math.hypot(dx, dy))} cm
+                  </text>
+                </g>
+              );
+            })}
+            {drawing && (
+              <g>
+                <line x1={drawing.start.x} y1={drawing.start.y}
+                  x2={drawing.current.x} y2={drawing.current.y}
+                  stroke={drawing.tool === "wall" ? "#475569" : "#0f766e"}
+                  strokeWidth={drawing.tool === "wall" ? 9 : 1.8}
+                  strokeDasharray="4 3" opacity="0.85" />
+                <text x={(drawing.start.x + drawing.current.x) / 2}
+                  y={(drawing.start.y + drawing.current.y) / 2 - 12}
+                  fill="#17252B" fontSize="11" fontWeight="bold" textAnchor="middle"
+                  paintOrder="stroke" stroke="white" strokeWidth="3">
+                  {Math.round(Math.hypot(drawing.current.x - drawing.start.x, drawing.current.y - drawing.start.y))} cm
+                </text>
+              </g>
+            )}
           </g>
         )}
 

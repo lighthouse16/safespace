@@ -124,8 +124,6 @@ test("RPC Security: apply_layout_candidate rejects unauthorized cross-user apply
     t.skip("Database container unavailable");
     return;
   }
-
-  const userA = "aaaa1111-1111-1111-1111-111111111111";
   const userB = "bbbb2222-2222-2222-2222-222222222222";
   const assessmentA = "aaaa3333-3333-3333-3333-333333333333";
 
