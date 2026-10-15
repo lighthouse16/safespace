@@ -1,9 +1,39 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { translateUserQuery } from "../src/lib/m3dlayout/prompt-agent";
+import { splitRoomRequests, translateUserQuery } from "../src/lib/m3dlayout/prompt-agent";
+import { composeRoomFrames } from "../src/lib/m3dlayout/room-plan";
 import { isM3DClassLabel } from "../src/lib/m3dlayout/vocabulary";
 import { furnitureCategoryForClass, sceneToFurniture } from "../src/lib/m3dlayout/scene-adapter";
 import { normalizeApiBase } from "../src/lib/m3dlayout/client";
+
+test("a multi-room sentence becomes one model prompt per room", () => {
+  const query =
+    "a living room with a sofa, a coffee table, and a television, a kitchen with a countertop, a table with 6 chairs, a fridge, a cupboard, a toilet with a sink, a toilet, a hottub";
+  const rooms = splitRoomRequests(query);
+  assert.deepEqual(
+    rooms.map((room) => room.roomType),
+    ["living room", "kitchen", "bathroom"],
+  );
+  assert.match(rooms[0].prompt, /The room is a living room/);
+  assert.equal(rooms[0].prompt.includes("kitchen"), false);
+  assert.match(rooms[1].prompt, /The room is a kitchen/);
+  assert.match(rooms[1].prompt, /six dining chairs/);
+  assert.match(rooms[1].prompt, /dining table/);
+  assert.match(rooms[2].prompt, /The room is a bathroom/);
+  assert.match(rooms[2].prompt, /bathtub/);
+  assert.equal(rooms[2].classes.includes("sofa"), false);
+
+  const plan = composeRoomFrames(rooms);
+  assert.ok(plan);
+  assert.equal(plan.rooms.length, 3);
+  const [living, kitchen, bathroom] = plan.rooms;
+  assert.equal(kitchen.x, living.x + living.width);
+  assert.equal(bathroom.x, kitchen.x);
+  assert.equal(bathroom.y, kitchen.y + kitchen.depth);
+  assert.equal(living.depth, kitchen.depth + bathroom.depth);
+  const livingItems = plan.framed[0];
+  assert.ok(livingItems.frame.centerX > living.x && livingItems.frame.centerX < living.x + living.width);
+});
 
 test("short living-room request becomes a training-style description", () => {
   const result = translateUserQuery("a living room with a sofa and a tv");

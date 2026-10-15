@@ -18,7 +18,7 @@ export type PromptTranslation = {
   note: string;
 };
 
-type RoomType = "living room" | "bedroom" | "dining room" | "kitchen" | "bathroom" | "office";
+export type RoomType = "living room" | "bedroom" | "dining room" | "kitchen" | "bathroom" | "office";
 
 type Mention = {
   className: M3DClassLabel;
@@ -80,13 +80,26 @@ function matchEnd(text: string, phrase: string, at: number): number | null {
   return end;
 }
 
+const COUNT_WORDS: Record<string, number> = {
+  "a pair of": 2,
+  two: 2,
+  three: 3,
+  four: 4,
+  five: 5,
+  six: 6,
+  seven: 7,
+  eight: 8,
+  nine: 9,
+  ten: 10,
+};
+
 function countBefore(text: string, start: number): number {
   const prefix = text.slice(Math.max(0, start - 24), start);
-  if (/(?:a pair of|two|2)\s+$/.test(prefix)) return 2;
-  if (/(?:three|3)\s+$/.test(prefix)) return 3;
-  if (/(?:four|4)\s+$/.test(prefix)) return 4;
-  if (/(?:five|5)\s+$/.test(prefix)) return 5;
-  return 1;
+  const match = prefix.match(/([a-z ]+|\d+)\s+$/);
+  if (!match) return 1;
+  const token = match[1].trim();
+  if (/^\d+$/.test(token)) return Math.min(10, Math.max(1, Number(token)));
+  return COUNT_WORDS[token] ?? 1;
 }
 
 function extractMentions(text: string): Mention[] {
@@ -179,13 +192,13 @@ function plural(name: string): string {
 }
 
 function countWord(count: number): string {
-  return ["", "one", "two", "three", "four", "five"][count] ?? String(count);
+  return ["", "one", "two", "three", "four", "five", "six", "seven", "eight", "nine", "ten"][count] ?? String(count);
 }
 
 function nounPhrase(className: string, count: number): string {
   const name = promptNameForClass(className);
   if (count <= 1) return `${article(name)} ${name}`;
-  return `${countWord(Math.min(count, 5))} ${plural(name)}`;
+  return `${countWord(Math.min(count, 10))} ${plural(name)}`;
 }
 
 function joinPhrases(phrases: string[]): string {
@@ -246,7 +259,112 @@ function mergeMentions(mentions: Mention[]): Array<{ className: M3DClassLabel; c
     if (existing) existing.count += mention.count;
     else merged.push({ className: mention.className, count: mention.count });
   }
-  return merged.map((item) => ({ ...item, count: Math.min(item.count, 5) }));
+  return merged.map((item) => ({ ...item, count: Math.min(item.count, 10) }));
+}
+
+function specializeForRoom(
+  objects: Array<{ className: M3DClassLabel; count: number }>,
+  room: RoomType,
+): Array<{ className: M3DClassLabel; count: number }> {
+  if (room !== "kitchen" && room !== "dining room") return objects;
+  return objects.map((item) => {
+    if (item.className === "chair") return { ...item, className: "dining_chair" };
+    if (item.className === "table") return { ...item, className: "dining_table" };
+    return item;
+  });
+}
+
+function buildRoomPrompt(
+  userQuery: string,
+  room: RoomType,
+  objects: Array<{ className: M3DClassLabel; count: number }>,
+  spatial: string[],
+  lower: string,
+  usedDefaults: boolean,
+): PromptTranslation {
+  const roomSentence = room === "office" ? "The room is an office." : `The room is a ${room}.`;
+  const thereIs = `There is ${joinPhrases(objects.map((item) => nounPhrase(item.className, item.count)))}.`;
+  const placement = spatial.length > 0 ? spatial.join(" ") : "The furniture is placed for optimal use.";
+  const names = objects.map((item) => promptNameForClass(item.className)).join(", ");
+  return {
+    userQuery,
+    prompt: `${roomSentence} ${thereIs} ${placement} ${constraintSentence(lower)}`,
+    roomType: room,
+    classes: objects.map((item) => item.className),
+    style: "rewritten",
+    ready: true,
+    note: usedDefaults
+      ? `No furniture names were recognized, so a typical ${room} set is used: ${names}.`
+      : `${room}: ${names}.`,
+  };
+}
+
+const ROOM_SPLITTERS: ReadonlyArray<{ phrase: string; room: RoomType }> = [
+  { phrase: "living room", room: "living room" },
+  { phrase: "dining room", room: "dining room" },
+  { phrase: "bedroom", room: "bedroom" },
+  { phrase: "bathroom", room: "bathroom" },
+  { phrase: "restroom", room: "bathroom" },
+  { phrase: "washroom", room: "bathroom" },
+  { phrase: "hot tub", room: "bathroom" },
+  { phrase: "hottub", room: "bathroom" },
+  { phrase: "kitchen", room: "kitchen" },
+  { phrase: "office", room: "office" },
+  { phrase: "toilet", room: "bathroom" },
+];
+
+type RoomHit = { index: number; end: number; room: RoomType; phrase: string };
+
+function findRoomSplits(text: string): RoomHit[] {
+  const hits: RoomHit[] = [];
+  const consumed = new Array<boolean>(text.length).fill(false);
+  const rules = [...ROOM_SPLITTERS].sort((a, b) => b.phrase.length - a.phrase.length);
+  for (const rule of rules) {
+    let from = 0;
+    while (from < text.length) {
+      const at = text.indexOf(rule.phrase, from);
+      if (at < 0) break;
+      const end = at + rule.phrase.length;
+      const overlaps = consumed.slice(at, end).some(Boolean);
+      if (!overlaps && !isWordChar(text[at - 1]) && !isWordChar(text[end])) {
+        for (let i = at; i < end; i += 1) consumed[i] = true;
+        hits.push({ index: at, end, room: rule.room, phrase: rule.phrase });
+      }
+      from = at + 1;
+    }
+  }
+  hits.sort((a, b) => a.index - b.index);
+  const kept: RoomHit[] = [];
+  for (const hit of hits) {
+    const previous = kept[kept.length - 1];
+    const repeatsBathroom =
+      previous?.room === "bathroom" &&
+      hit.room === "bathroom" &&
+      (hit.phrase === "toilet" || hit.phrase === "hottub" || hit.phrase === "hot tub");
+    if (!repeatsBathroom) kept.push(hit);
+  }
+  return kept;
+}
+
+export function translateRoomClause(clause: string, room: RoomType): PromptTranslation {
+  const trimmed = clause.trim().replace(/\s+/g, " ");
+  const lower = trimmed.toLowerCase();
+  const mentions = extractMentions(lower);
+  const merged = specializeForRoom(mergeMentions(mentions), room);
+  const objects = merged.length > 0 ? merged : ROOM_DEFAULTS[room].map((className) => ({ className, count: 1 }));
+  return buildRoomPrompt(trimmed, room, objects, spatialSentences(lower, mentions), lower, merged.length === 0);
+}
+
+export function splitRoomRequests(userQuery: string): PromptTranslation[] {
+  const trimmed = userQuery.trim().replace(/\s+/g, " ");
+  if (!trimmed) return [translateUserQuery(trimmed)];
+  if (isTrainingStyle(trimmed)) return [translateUserQuery(trimmed)];
+  const hits = findRoomSplits(trimmed.toLowerCase());
+  if (hits.length <= 1) return [translateUserQuery(trimmed)];
+  return hits.map((hit, index) => {
+    const clause = trimmed.slice(hit.index, hits[index + 1]?.index ?? trimmed.length);
+    return translateRoomClause(clause, hit.room);
+  });
 }
 
 export function translateUserQuery(userQuery: string): PromptTranslation {

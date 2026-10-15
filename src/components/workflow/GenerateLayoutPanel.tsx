@@ -4,56 +4,75 @@ import React, { useEffect, useMemo, useState } from "react";
 import { Sparkles } from "lucide-react";
 import { useSafeSpaceStore } from "@/store/safespace-store";
 import { generateM3DLayout, readStoredApiBase, storeApiBase } from "@/lib/m3dlayout/client";
-import { translateUserQuery } from "@/lib/m3dlayout/prompt-agent";
-import { layoutFrameFromWorkspace, sceneToFurniture } from "@/lib/m3dlayout/scene-adapter";
+import { splitRoomRequests } from "@/lib/m3dlayout/prompt-agent";
+import { composeRoomFrames, type GeneratedPlan } from "@/lib/m3dlayout/room-plan";
+import { sceneToFurniture } from "@/lib/m3dlayout/scene-adapter";
 import type { SpatialFurniture } from "@/lib/spatial-model";
 
+type PendingPlan = GeneratedPlan & { furniture: SpatialFurniture[] };
+
 export function GenerateLayoutPanel() {
-  const rooms = useSafeSpaceStore((state) => state.rooms);
-  const canonicalBoundary = useSafeSpaceStore((state) => state.canonicalBoundary);
-  const addCustomFurnitureBatch = useSafeSpaceStore((state) => state.addCustomFurnitureBatch);
+  const applyGeneratedPlan = useSafeSpaceStore((state) => state.applyGeneratedPlan);
   const [apiUrl, setApiUrl] = useState("");
   const [query, setQuery] = useState("a living room with a sofa, a coffee table, and a television");
   const [seed, setSeed] = useState(0);
   const [busy, setBusy] = useState(false);
+  const [status, setStatus] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [pending, setPending] = useState<SpatialFurniture[]>([]);
+  const [pending, setPending] = useState<PendingPlan | null>(null);
 
   useEffect(() => {
     setApiUrl(readStoredApiBase());
   }, []);
 
-  const translation = useMemo(() => translateUserQuery(query), [query]);
+  const requests = useMemo(() => splitRoomRequests(query), [query]);
+  const ready = requests.every((request) => request.ready);
 
   const onGenerate = async () => {
     setError(null);
-    setPending([]);
-    if (!translation.ready) {
-      setError(translation.note);
+    setPending(null);
+    if (!ready) {
+      setError(requests[0]?.note || "Name each room and its furniture.");
+      return;
+    }
+    const plan = composeRoomFrames(requests);
+    if (!plan) {
+      setError("Name each room and its furniture.");
       return;
     }
     setBusy(true);
     try {
       storeApiBase(apiUrl);
-      const scene = await generateM3DLayout(apiUrl, translation.prompt, seed);
-      const frame = layoutFrameFromWorkspace({ canonicalBoundary, rooms });
-      const furniture = sceneToFurniture(scene, frame);
+      const furniture: SpatialFurniture[] = [];
+      for (let index = 0; index < plan.framed.length; index += 1) {
+        const room = plan.framed[index];
+        setStatus(`Generating ${room.name} (${index + 1} of ${plan.framed.length})…`);
+        const scene = await generateM3DLayout(apiUrl, room.prompt, seed + index);
+        furniture.push(...sceneToFurniture(scene, room.frame, room.id));
+      }
       if (furniture.length === 0) {
         setError("The model answered, but none of the boxes could be placed.");
         return;
       }
-      setPending(furniture);
+      setPending({ ...plan, furniture });
+      setStatus(null);
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : "Layout generation failed.");
+      setStatus(null);
     } finally {
       setBusy(false);
     }
   };
 
   const onAccept = () => {
-    if (pending.length === 0) return;
-    addCustomFurnitureBatch(pending);
-    setPending([]);
+    if (!pending) return;
+    applyGeneratedPlan({
+      furniture: pending.furniture,
+      rooms: pending.rooms,
+      walls: pending.walls,
+      boundary: pending.boundary,
+    });
+    setPending(null);
   };
 
   return (
@@ -61,7 +80,7 @@ export function GenerateLayoutPanel() {
       <div>
         <h2 className="text-xs font-bold text-[#0B514B] uppercase tracking-wider">Generate layout</h2>
         <p className="text-[11px] text-[#647078] leading-snug mt-1">
-          A prompt agent rewrites your sentence into the description style M3DLayout was trained on, then asks the Colab model for furniture boxes. Nothing is added until you accept the list.
+          Each room in the sentence gets its own frame. Furniture from the Colab model is placed inside that frame. You do not need to trace the floorplan.
         </p>
       </div>
 
@@ -77,11 +96,11 @@ export function GenerateLayoutPanel() {
       </label>
 
       <label className="block text-[11px] text-[#647078]">
-        What should the room contain?
+        What should the rooms contain?
         <textarea
           value={query}
           onChange={(event) => setQuery(event.target.value)}
-          rows={3}
+          rows={4}
           className="mt-1 w-full resize-y rounded-lg border border-[#E2E6E8] bg-white px-2 py-1.5 text-xs text-[#17252B]"
         />
       </label>
@@ -96,30 +115,34 @@ export function GenerateLayoutPanel() {
         />
       </label>
 
-      <p className="text-[11px] text-[#17252B] leading-snug">
-        <span className="font-semibold">Model prompt. </span>
-        {translation.ready ? translation.prompt : translation.note}
-      </p>
+      <div className="space-y-1.5">
+        {requests.map((request, index) => (
+          <p key={`${request.roomType}-${index}`} className="text-[11px] text-[#17252B] leading-snug">
+            <span className="font-semibold">{request.roomType || "Room"}. </span>
+            {request.ready ? request.prompt : request.note}
+          </p>
+        ))}
+      </div>
 
       <button
         type="button"
         onClick={onGenerate}
-        disabled={busy || !translation.ready}
+        disabled={busy || !ready}
         className="w-full py-1.5 px-2 bg-[#0B514B] hover:bg-[#083f3a] disabled:opacity-50 text-white rounded-lg text-xs font-semibold flex items-center justify-center gap-1.5 transition cursor-pointer"
       >
         <Sparkles className="w-3.5 h-3.5" />
-        {busy ? "Generating on Colab…" : "Generate layout"}
+        {busy ? status || "Generating on Colab…" : "Generate layout"}
       </button>
 
-      {translation.ready && <p className="text-[11px] text-[#647078] leading-snug">{translation.note}</p>}
-
-      {pending.length > 0 && (
+      {pending && (
         <div className="rounded-lg border border-[#E2E6E8] bg-white p-2 space-y-2">
-          <p className="text-[11px] font-semibold text-[#17252B]">{pending.length} objects ready to add</p>
+          <p className="text-[11px] font-semibold text-[#17252B]">
+            {pending.rooms.length} room frames, {pending.furniture.length} objects
+          </p>
           <ul className="max-h-28 overflow-y-auto text-[11px] text-[#647078] space-y-0.5">
-            {pending.map((item) => (
-              <li key={item.id}>
-                {item.name} · {Math.round(item.width)}×{Math.round(item.depth)} cm
+            {pending.rooms.map((room) => (
+              <li key={room.id}>
+                {room.name} · {pending.furniture.filter((item) => item.roomId === room.id).length} objects
               </li>
             ))}
           </ul>
@@ -128,7 +151,7 @@ export function GenerateLayoutPanel() {
             onClick={onAccept}
             className="w-full py-1.5 px-2 border border-[#0B514B] bg-[#F0F5F4] text-[#0B514B] rounded-lg text-xs font-semibold cursor-pointer"
           >
-            Add to layout
+            Add room frames
           </button>
         </div>
       )}

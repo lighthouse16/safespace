@@ -474,7 +474,7 @@ export function Floorplan2D({
             width={800 / calibrationProvenance.pixelsPerCm}
             height={600 / calibrationProvenance.pixelsPerCm}
             preserveAspectRatio="xMidYMid meet"
-            opacity={0.8}
+            opacity={rooms.some((room) => room.id.startsWith("m3d-room-")) ? 0.18 : 0.8}
             className="pointer-events-none select-none"
           />
         )}
@@ -490,6 +490,7 @@ export function Floorplan2D({
                 strokeWidth="2.5"
                 strokeLinejoin="round"
               />
+              {rooms.some((room) => room.id.startsWith("m3d-room-")) ? null : (
               <text
                 x={(userBounds?.minX ?? 0) + 16}
                 y={(userBounds?.minY ?? 0) + 24}
@@ -502,9 +503,13 @@ export function Floorplan2D({
               >
                 USER BOUNDARY ({Math.round(userBounds?.widthCm ?? 0)} × {Math.round(userBounds?.heightCm ?? 0)} CM)
               </text>
+              )}
             </g>
-          ) : (
-            rooms.map((room) => (
+          ) : null}
+          {(canonicalBoundary && canonicalBoundary.length >= 3
+            ? rooms.filter((room) => room.id.startsWith("m3d-room-"))
+            : rooms
+          ).map((room) => (
               <g key={room.id}>
                 <rect
                   x={room.x}
@@ -512,24 +517,24 @@ export function Floorplan2D({
                   width={room.width}
                   height={room.depth}
                   fill={room.color}
-                  stroke="#d2dbd6"
-                  strokeWidth="1"
+                  fillOpacity={room.id.startsWith("m3d-room-") ? 0.94 : 1}
+                  stroke="#0B514B"
+                  strokeWidth={room.id.startsWith("m3d-room-") ? 2 : 1}
                 />
                 <text
                   x={room.x + 12}
-                  y={room.y + 20}
-                  fill="#70837e"
-                  fontSize="10"
-                  fontWeight="600"
-                  letterSpacing="1"
+                  y={room.y + 22}
+                  fill="#0B514B"
+                  fontSize="12"
+                  fontWeight="700"
+                  letterSpacing="0.6"
                   fontFamily="var(--font-inter), Inter, sans-serif"
                   className="select-none pointer-events-none"
                 >
                   {room.name.toUpperCase()}
                 </text>
               </g>
-            ))
-          )}
+            ))}
         </g>
 
         {/* 4. Route Clearance Envelope Buffer (Rendered only on successful computed route) */}

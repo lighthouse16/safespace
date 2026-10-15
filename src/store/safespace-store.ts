@@ -145,6 +145,20 @@ export interface SafeSpaceState {
   // Layout editing & History
   history: SpatialFurniture[][];
   future: SpatialFurniture[][];
+  structurePast: Array<{
+    historyLength: number;
+    rooms: SpatialRoom[];
+    walls: SpatialWall[];
+    doors: SpatialDoor[];
+    canonicalBoundary: Polygon2D | null;
+  }>;
+  structureFuture: Array<{
+    historyLength: number;
+    rooms: SpatialRoom[];
+    walls: SpatialWall[];
+    doors: SpatialDoor[];
+    canonicalBoundary: Polygon2D | null;
+  }>;
   moveFurniture: (id: string, x: number, y: number) => void;
   rotateFurniture: (id: string) => void;
   confirmFurniture: (id: string) => void;
@@ -152,6 +166,12 @@ export interface SafeSpaceState {
   deleteFurniture: (id: string) => void;
   addFurniture: (category: SpatialFurniture["category"]) => void;
   addCustomFurnitureBatch: (items: SpatialFurniture[]) => void;
+  applyGeneratedPlan: (plan: {
+    furniture: SpatialFurniture[];
+    rooms: SpatialRoom[];
+    walls: SpatialWall[];
+    boundary: Polygon2D;
+  }) => void;
   undo: () => void;
   redo: () => void;
 
@@ -506,6 +526,8 @@ export const useSafeSpaceStore = create<SafeSpaceState>((set, get) => ({
 
   history: [],
   future: [],
+  structurePast: [],
+  structureFuture: [],
 
   moveFurniture: (id, x, y) => {
     const { furniture, history, rooms, activeProfile, routeWaypoints, walls, doors, canonicalBoundary } = get();
@@ -724,15 +746,71 @@ export const useSafeSpaceStore = create<SafeSpaceState>((set, get) => ({
     persistUserMutation(get, set);
   },
 
+  applyGeneratedPlan: (plan) => {
+    if (plan.furniture.length === 0 || plan.rooms.length === 0) {
+      set({ placementError: "The layout model returned no rooms to place." });
+      return;
+    }
+    const { furniture, history, structurePast, rooms, walls, doors, canonicalBoundary, activeProfile, routeWaypoints } = get();
+    const previous = {
+      historyLength: newHistory.length,
+      rooms,
+      walls,
+      doors,
+      canonicalBoundary,
+    };
+    const newHistory = [...history, cloneFurniture(furniture)].slice(-20);
+    const newRouteResult = computeStoreRoute(
+      plan.furniture,
+      plan.rooms,
+      activeProfile,
+      routeWaypoints,
+      plan.walls,
+      [],
+      plan.boundary,
+    );
+    set({
+      furniture: plan.furniture,
+      rooms: plan.rooms,
+      walls: plan.walls,
+      doors: [],
+      canonicalBoundary: plan.boundary,
+      selectedFurnitureId: plan.furniture[0]?.id ?? null,
+      selectedHazardId: null,
+      history: newHistory,
+      future: [],
+      structurePast: [...structurePast, previous].slice(-20),
+      structureFuture: [],
+      routeResult: newRouteResult,
+      placementError: null,
+      ...invalidateOptimizationAndAppliedBaseline(plan.furniture),
+    });
+    persistUserMutation(get, set);
+  },
+
   undo: () => {
-    const { history, furniture, future, rooms, activeProfile, routeWaypoints, walls, doors, canonicalBoundary } = get();
+    const { history, furniture, future, rooms, activeProfile, routeWaypoints, walls, doors, canonicalBoundary, structurePast, structureFuture } = get();
     if (history.length === 0) return;
     const prev = history[history.length - 1];
-    const newRouteResult = computeStoreRoute(prev, rooms, activeProfile, routeWaypoints, walls, doors, canonicalBoundary);
+    const previousStructure = structurePast[structurePast.length - 1];
+    const restoreStructure = previousStructure?.historyLength === history.length;
+    const nextRooms = restoreStructure && previousStructure ? previousStructure.rooms : rooms;
+    const nextWalls = restoreStructure && previousStructure ? previousStructure.walls : walls;
+    const nextDoors = restoreStructure && previousStructure ? previousStructure.doors : doors;
+    const nextBoundary = restoreStructure && previousStructure ? previousStructure.canonicalBoundary : canonicalBoundary;
+    const newRouteResult = computeStoreRoute(prev, nextRooms, activeProfile, routeWaypoints, nextWalls, nextDoors, nextBoundary);
     set({
       furniture: prev,
+      rooms: nextRooms,
+      walls: nextWalls,
+      doors: nextDoors,
+      canonicalBoundary: nextBoundary,
       history: history.slice(0, -1),
       future: [cloneFurniture(furniture), ...future],
+      structurePast: restoreStructure ? structurePast.slice(0, -1) : structurePast,
+      structureFuture: restoreStructure
+        ? [{ historyLength: history.length, rooms, walls, doors, canonicalBoundary }, ...structureFuture]
+        : structureFuture,
       routeResult: newRouteResult,
       ...invalidateOptimizationAndAppliedBaseline(prev),
     });
@@ -740,14 +818,28 @@ export const useSafeSpaceStore = create<SafeSpaceState>((set, get) => ({
   },
 
   redo: () => {
-    const { future, furniture, history, rooms, activeProfile, routeWaypoints, walls, doors, canonicalBoundary } = get();
+    const { future, furniture, history, rooms, activeProfile, routeWaypoints, walls, doors, canonicalBoundary, structurePast, structureFuture } = get();
     if (future.length === 0) return;
     const next = future[0];
-    const newRouteResult = computeStoreRoute(next, rooms, activeProfile, routeWaypoints, walls, doors, canonicalBoundary);
+    const nextStructure = structureFuture[0];
+    const restoreStructure = nextStructure?.historyLength === history.length + 1;
+    const nextRooms = restoreStructure && nextStructure ? nextStructure.rooms : rooms;
+    const nextWalls = restoreStructure && nextStructure ? nextStructure.walls : walls;
+    const nextDoors = restoreStructure && nextStructure ? nextStructure.doors : doors;
+    const nextBoundary = restoreStructure && nextStructure ? nextStructure.canonicalBoundary : canonicalBoundary;
+    const newRouteResult = computeStoreRoute(next, nextRooms, activeProfile, routeWaypoints, nextWalls, nextDoors, nextBoundary);
     set({
       furniture: next,
+      rooms: nextRooms,
+      walls: nextWalls,
+      doors: nextDoors,
+      canonicalBoundary: nextBoundary,
       history: [...history, cloneFurniture(furniture)],
       future: future.slice(1),
+      structurePast: restoreStructure
+        ? [...structurePast, { historyLength: history.length + 1, rooms, walls, doors, canonicalBoundary }]
+        : structurePast,
+      structureFuture: restoreStructure ? structureFuture.slice(1) : structureFuture,
       routeResult: newRouteResult,
       ...invalidateOptimizationAndAppliedBaseline(next),
     });
@@ -1541,6 +1633,8 @@ export const useSafeSpaceStore = create<SafeSpaceState>((set, get) => ({
       selectedWaypointId: null,
       history: [],
       future: [],
+      structurePast: [],
+      structureFuture: [],
       proposedFurniture: [],
       approvalStatus: "draft",
       viewMode: "2d",

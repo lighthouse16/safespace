@@ -18,8 +18,8 @@ The M3DLayout checkpoint stays on Google Colab. This branch only rewrites the ro
 1. On Colab, run the cells that clone `M3DLayout-code`, install packages, remove the `tkinter` import, write the `fast_transformers` shim, write `api_server.py`, install or stub CLIP, start uvicorn on port 8000, and open ngrok.
 2. Copy the printed `API: https://….ngrok-free.app` line. That is the Colab API URL. Do not append `/generate`.
 3. In this app, open an assessment and stay on Layout. The form is at the top of **Room fixtures**.
-4. Paste the URL, describe the room, and press **Generate layout**. The prompt agent rewrites a short sentence into the description style the autoregressive model was trained on, then `POST`s `{ "prompt", "seed" }` to `/generate`.
-5. Press **Add to layout** after you review the returned objects. They stay unconfirmed until you accept them on the plan. Undo removes the batch.
+4. Paste the URL and describe every room in one sentence, for example `a living room with a sofa and a television, a kitchen with a table and 6 chairs, a toilet with a sink`. The prompt agent sends one training-style description per room. Each room is drawn as its own rectangle with walls, and that room's furniture is placed inside it. You do not trace the floorplan image.
+5. Press **Add room frames** after you review the list. Undo restores the previous furniture and frame.
 
 Leave the Colab runtime running. After a disconnect, start uvicorn and ngrok again and paste the new URL. The browser stores it in `localStorage` under `safespace-m3d-api-url`.
 

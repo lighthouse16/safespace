@@ -1,6 +1,18 @@
 export type Point2D = { x: number; y: number };
 
-export type RoomCategory = "waiting" | "reception" | "corridor" | "consultation" | "restroom" | "storage";
+export type RoomCategory =
+  | "waiting"
+  | "reception"
+  | "corridor"
+  | "consultation"
+  | "restroom"
+  | "storage"
+  | "living"
+  | "kitchen"
+  | "bedroom"
+  | "dining"
+  | "office"
+  | "bathroom";
 
 export interface SpatialRoom {
   id: string;
