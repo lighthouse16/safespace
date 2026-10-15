@@ -16,7 +16,12 @@ import {
   Unlock,
   ChevronRight,
   Search,
+  Sparkles,
 } from "lucide-react";
+import {
+  AIInterpretationReviewModal,
+  type InterpretedElementCandidate,
+} from "@/components/ai/AIInterpretationReviewModal";
 
 export function Stage1Layout() {
   const {
@@ -44,11 +49,84 @@ export function Stage1Layout() {
     setSnapToGrid,
     zoom,
     setZoom,
+    assessmentId,
+    hasFloorplanImage,
+    floorplanImageBlobUrl,
+    calibrationProvenance,
+    addCustomFurnitureBatch,
   } = useSafeSpaceStore();
 
   const [activeRightTab, setActiveRightTab] = useState<"fixtures" | "properties">("fixtures");
   const [showAddMenu, setShowAddMenu] = useState(false);
   const [mobileTab, setMobileTab] = useState<"canvas" | "drawer">("canvas");
+  const [isInterpretingAI, setIsInterpretingAI] = useState(false);
+  const [aiModalOpen, setAiModalOpen] = useState(false);
+  const [aiCandidates, setAiCandidates] = useState<InterpretedElementCandidate[]>([]);
+  const [aiError, setAiError] = useState<string | null>(null);
+
+  const handleTriggerAIInterpretation = async () => {
+    if (!floorplanImageBlobUrl) return;
+    setAiError(null);
+    setIsInterpretingAI(true);
+    try {
+      const blob = await fetch(floorplanImageBlobUrl).then((r) => r.blob());
+      const base64 = await new Promise<string>((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onloadend = () => {
+          const res = reader.result as string;
+          const commaIdx = res.indexOf(",");
+          resolve(commaIdx >= 0 ? res.substring(commaIdx + 1) : res);
+        };
+        reader.onerror = reject;
+        reader.readAsDataURL(blob);
+      });
+
+      const res = await fetch(`/api/v1/assessments/${assessmentId || "active"}/ai/interpretation`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          userConsent: true,
+          imageMimeType: blob.type.startsWith("image/") ? blob.type : "image/png",
+          imageBase64: base64,
+          scaleInfo: {
+            pixelsPerCm: calibrationProvenance?.pixelsPerCm || 1,
+          },
+        }),
+      });
+
+      const data = await res.json();
+      if (!res.ok) {
+        throw new Error(data.error || "Interpretation failed");
+      }
+
+      setAiCandidates(data.elements || []);
+      setAiModalOpen(true);
+    } catch (err: unknown) {
+      setAiError(err instanceof Error ? err.message : "Failed to interpret floorplan");
+    } finally {
+      setIsInterpretingAI(false);
+    }
+  };
+
+  const handleAcceptAICandidates = (accepted: InterpretedElementCandidate[]) => {
+    if (!accepted.length) return;
+    const items = accepted.map((c) => ({
+      id: c.id,
+      name: c.name,
+      category: c.category,
+      roomId: "user-space",
+      x: c.x,
+      y: c.y,
+      width: c.width,
+      depth: c.depth,
+      height: 80,
+      rotation: c.rotation || 0,
+      isFixed: false,
+      isConfirmed: true,
+      isStableSupport: c.category === "handrail" || c.category === "desk",
+    }));
+    addCustomFurnitureBatch(items);
+  };
 
   const selectedItem = furniture.find((f) => f.id === selectedFurnitureId);
   const unconfirmedCount = furniture.filter((f) => !f.isConfirmed).length;
@@ -181,6 +259,19 @@ export function Stage1Layout() {
                 </svg>
                 <span>Dim</span>
               </button>
+
+              {hasFloorplanImage ? (
+                <button
+                  type="button"
+                  onClick={handleTriggerAIInterpretation}
+                  disabled={isInterpretingAI}
+                  title="Detect furniture and fixtures from floorplan using Gemini AI"
+                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-[#0B514B] bg-[#F0F5F4] text-xs font-semibold text-[#0B514B] hover:bg-teal-100 transition cursor-pointer disabled:opacity-50"
+                >
+                  <Sparkles className="w-3.5 h-3.5 text-[#0B514B]" />
+                  <span>{isInterpretingAI ? "Analyzing..." : "AI Detect"}</span>
+                </button>
+              ) : null}
             </div>
 
             {/* Right Tools: Undo, Redo, Zoom, Search, Expand */}
@@ -670,6 +761,25 @@ export function Stage1Layout() {
           </div>
         </aside>
       </div>
+      {aiError && (
+        <div className="fixed bottom-4 left-4 z-50 rounded-xl border border-rose-300 bg-rose-50 p-3 text-xs text-rose-800 shadow-lg flex items-center justify-between gap-4">
+          <span>{aiError}</span>
+          <button
+            type="button"
+            onClick={() => setAiError(null)}
+            className="font-bold text-rose-600 hover:text-rose-900"
+          >
+            Dismiss
+          </button>
+        </div>
+      )}
+
+      <AIInterpretationReviewModal
+        isOpen={aiModalOpen}
+        onClose={() => setAiModalOpen(false)}
+        candidates={aiCandidates}
+        onAccept={handleAcceptAICandidates}
+      />
     </div>
   );
 }

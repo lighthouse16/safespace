@@ -8,6 +8,9 @@ import {
   Download,
   ZoomIn,
   ZoomOut,
+  Sparkles,
+  ChevronDown,
+  ChevronUp,
 } from "lucide-react";
 import type { SpatialFindingClassification } from "@/lib/spatial";
 
@@ -22,6 +25,9 @@ export function Stage4Analysis() {
     setZoom,
     layerToggles,
     toggleLayer,
+    assessmentId,
+    assessmentMetadata,
+    activeProfile,
   } = useSafeSpaceStore();
 
   const evaluation = getSpatialFindings();
@@ -31,6 +37,54 @@ export function Stage4Analysis() {
     "all" | SpatialFindingClassification
   >("all");
   const [mobileTab, setMobileTab] = useState<"canvas" | "findings">("canvas");
+  const [aiExplaining, setAiExplaining] = useState(false);
+  const [aiExplanation, setAiExplanation] = useState<{
+    executiveSummary: string;
+    clinicalRiskNarrative: string;
+    caregiverRecommendations: string[];
+    disclaimer: string;
+  } | null>(null);
+  const [aiExplanationOpen, setAiExplanationOpen] = useState(false);
+  const [aiExplainError, setAiExplainError] = useState<string | null>(null);
+
+  const handleGenerateAIExplanation = async () => {
+    setAiExplainError(null);
+    setAiExplaining(true);
+    try {
+      const res = await fetch(`/api/v1/assessments/${assessmentId || "active"}/ai/explanation`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          userConsent: true,
+          assessmentName: assessmentMetadata?.name || "Floorplan Assessment",
+          profileLabel: activeProfile?.name || "Mobility Profile",
+          findings: findings.map((f) => ({
+            title: f.title,
+            severity: f.severity,
+            description: f.description,
+            evidence: f.evidence?.rawEvidenceString,
+          })),
+          metrics: {
+            actionableDeficitsCount: summary.actionableDeficitsCount,
+            minimumClearanceCm: summary.minimumClearanceCm,
+            routeFeasibility: summary.routeFeasibility,
+          },
+        }),
+      });
+
+      const data = await res.json();
+      if (!res.ok) {
+        throw new Error(data.error || "Explanation generation failed");
+      }
+
+      setAiExplanation(data.explanation);
+      setAiExplanationOpen(true);
+    } catch (err: unknown) {
+      setAiExplainError(err instanceof Error ? err.message : "Failed to generate explanation");
+    } finally {
+      setAiExplaining(false);
+    }
+  };
 
   const effectiveFindings = findings;
   const filteredFindings = effectiveFindings.filter((f) =>
@@ -345,8 +399,80 @@ export function Stage4Analysis() {
             </div>
           </div>
 
-          {/* Action Footer matching 09-workspace-analysis.png */}
-          <div className="pt-3 shrink-0">
+          {/* AI Clinical Insights Section */}
+          <div className="rounded-xl border border-teal-200 bg-white p-3.5 space-y-2.5 shadow-2xs">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-1.5 text-xs font-bold text-[#0B514B]">
+                  <Sparkles size={14} className="text-[#0B514B]" />
+                  <span>Clinical Narrative (AI)</span>
+                </div>
+                <button
+                  type="button"
+                  onClick={handleGenerateAIExplanation}
+                  disabled={aiExplaining}
+                  className="rounded-lg bg-teal-50 px-2.5 py-1 text-[11px] font-semibold text-[#0B514B] hover:bg-teal-100 transition disabled:opacity-50"
+                >
+                  {aiExplaining
+                    ? "Generating..."
+                    : aiExplanation
+                    ? "Regenerate"
+                    : "Synthesize Insights"}
+                </button>
+              </div>
+
+              {aiExplainError && (
+                <div className="text-[11px] text-rose-700 bg-rose-50 border border-rose-200 rounded-lg p-2">
+                  {aiExplainError}
+                </div>
+              )}
+
+              {aiExplanation && (
+                <div className="space-y-2 pt-1 border-t border-slate-100 text-xs text-[#17252B]">
+                  <p className="font-semibold text-[11px] text-[#647078] uppercase tracking-wider">
+                    Executive Summary
+                  </p>
+                  <p className="text-slate-800 leading-relaxed text-[11px]">
+                    {aiExplanation.executiveSummary}
+                  </p>
+                  {aiExplanationOpen && (
+                    <>
+                      <p className="font-semibold text-[11px] text-[#647078] uppercase tracking-wider pt-1">
+                        Mobility Risk Analysis
+                      </p>
+                      <p className="text-slate-800 leading-relaxed text-[11px]">
+                        {aiExplanation.clinicalRiskNarrative}
+                      </p>
+                      {aiExplanation.caregiverRecommendations.length > 0 && (
+                        <>
+                          <p className="font-semibold text-[11px] text-[#647078] uppercase tracking-wider pt-1">
+                            Recommendations
+                          </p>
+                          <ul className="list-disc pl-4 space-y-1 text-[11px] text-slate-800">
+                            {aiExplanation.caregiverRecommendations.map((rec, idx) => (
+                              <li key={idx}>{rec}</li>
+                            ))}
+                          </ul>
+                        </>
+                      )}
+                      <p className="text-[10px] text-slate-400 italic pt-1">
+                        {aiExplanation.disclaimer}
+                      </p>
+                    </>
+                  )}
+                  <button
+                    type="button"
+                    onClick={() => setAiExplanationOpen(!aiExplanationOpen)}
+                    className="flex items-center gap-1 text-[11px] font-medium text-[#0B514B] hover:underline"
+                  >
+                    <span>{aiExplanationOpen ? "Show less" : "Read full clinical analysis"}</span>
+                    {aiExplanationOpen ? <ChevronUp size={12} /> : <ChevronDown size={12} />}
+                  </button>
+                </div>
+              )}
+            </div>
+
+            {/* Action Footer matching 09-workspace-analysis.png */}
+            <div className="pt-3 shrink-0">
             <button
               type="button"
               onClick={() => setStage("improve")}
