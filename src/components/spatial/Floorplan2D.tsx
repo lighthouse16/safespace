@@ -92,6 +92,12 @@ export function Floorplan2D({
     if (!canonicalBoundary || canonicalBoundary.length < 3) return null;
     return computePolygonBoundsCm(canonicalBoundary);
   }, [canonicalBoundary]);
+  const keepUserOutline = Boolean(
+    canonicalBoundary &&
+      canonicalBoundary.length >= 3 &&
+      rooms.some((room) => room.id.startsWith("m3d-room-")),
+  );
+  const housePoints = keepUserOutline ? canonicalBoundary!.map((point) => `${point.x},${point.y}`).join(" ") : "";
 
   const { vbX, vbY, vbW, vbH, viewBoxStr } = useMemo(() => {
     if (userBounds) {
@@ -442,6 +448,11 @@ export function Floorplan2D({
         }}
       >
         <defs>
+          {keepUserOutline && (
+            <clipPath id="user-house-clip">
+              <polygon points={housePoints} />
+            </clipPath>
+          )}
           <pattern id="grid-minor" width="20" height="20" patternUnits="userSpaceOnUse">
             <path d="M 20 0 L 0 0 0 20" fill="none" stroke="#e8ece9" strokeWidth="0.5" />
           </pattern>
@@ -486,11 +497,11 @@ export function Floorplan2D({
               <polygon
                 points={canonicalBoundary.map((p) => `${p.x},${p.y}`).join(" ")}
                 fill={floorplanImageBlobUrl ? "none" : "#f4f8f6"}
-                stroke="#0B514B"
+                stroke={keepUserOutline ? "none" : "#0B514B"}
                 strokeWidth="2.5"
                 strokeLinejoin="round"
               />
-              {rooms.some((room) => room.id.startsWith("m3d-room-")) ? null : (
+              {keepUserOutline ? null : (
               <text
                 x={(userBounds?.minX ?? 0) + 16}
                 y={(userBounds?.minY ?? 0) + 24}
@@ -510,7 +521,7 @@ export function Floorplan2D({
             ? rooms.filter((room) => room.id.startsWith("m3d-room-"))
             : rooms
           ).map((room) => (
-              <g key={room.id}>
+              <g key={room.id} clipPath={keepUserOutline ? "url(#user-house-clip)" : undefined}>
                 <rect
                   x={room.x}
                   y={room.y}
@@ -518,7 +529,7 @@ export function Floorplan2D({
                   height={room.depth}
                   fill={room.color}
                   fillOpacity={room.id.startsWith("m3d-room-") ? 0.94 : 1}
-                  stroke="#0B514B"
+                  stroke={keepUserOutline ? "none" : "#0B514B"}
                   strokeWidth={room.id.startsWith("m3d-room-") ? 2 : 1}
                 />
                 <text
@@ -873,7 +884,7 @@ export function Floorplan2D({
           )}
 
         {/* 6. Structural Walls */}
-        <g id="walls-layer">
+        <g id="walls-layer" clipPath={keepUserOutline ? "url(#user-house-clip)" : undefined}>
           {walls.map((w) => (
             <line
               key={w.id}
@@ -928,7 +939,7 @@ export function Floorplan2D({
         </g>
 
         {/* 10. Furniture Objects */}
-        <g id="furniture-layer">
+        <g id="furniture-layer" clipPath={keepUserOutline ? "url(#user-house-clip)" : undefined}>
           {furniture.map((item) => {
             const isSelected = selectedFurnitureId === item.id;
             const isUnconfirmed = !item.isConfirmed;
@@ -1148,6 +1159,17 @@ export function Floorplan2D({
               );
             })}
           </g>
+        )}
+
+        {keepUserOutline && (
+          <polygon
+            points={housePoints}
+            fill="none"
+            stroke="#0B514B"
+            strokeWidth="2.5"
+            strokeLinejoin="round"
+            className="pointer-events-none"
+          />
         )}
       </svg>
     </div>
