@@ -5,66 +5,11 @@ import { useSafeSpaceStore } from "@/store/safespace-store";
 import { Floorplan2D } from "@/components/spatial/Floorplan2D";
 import {
   ChevronRight,
-  MousePointer,
   Download,
-  MoreHorizontal,
-  Maximize2,
   ZoomIn,
   ZoomOut,
 } from "lucide-react";
 import type { SpatialFindingClassification } from "@/lib/spatial";
-
-// Canonical findings matching 09-workspace-analysis.png
-const CANONICAL_STAGE4_FINDINGS = [
-  {
-    id: "f-narrow-circ",
-    title: "Narrow circulation space",
-    description: "Route narrows to 700 mm, below the recommended 800 mm for wheelchair access.",
-    classification: "actionable-deficit" as const,
-    room: "Hallway",
-  },
-  {
-    id: "f-door-swing",
-    title: "Door swing obstructs route",
-    description: "Bathroom door opens into the circulation path, creating a potential collision risk.",
-    classification: "actionable-deficit" as const,
-    room: "Bathroom",
-  },
-  {
-    id: "f-tight-turn",
-    title: "Tight turning space",
-    description: "Turning space at this junction may be insufficient for wheelchair users.",
-    classification: "advisory-observation" as const,
-    room: "Central hall",
-  },
-  {
-    id: "f-step-door",
-    title: "Step at external door",
-    description: "External door threshold not assessed. Confirm level access or ramp.",
-    classification: "unassessed-scope" as const,
-    room: "Main entrance",
-  },
-  {
-    id: "f-balcony",
-    title: "Balcony access",
-    description: "Access to balcony not assessed. Verify threshold and clearance.",
-    classification: "unassessed-scope" as const,
-    room: "Living room",
-  },
-];
-
-// Location badges mapping for findings
-function getRoomBadge(f: { title: string; classification: string; room?: string }): string {
-  if (f.room) return f.room;
-  const t = f.title.toLowerCase();
-  if (t.includes("narrow") || t.includes("corridor") || t.includes("circulation")) return "Hallway";
-  if (t.includes("door") || t.includes("bathroom") || t.includes("swing")) return "Bathroom";
-  if (t.includes("turning") || t.includes("turn") || t.includes("junction")) return "Central hall";
-  if (t.includes("step") || t.includes("entrance") || t.includes("threshold")) return "Main entrance";
-  if (t.includes("balcony") || t.includes("window")) return "Living room";
-  if (f.classification === "actionable-deficit") return "Circulation";
-  return "General";
-}
 
 export function Stage4Analysis() {
   const {
@@ -82,28 +27,27 @@ export function Stage4Analysis() {
   const evaluation = getSpatialFindings();
   const { summary, findings } = evaluation;
 
-  const [activeTab, setActiveTab] = useState<"floorplan" | "route" | "issues">("floorplan");
   const [filterClassification, setFilterClassification] = useState<
     "all" | SpatialFindingClassification
   >("all");
   const [mobileTab, setMobileTab] = useState<"canvas" | "findings">("canvas");
 
-  const effectiveFindings = findings.length > 0 ? findings : CANONICAL_STAGE4_FINDINGS;
+  const effectiveFindings = findings;
   const filteredFindings = effectiveFindings.filter((f) =>
     filterClassification === "all" ? true : f.classification === filterClassification
   );
 
-  const displayLengthM = summary.pathLengthM !== null && summary.pathLengthM > 0
+  const displayLengthM = summary.pathLengthM !== null
     ? `${summary.pathLengthM} m`
-    : "32 m";
+    : "Not measured";
 
-  const displayMinClearanceM = summary.minimumClearanceCm !== null && summary.minimumClearanceCm > 0
-    ? `${(summary.minimumClearanceCm / 100).toFixed(1)} m`
-    : "1.2 m";
+  const displayMinClearanceM = summary.minimumClearanceCm !== null
+    ? `${(summary.minimumClearanceCm / 100).toFixed(2)} m`
+    : "Not measured";
 
-  const deficitsCount = findings.length > 0 ? summary.actionableDeficitsCount : 2;
-  const advisoryCount = findings.length > 0 ? summary.advisoryObservationsCount : 1;
-  const unassessedCount = findings.length > 0 ? summary.unassessedScopeCount : 3;
+  const deficitsCount = summary.actionableDeficitsCount;
+  const advisoryCount = summary.advisoryObservationsCount;
+  const unassessedCount = summary.unassessedScopeCount;
   const totalFindingsCount = effectiveFindings.length;
 
   return (
@@ -143,70 +87,35 @@ export function Stage4Analysis() {
         >
           {/* Canvas Top Bar matching 09-workspace-analysis.png */}
           <div className="w-full flex items-center justify-between pb-3 border-b border-[#E2E6E8] mb-3 z-20">
-            {/* Top Tabs: Floorplan, Movement route, Issues */}
-            <div className="flex items-center gap-6">
+            {/* Canvas layer toggles */}
+            <div className="flex items-center gap-4 overflow-x-auto">
               <button
                 type="button"
-                onClick={() => {
-                  setActiveTab("floorplan");
-                  if (!layerToggles.route) toggleLayer("route");
-                  if (!layerToggles.clearance) toggleLayer("clearance");
-                }}
-                className={`flex items-center gap-2 py-2 text-xs font-semibold transition cursor-pointer relative ${
-                  activeTab === "floorplan"
-                    ? "text-[#17252B] border-b-2 border-[#0B514B]"
-                    : "text-[#647078] hover:text-[#17252B]"
-                }`}
+                onClick={() => toggleLayer("route")}
+                aria-pressed={layerToggles.route}
+                className={`shrink-0 py-2 text-xs font-semibold transition cursor-pointer ${layerToggles.route ? "text-[#17252B] border-b-2 border-[#0B514B]" : "text-[#647078] hover:text-[#17252B]"}`}
               >
-                <svg className="w-4 h-4 text-[#0B514B]" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.6">
-                  <path d="M2 2h12v12H2zM2 7h12M7 2v12" />
-                </svg>
-                <span>Floorplan</span>
+                Route overlay
               </button>
-
               <button
                 type="button"
-                onClick={() => {
-                  setActiveTab("route");
-                  if (!layerToggles.route) toggleLayer("route");
-                }}
-                className={`flex items-center gap-2 py-2 text-xs font-semibold transition cursor-pointer relative ${
-                  activeTab === "route"
-                    ? "text-[#17252B] border-b-2 border-[#0B514B]"
-                    : "text-[#647078] hover:text-[#17252B]"
-                }`}
+                onClick={() => toggleLayer("clearance")}
+                aria-pressed={layerToggles.clearance}
+                className={`shrink-0 py-2 text-xs font-semibold transition cursor-pointer ${layerToggles.clearance ? "text-[#17252B] border-b-2 border-[#0B514B]" : "text-[#647078] hover:text-[#17252B]"}`}
               >
-                <svg className="w-4 h-4 text-[#647078]" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.6">
-                  <path d="M2 13l4-4 4 2 4-6" />
-                  <circle cx="2" cy="13" r="1.5" />
-                  <circle cx="14" cy="5" r="1.5" />
-                </svg>
-                <span>Movement route</span>
+                Clearance overlay
               </button>
-
               <button
                 type="button"
-                onClick={() => {
-                  setActiveTab("issues");
-                  if (!layerToggles.hazards) toggleLayer("hazards");
-                }}
-                className={`flex items-center gap-2 py-2 text-xs font-semibold transition cursor-pointer relative ${
-                  activeTab === "issues"
-                    ? "text-[#17252B] border-b-2 border-[#0B514B]"
-                    : "text-[#647078] hover:text-[#17252B]"
-                }`}
+                onClick={() => toggleLayer("hazards")}
+                aria-pressed={layerToggles.hazards}
+                className={`shrink-0 py-2 text-xs font-semibold transition cursor-pointer ${layerToggles.hazards ? "text-[#17252B] border-b-2 border-[#0B514B]" : "text-[#647078] hover:text-[#17252B]"}`}
               >
-                <svg className="w-4 h-4 text-[#647078]" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.6">
-                  <path d="M2 4h12M2 8h12M2 12h12" />
-                  <circle cx="1" cy="4" r="0.8" fill="currentColor" />
-                  <circle cx="1" cy="8" r="0.8" fill="currentColor" />
-                  <circle cx="1" cy="12" r="0.8" fill="currentColor" />
-                </svg>
-                <span>Issues</span>
+                Finding markers
               </button>
             </div>
 
-            {/* Right Action: Export report & More */}
+            {/* Report action */}
             <div className="flex items-center gap-2">
               <button
                 type="button"
@@ -214,85 +123,13 @@ export function Stage4Analysis() {
                 className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-[#E2E6E8] bg-white text-xs font-semibold text-[#17252B] hover:bg-[#F7F8F8] transition cursor-pointer shadow-2xs"
               >
                 <Download className="w-3.5 h-3.5 text-[#647078]" />
-                <span>Export report</span>
-              </button>
-
-              <button
-                type="button"
-                aria-label="More options"
-                className="p-1.5 rounded-lg border border-[#E2E6E8] bg-white hover:bg-[#F7F8F8] text-[#647078] transition cursor-pointer"
-              >
-                <MoreHorizontal className="w-4 h-4" />
+                <span>Open report</span>
               </button>
             </div>
           </div>
 
-          {/* Canvas Container with tool rail, zoom controls, and compass rose */}
+          {/* Canvas Container with zoom controls */}
           <div className="flex-1 relative rounded-xl border border-[#E2E6E8] bg-white overflow-hidden shadow-2xs">
-            {/* Left Vertical Tool Rail matching 09-workspace-analysis.png */}
-            <aside
-              aria-label="Analysis tools rail"
-              className="absolute left-3 top-3 z-20 bg-white border border-[#E2E6E8] rounded-xl py-2 px-1.5 flex flex-col items-center gap-2 shadow-sm select-none"
-            >
-              {/* Select */}
-              <button
-                type="button"
-                aria-label="Select tool"
-                className="flex flex-col items-center justify-center w-11 py-1.5 rounded-lg bg-[#E8F3F1] text-[#0B514B] transition cursor-pointer"
-              >
-                <MousePointer className="w-4 h-4 fill-current" />
-                <span className="text-[10px] font-medium mt-1">Select</span>
-              </button>
-
-              {/* Routes */}
-              <button
-                type="button"
-                aria-label="Routes tool"
-                className="flex flex-col items-center justify-center w-11 py-1.5 rounded-lg text-[#647078] hover:bg-[#F7F8F8] hover:text-[#17252B] transition cursor-pointer"
-              >
-                <svg className="w-4 h-4" viewBox="0 0 18 18" fill="none" stroke="currentColor" strokeWidth="1.6">
-                  <path d="M4 14l5-5 5 2" />
-                  <circle cx="4" cy="14" r="2" />
-                  <circle cx="14" cy="11" r="2" />
-                </svg>
-                <span className="text-[10px] font-medium mt-1">Routes</span>
-              </button>
-
-              {/* Issues */}
-              <button
-                type="button"
-                aria-label="Issues tool"
-                className="flex flex-col items-center justify-center w-11 py-1.5 rounded-lg text-[#647078] hover:bg-[#F7F8F8] hover:text-[#17252B] transition cursor-pointer"
-              >
-                <svg className="w-4 h-4" viewBox="0 0 18 18" fill="none" stroke="currentColor" strokeWidth="1.6">
-                  <path d="M9 3l7 12H2L9 3zM9 8v3M9 13v.5" />
-                </svg>
-                <span className="text-[10px] font-medium mt-1">Issues</span>
-              </button>
-
-              {/* Measure */}
-              <button
-                type="button"
-                aria-label="Measure tool"
-                className="flex flex-col items-center justify-center w-11 py-1.5 rounded-lg text-[#647078] hover:bg-[#F7F8F8] hover:text-[#17252B] transition cursor-pointer"
-              >
-                <svg className="w-4 h-4" viewBox="0 0 18 18" fill="none" stroke="currentColor" strokeWidth="1.6">
-                  <path d="M3 15L15 3M5 11l2 2M8 8l2 2M11 5l2 2" />
-                </svg>
-                <span className="text-[10px] font-medium mt-1">Measure</span>
-              </button>
-
-              {/* More */}
-              <button
-                type="button"
-                aria-label="More tools"
-                className="flex flex-col items-center justify-center w-11 py-1.5 rounded-lg text-[#647078] hover:bg-[#F7F8F8] hover:text-[#17252B] transition cursor-pointer"
-              >
-                <span className="text-sm tracking-widest font-bold leading-none">…</span>
-                <span className="text-[10px] font-medium mt-1">More</span>
-              </button>
-            </aside>
-
             {/* Bottom Left Zoom Controls matching 09-workspace-analysis.png */}
             <div className="absolute bottom-3 left-3 z-20 flex items-center gap-2">
               <div className="flex items-center bg-white border border-[#E2E6E8] rounded-lg shadow-sm px-2 py-1 text-xs text-[#17252B]">
@@ -320,28 +157,11 @@ export function Stage4Analysis() {
               <button
                 type="button"
                 onClick={() => setZoom(1)}
-                aria-label="Fullscreen"
-                className="p-2 bg-white border border-[#E2E6E8] rounded-lg shadow-sm hover:text-[#0B514B] cursor-pointer"
+                aria-label="Reset zoom to 100%"
+                className="px-2 py-1.5 bg-white border border-[#E2E6E8] rounded-lg shadow-sm hover:text-[#0B514B] cursor-pointer text-xs"
               >
-                <Maximize2 className="w-3.5 h-3.5" />
+                Reset zoom
               </button>
-            </div>
-
-            {/* Bottom Right Compass Rose matching 09-workspace-analysis.png */}
-            <div className="absolute bottom-3 right-3 z-20 pointer-events-none select-none">
-              <div className="size-11 rounded-full bg-white border border-[#E2E6E8] shadow-sm flex items-center justify-center">
-                <svg className="w-7 h-7" viewBox="0 0 32 32" fill="none">
-                  {/* Outer circle */}
-                  <circle cx="16" cy="16" r="14" stroke="#CBD5E1" strokeWidth="1" />
-                  {/* North arrow pointer */}
-                  <polygon points="16,5 19,16 16,13 13,16" fill="#17252B" />
-                  <polygon points="16,27 19,16 16,19 13,16" fill="#CBD5E1" />
-                  {/* N label */}
-                  <text x="16" y="11" textAnchor="middle" fill="#17252B" fontSize="6" fontWeight="bold">
-                    N
-                  </text>
-                </svg>
-              </div>
             </div>
 
             {/* Floorplan2D Canvas */}
@@ -464,9 +284,15 @@ export function Stage4Analysis() {
 
             {/* Findings List matching 09-workspace-analysis.png */}
             <div className="space-y-2.5 max-h-[calc(100vh-27rem)] overflow-y-auto pr-1">
+              {filteredFindings.length === 0 && (
+                <p className="rounded-xl border border-[#E2E6E8] bg-white p-4 text-xs text-[#647078]" role="status">
+                  {totalFindingsCount === 0
+                    ? "No evaluator findings available for this assessment. This does not confirm the space is safe."
+                    : "No findings match this filter. Other findings remain available under All."}
+                </p>
+              )}
               {filteredFindings.map((f) => {
                 const isSelected = selectedFindingId === f.id;
-                const roomTag = getRoomBadge(f);
 
                 return (
                   <button
@@ -512,13 +338,7 @@ export function Stage4Analysis() {
                       </div>
                     </div>
 
-                    {/* Right Badge and Chevron */}
-                    <div className="flex items-center gap-2 shrink-0">
-                      <span className="px-2 py-0.5 rounded-full bg-[#F0F3F4] text-[10px] font-medium text-[#647078]">
-                        {roomTag}
-                      </span>
-                      <ChevronRight className="w-4 h-4 text-[#647078]" />
-                    </div>
+                    <ChevronRight className="w-4 h-4 text-[#647078] shrink-0" />
                   </button>
                 );
               })}

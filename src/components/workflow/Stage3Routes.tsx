@@ -16,8 +16,6 @@ import {
   ZoomOut,
   Maximize2,
   Download,
-  MousePointer,
-  GitBranch,
 } from "lucide-react";
 
 export function Stage3Routes() {
@@ -43,14 +41,24 @@ export function Stage3Routes() {
   const isMarginDeficit = isSuccess && routeResult.minimumClearanceCm < requiredRadiusCm;
 
   const displayLengthM = isSuccess
-    ? (routeResult.pathLengthCm / 100).toFixed(0)
-    : "32";
+    ? `${(routeResult.pathLengthCm / 100).toFixed(1)} m`
+    : "Not measured";
 
   const displayClearanceM = isSuccess
-    ? (routeResult.minimumClearanceCm / 100).toFixed(1)
-    : "1.2";
+    ? `${(routeResult.minimumClearanceCm / 100).toFixed(2)} m`
+    : "Not measured";
 
-  const isCompliant = isSuccess && !isMarginDeficit;
+  const routeStatus = routeWaypoints.length < 2 || !routeResult
+    ? "Not assessed"
+    : isSuccess
+      ? isMarginDeficit ? "Clearance below profile" : "Passable in 2D"
+      : "No passable route";
+  const routeStatusNote = routeWaypoints.length < 2 || !routeResult
+    ? "Add at least two checkpoints"
+    : isSuccess
+      ? isMarginDeficit ? "Review route clearance" : "Not a compliance certification"
+      : "Adjust route or furniture";
+  const routePassable = isSuccess && !isMarginDeficit;
 
   const otherNeedsText = [
     activeProfile.fallHistory ? "Fall risk" : null,
@@ -172,7 +180,7 @@ export function Stage3Routes() {
                     </div>
                     <span className="text-xs text-[#17252B]">Route length</span>
                   </div>
-                  <span className="text-sm font-bold text-[#17252B]">{displayLengthM} m</span>
+                  <span className="text-sm font-bold text-[#17252B]">{displayLengthM}</span>
                 </div>
 
                 {/* Tightest corridor clearance */}
@@ -188,14 +196,14 @@ export function Stage3Routes() {
                       <Info className="w-3.5 h-3.5 text-[#647078]" />
                     </div>
                   </div>
-                  <span className="text-sm font-bold text-[#17252B]">{displayClearanceM} m</span>
+                  <span className="text-sm font-bold text-[#17252B]">{displayClearanceM}</span>
                 </div>
 
                 {/* Route status */}
                 <div className="flex items-center justify-between p-2.5 rounded-lg border border-[#E2E6E8] bg-white">
                   <div className="flex items-center gap-3">
-                    <div className={isCompliant ? "text-emerald-600" : "text-red-600"}>
-                      {isCompliant ? (
+                    <div className={routePassable ? "text-emerald-600" : "text-[#647078]"}>
+                      {routePassable ? (
                         <CheckCircle2 className="w-4 h-4" />
                       ) : (
                         <AlertTriangle className="w-4 h-4" />
@@ -204,11 +212,11 @@ export function Stage3Routes() {
                     <span className="text-xs text-[#17252B]">Route status</span>
                   </div>
                   <div className="text-right">
-                    <span className={`text-xs font-bold ${isCompliant ? "text-[#17252B]" : "text-red-700"}`}>
-                      {isCompliant ? "Compliant" : "Deficit detected"}
+                    <span className={`text-xs font-bold ${routePassable ? "text-[#17252B]" : "text-[#647078]"}`}>
+                      {routeStatus}
                     </span>
                     <span className="text-[10px] text-[#647078] block">
-                      {isCompliant ? "No major obstructions" : "Adjust route or furniture"}
+                      {routeStatusNote}
                     </span>
                   </div>
                 </div>
@@ -312,23 +320,6 @@ export function Stage3Routes() {
         >
           {/* Canvas Top Toolbar matching 08-workspace-routes.png */}
           <div className="w-full flex items-center justify-between mb-4 z-20">
-            {/* Left Toolbar Pill */}
-            <div className="flex items-center gap-1 bg-[#F0F3F4] p-0.5 rounded-lg border border-[#E2E6E8]">
-              <button
-                type="button"
-                className="p-1.5 rounded-md bg-white text-[#0B514B] shadow-2xs cursor-pointer"
-                title="Select"
-              >
-                <MousePointer className="w-4 h-4 fill-current" />
-              </button>
-              <button
-                type="button"
-                className="p-1.5 rounded-md text-[#647078] hover:text-[#17252B] cursor-pointer"
-                title="Route Waypoints"
-              >
-                <GitBranch className="w-4 h-4" />
-              </button>
-            </div>
 
             {/* Right Toolbar Controls */}
             <div className="flex items-center gap-2 sm:gap-3 text-[#647078]">
@@ -365,7 +356,7 @@ export function Stage3Routes() {
                 className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-[#E2E6E8] bg-white text-xs font-medium text-[#17252B] hover:bg-[#F7F8F8] transition cursor-pointer shadow-2xs"
               >
                 <Download className="w-3.5 h-3.5 text-[#647078]" />
-                <span>Export view</span>
+                <span>Open report</span>
               </button>
             </div>
           </div>

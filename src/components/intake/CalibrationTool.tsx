@@ -25,17 +25,15 @@ export function CalibrationTool({
   onResetCalibration,
 }: CalibrationToolProps) {
   const [lengthInput, setLengthInput] = useState<string>(
-    calibration.realLength ? String(calibration.realLength) : "3.0"
+    calibration.realLength != null ? String(calibration.realLength) : ""
   );
   const [unit, setUnit] = useState<CalibrationUnit>(calibration.unit ?? "m");
   const [inputError, setInputError] = useState<string | null>(null);
 
   // Sync state if calibration changes externally
   useEffect(() => {
-    if (calibration.realLength) {
-      // eslint-disable-next-line react-hooks/set-state-in-effect
-      setLengthInput(String(calibration.realLength));
-    }
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setLengthInput(calibration.realLength != null ? String(calibration.realLength) : "");
     if (calibration.unit) {
       setUnit(calibration.unit);
     }
@@ -46,12 +44,7 @@ export function CalibrationTool({
   const hasTwoPoints = p1 !== null && p2 !== null;
   const pixelDist = hasTwoPoints ? computePixelDistance(p1, p2) : 0;
 
-  // Auto-calculate scale when 2 points exist and input is valid
   const validation = validateMeasurement(lengthInput);
-  const currentPixelsPerCm =
-    hasTwoPoints && validation.isValid && validation.value
-      ? computePixelsPerCm(p1, p2, validation.value, unit)
-      : calibration.pixelsPerCm ?? null;
 
   const handleApply = (e?: React.FormEvent) => {
     if (e) e.preventDefault();
@@ -87,15 +80,10 @@ export function CalibrationTool({
     onResetCalibration();
   };
 
-  // Formatted scale string matching 04-calibration-and-boundary.png (e.g. "85 px = 3.0 m (0.035 m/px)")
-  let scaleDisplay = "85 px = 3.0 m (0.035 m/px)";
-  if (currentPixelsPerCm && currentPixelsPerCm > 0) {
-    const pxPerMeter = currentPixelsPerCm * 100;
-    const mPerPx = 1 / pxPerMeter;
-    const pxVal = pixelDist > 0 ? pixelDist.toFixed(0) : (pxPerMeter * (validation.value ?? 3)).toFixed(0);
-    const lenVal = validation.isValid && validation.value ? validation.value : calibration.realLength ?? 3.0;
-    scaleDisplay = `${pxVal} px = ${lenVal} ${unit} (${mPerPx.toFixed(3)} m/px)`;
-  }
+  // Only applied calibration is authoritative; typed draft is not a saved scale.
+  const scaleDisplay = calibration.isCalibrated && calibration.pixelsPerCm && calibration.pixelsPerCm > 0 && calibration.realLength != null && hasTwoPoints
+    ? `${pixelDist.toFixed(0)} px = ${calibration.realLength} ${calibration.unit} (${(1 / (calibration.pixelsPerCm * 100)).toFixed(3)} m/px)`
+    : "Not calibrated";
 
   return (
     <div className="space-y-4 text-xs">

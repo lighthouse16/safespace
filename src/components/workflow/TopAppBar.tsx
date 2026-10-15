@@ -1,7 +1,6 @@
 "use client";
 
 import { useState } from "react";
-import { Check } from "lucide-react";
 import { useSafeSpaceStore, type WorkflowStage } from "@/store/safespace-store";
 
 const stages: { id: WorkflowStage; label: string }[] = [
@@ -17,6 +16,9 @@ export function TopAppBar() {
     activeStage,
     setStage,
     assessmentMetadata,
+    assessmentType,
+    storageStatus,
+    storageError,
     mediaCleanupWarning,
     retryPendingMediaCleanup,
     clearMediaCleanupWarning,
@@ -25,9 +27,9 @@ export function TopAppBar() {
 
   const activeIndex = stages.findIndex((s) => s.id === activeStage);
 
-  const title = assessmentMetadata?.name || "Unit A12 accessibility review";
-  const facility = assessmentMetadata?.facilityName || "Harbor View Residence";
-  const space = assessmentMetadata?.spaceName || "Living room & corridor";
+  const title = assessmentMetadata?.name || "Current assessment";
+  const facility = assessmentMetadata?.facilityName;
+  const space = assessmentMetadata?.spaceName;
 
   return (
     <header className="shrink-0 bg-white border-b border-[#E2E6E8] px-4 sm:px-6 lg:px-8 py-3.5 sm:py-4">
@@ -69,12 +71,33 @@ export function TopAppBar() {
             <h1 className="text-xl sm:text-2xl font-bold tracking-tight text-[#17252B] truncate">
               {title}
             </h1>
-            <p className="mt-0.5 text-xs text-[#647078] truncate">
-              <span>{facility}</span>
-              <span className="mx-2">·</span>
-              <span>{space}</span>
-            </p>
+            {(facility || space) && (
+              <p className="mt-0.5 text-xs text-[#647078] truncate">
+                {facility && <span>{facility}</span>}
+                {facility && space && <span className="mx-2" aria-hidden="true">·</span>}
+                {space && <span>{space}</span>}
+              </p>
+            )}
           </div>
+          <span
+            role={storageStatus === "error" || storageStatus === "quota_exceeded" ? "alert" : "status"}
+            title={storageError || undefined}
+            className={`shrink-0 self-start rounded-full px-2.5 py-1 text-xs font-semibold ${
+              storageStatus === "error" || storageStatus === "quota_exceeded"
+                ? "bg-red-50 text-red-800"
+                : assessmentType === "user" && storageStatus === "saved"
+                  ? "bg-emerald-50 text-emerald-800"
+                  : "bg-amber-50 text-amber-900"
+            }`}
+          >
+            {storageStatus === "error" || storageStatus === "quota_exceeded"
+              ? "Error"
+              : assessmentType === "user" && storageStatus === "saved"
+                ? "Saved"
+                : assessmentType === "demo"
+                  ? "Demo · Unsaved"
+                  : "Unsaved"}
+          </span>
         </div>
 
         {/* Row 2: 5-Stage Stepper spanning full width */}
@@ -84,7 +107,7 @@ export function TopAppBar() {
         >
           <ol className="flex items-center gap-1.5 sm:gap-2.5 lg:gap-3.5 min-w-max">
             {stages.map((stage, index) => {
-              const isCompleted = index < activeIndex;
+              const isPrior = index < activeIndex;
               const isCurrent = index === activeIndex;
 
               return (
@@ -93,29 +116,23 @@ export function TopAppBar() {
                     type="button"
                     onClick={() => setStage(stage.id)}
                     aria-current={isCurrent ? "step" : undefined}
-                    aria-label={`${stage.label}${
-                      isCompleted ? " (completed)" : isCurrent ? " (current step)" : ""
-                    }`}
+                    aria-label={`${stage.label}${isCurrent ? " (current step)" : ""}`}
                     className="flex items-center gap-1.5 sm:gap-2 text-xs font-semibold transition cursor-pointer hover:opacity-80"
                   >
                     <span
                       className={`flex size-6 items-center justify-center rounded-full text-[11px] font-bold ${
-                        isCompleted || isCurrent
+                        isCurrent
                           ? "bg-[#0B514B] text-white"
                           : "bg-[#F0F3F4] text-[#647078]"
                       }`}
                     >
-                      {isCompleted ? (
-                        <Check size={12} strokeWidth={3} />
-                      ) : (
-                        index + 1
-                      )}
+                      {index + 1}
                     </span>
                     <span
                       className={
                         isCurrent
                           ? "text-[#17252B] font-bold"
-                          : isCompleted
+                          : isPrior
                           ? "text-[#17252B] font-medium"
                           : "text-[#647078]"
                       }

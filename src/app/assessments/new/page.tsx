@@ -101,6 +101,7 @@ export default function NewAssessmentPage({
     details.assessmentName.trim().length > 0 ||
     details.facilityName.trim().length > 0 ||
     details.spaceName.trim().length > 0 ||
+    Boolean(details.environmentType) ||
     Boolean(details.notes && details.notes.trim().length > 0) ||
     uploadedFile !== null ||
     source === "manual" ||
@@ -111,13 +112,14 @@ export default function NewAssessmentPage({
   const [showExitConfirm, setShowExitConfirm] = useState(false);
   const [pendingChange, setPendingChange] = useState<PendingSourceChange | null>(null);
   const confirmedExitRef = useRef(false);
+  const savedDraftRef = useRef(false);
 
   // Browser beforeunload guard when unsaved session work exists
   useEffect(() => {
     if (!hasMeaningfulWork) return;
 
     const handleBeforeUnload = (e: BeforeUnloadEvent) => {
-      if (confirmedExitRef.current) return;
+      if (confirmedExitRef.current || savedDraftRef.current) return;
       e.preventDefault();
       e.returnValue = "";
     };
@@ -128,6 +130,21 @@ export default function NewAssessmentPage({
     };
   }, [hasMeaningfulWork]);
 
+  // AppShell owns the home and assessments links; guard them before Next handles clicks.
+  const handleExitNavigation = (e: React.MouseEvent<HTMLDivElement>) => {
+    if (e.defaultPrevented || e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
+    const anchor = (e.target as Element).closest("a[href]");
+    if (!anchor || anchor.hasAttribute("download") || (anchor.getAttribute("target") && anchor.getAttribute("target") !== "_self")) return;
+    const destination = new URL((anchor as HTMLAnchorElement).href);
+    if (destination.origin !== window.location.origin || destination.pathname === window.location.pathname) return;
+    if (hasMeaningfulWork && !savedDraftRef.current) {
+      e.preventDefault();
+      e.stopPropagation();
+      setShowExitConfirm(true);
+      return;
+    }
+    invalidatePendingFileSelection();
+  };
 
   // Navigation handlers
   const handleDetailsContinue = (newDetails: AssessmentDetails) => {
@@ -247,6 +264,7 @@ export default function NewAssessmentPage({
       );
       if (!confirmed) return;
     }
+    savedDraftRef.current = false;
     invalidatePendingFileSelection();
     if (activeUrlRef.current) {
       URL.revokeObjectURL(activeUrlRef.current);
@@ -279,7 +297,8 @@ export default function NewAssessmentPage({
   const stepIndex = STEPS.findIndex((s) => s.id === currentStep);
 
   return (
-    <AppShell
+    <div onClickCapture={handleExitNavigation}>
+      <AppShell
       activePath="/assessments/new"
       facilityName={
         currentStep !== "details" && details.facilityName.trim().length > 0
@@ -489,33 +508,12 @@ export default function NewAssessmentPage({
               boundary={boundary}
               onBackToDraft={() => setCurrentStep("draft")}
               onResetAll={handleResetAll}
-              onApplyRecommendedBoundary={() => {
-                setCalibration({
-                  p1: { x: 202, y: 526 },
-                  p2: { x: 322, y: 526 },
-                  realLength: 2,
-                  unit: "m",
-                  pixelsPerCm: 0.5983870967741935,
-                  isCalibrated: true,
-                });
-                setBoundary({
-                  vertices: [
-                    { x: 172, y: 110 },
-                    { x: 636, y: 110 },
-                    { x: 636, y: 285 },
-                    { x: 654, y: 285 },
-                    { x: 654, y: 457 },
-                    { x: 172, y: 457 },
-                  ],
-                  isClosed: true,
-                  selectedVertexIndex: null,
-                  gridSnap: true,
-                });
-              }}
+              onSaved={() => { savedDraftRef.current = true; }}
             />
           )}
         </div>
       </div>
-    </AppShell>
+      </AppShell>
+    </div>
   );
 }

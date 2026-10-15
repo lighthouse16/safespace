@@ -205,12 +205,12 @@ export function FloorplanDropzone({
           </button>
 
           <p className="mt-4 text-[11px] text-[#8C9BA5]">
-            Supported formats: PDF, PNG, JPG, DWG
+            Supported formats: PNG, JPG, SVG (PDF preview only)
           </p>
           <p className="mt-0.5 text-[11px] text-[#8C9BA5]">
-            Maximum file size: 50 MB
+            Maximum file size: 25 MB
           </p>
-          <p className="sr-only">
+          <p className="mt-1 text-[11px] text-[#647078]">
             Selected file stays on this device. No file is sent to external servers.
           </p>
         </div>

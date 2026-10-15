@@ -1,13 +1,7 @@
 import Link from "next/link";
 import type { ReactNode } from "react";
 import { BrandMark } from "@/components/brand/brand-mark";
-import {
-  Home,
-  FileText,
-  Building2,
-  Users,
-  Settings,
-} from "lucide-react";
+import { Home, FileText } from "lucide-react";
 
 export type AppShellProps = {
   children?: ReactNode;
@@ -48,28 +42,7 @@ export function AppShell({
           ) : null}
         </div>
 
-        {/* Header Right Actions: Help & User Profile Avatar */}
-        <div className="flex items-center gap-3">
-          <a
-            href="#help"
-            aria-label="Help and support"
-            className="flex size-8 items-center justify-center rounded-full border border-[#E2E6E8] text-xs font-semibold text-[#647078] hover:border-[#CBD5E1] hover:text-[#17252B] transition-colors"
-          >
-            ?
-          </a>
-          <a
-            href="#profile"
-            aria-label="User profile Jordan Diaz"
-            className="flex items-center gap-2 rounded-full border border-[#E2E6E8] py-0.5 pl-0.5 pr-2.5 text-xs font-semibold text-[#17252B] hover:bg-[#F7F8F8] transition-colors"
-          >
-            <span className="flex size-7 items-center justify-center rounded-full bg-[#E2E6E8] text-[11px] font-bold text-[#17252B]">
-              JD
-            </span>
-            <span className="text-[9px] text-[#647078]" aria-hidden="true">
-              ▼
-            </span>
-          </a>
-        </div>
+
       </header>
 
       {/* Main Layout Body: Left Sidebar + Content Canvas */}
@@ -105,29 +78,7 @@ export function AppShell({
               <span>Assessments</span>
             </Link>
 
-            <Link
-              href="#locations"
-              className="flex items-center gap-3 rounded-lg px-3 py-2 text-[#647078] hover:bg-[#F7F8F8] hover:text-[#17252B] transition-colors"
-            >
-              <Building2 size={18} strokeWidth={1.8} aria-hidden="true" />
-              <span>Locations</span>
-            </Link>
 
-            <Link
-              href="#team"
-              className="flex items-center gap-3 rounded-lg px-3 py-2 text-[#647078] hover:bg-[#F7F8F8] hover:text-[#17252B] transition-colors"
-            >
-              <Users size={18} strokeWidth={1.8} aria-hidden="true" />
-              <span>Team</span>
-            </Link>
-
-            <Link
-              href="#settings"
-              className="flex items-center gap-3 rounded-lg px-3 py-2 text-[#647078] hover:bg-[#F7F8F8] hover:text-[#17252B] transition-colors"
-            >
-              <Settings size={18} strokeWidth={1.8} aria-hidden="true" />
-              <span>Settings</span>
-            </Link>
           </nav>
 
           {/* Current Assessment Card Widget in Sidebar (Workspace only) */}
@@ -137,7 +88,7 @@ export function AppShell({
                 Current assessment
               </p>
               <p className="mt-1 font-semibold text-[#17252B] truncate">
-                {assessmentName || "Unit A12 accessibility review"}
+                {assessmentName || facilityName || spaceName}
               </p>
               {facilityName ? (
                 <p className="text-[#647078] truncate">{facilityName}</p>

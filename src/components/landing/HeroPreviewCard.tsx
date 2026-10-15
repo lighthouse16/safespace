@@ -18,7 +18,7 @@ export function HeroPreviewCard() {
       aria-label="SafeSpace Workspace Preview"
     >
       {/* Window Top Bar / Header */}
-      <div className="flex h-14 items-center justify-between border-b border-[#EEF2F5] px-4 sm:px-6">
+      <div className="flex min-h-14 flex-wrap items-center justify-between gap-x-2 border-b border-[#EEF2F5] px-4 py-2 sm:h-14 sm:px-6 sm:py-0">
         <div className="flex items-center gap-6 sm:gap-8">
           <BrandMark height={22} className="shrink-0" />
           <nav
@@ -34,20 +34,9 @@ export function HeroPreviewCard() {
             <span className="text-[#8C9BA5] cursor-default hidden sm:inline">Report</span>
           </nav>
         </div>
-        <div className="flex items-center gap-2">
-          <button
-            type="button"
-            className="rounded-lg bg-[#073D38] px-3.5 py-1.5 text-xs font-semibold text-white shadow-xs transition hover:bg-[#0B514B] cursor-default"
-          >
-            Export report
-          </button>
-          <div
-            aria-hidden="true"
-            className="flex size-7.5 items-center justify-center rounded-lg border border-[#E2E8F0] text-[#718096] cursor-default"
-          >
-            <span className="font-bold tracking-widest text-xs leading-none">···</span>
-          </div>
-        </div>
+        <span className="text-[10px] sm:text-xs font-semibold text-[#52636B] text-right">
+          Illustrative sample · Not an assessment
+        </span>
       </div>
 
       {/* Main Workspace Body */}

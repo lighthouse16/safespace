@@ -281,8 +281,8 @@ export function BoundaryDraftCanvas({
     ? "cursor-crosshair"
     : "cursor-default";
 
-  // Approximate area in m²
-  const approximateAreaM2 = boundary.vertices.length >= 3 && calibration.pixelsPerCm
+  // Approximate area in m² for a closed, calibrated boundary.
+  const approximateAreaM2 = boundary.isClosed && boundary.vertices.length >= 3 && calibration.isCalibrated && calibration.pixelsPerCm && calibration.pixelsPerCm > 0
     ? (() => {
         let areaPx = 0;
         for (let i = 0; i < boundary.vertices.length; i++) {
@@ -304,7 +304,7 @@ export function BoundaryDraftCanvas({
           <FileText size={20} strokeWidth={1.8} className="text-[#17252B] shrink-0" />
           <div className="min-w-0">
             <p className="text-xs text-[#647078]">Assessment</p>
-            <p className="font-semibold text-sm text-[#17252B] truncate">{assessmentName || "Unit A12 accessibility review"}</p>
+            <p className="font-semibold text-sm text-[#17252B] truncate">{assessmentName || "Not provided"}</p>
           </div>
         </div>
 
@@ -312,7 +312,7 @@ export function BoundaryDraftCanvas({
           <Building2 size={20} strokeWidth={1.8} className="text-[#17252B] shrink-0" />
           <div className="min-w-0">
             <p className="text-xs text-[#647078]">Facility</p>
-            <p className="font-semibold text-sm text-[#17252B] truncate">{facilityName || "Harbor View Residence"}</p>
+            <p className="font-semibold text-sm text-[#17252B] truncate">{facilityName || "Not provided"}</p>
           </div>
         </div>
 
@@ -320,7 +320,7 @@ export function BoundaryDraftCanvas({
           <Layers size={20} strokeWidth={1.8} className="text-[#17252B] shrink-0" />
           <div className="min-w-0">
             <p className="text-xs text-[#647078]">Space or area</p>
-            <p className="font-semibold text-sm text-[#17252B] truncate">{spaceName || "Living room & corridor"}</p>
+            <p className="font-semibold text-sm text-[#17252B] truncate">{spaceName || "Not provided"}</p>
           </div>
         </div>
       </div>
@@ -431,39 +431,6 @@ export function BoundaryDraftCanvas({
                       </div>
 
                       <div className="flex flex-wrap items-center gap-2 pt-1">
-                        {boundary.vertices.length === 0 && (
-                          <button
-                            type="button"
-                            onClick={() => {
-                              if (!calibration.isCalibrated) {
-                                onUpdateCalibration({
-                                  p1: { x: 202, y: 526 },
-                                  p2: { x: 322, y: 526 },
-                                  realLength: 2,
-                                  unit: "m",
-                                  pixelsPerCm: 0.5983870967741935,
-                                  isCalibrated: true,
-                                });
-                              }
-                              onUpdateBoundary({
-                                vertices: [
-                                  { x: 172, y: 110 },
-                                  { x: 636, y: 110 },
-                                  { x: 636, y: 285 },
-                                  { x: 654, y: 285 },
-                                  { x: 654, y: 457 },
-                                  { x: 172, y: 457 },
-                                ],
-                                isClosed: true,
-                                selectedVertexIndex: null,
-                                gridSnap: true,
-                              });
-                            }}
-                            className="w-full rounded-lg bg-[#E6F0EE] border border-[#0B514B]/30 px-3 py-2 font-semibold text-[#0B514B] hover:bg-[#d6e8e5] transition cursor-pointer"
-                          >
-                            Use recommended boundary
-                          </button>
-                        )}
                         <button
                           type="button"
                           onClick={handleUndoVertex}
@@ -577,13 +544,13 @@ export function BoundaryDraftCanvas({
             <div>
               <p className="text-[#647078]">Boundary progress</p>
               <p className="mt-0.5 font-bold text-[#17252B]">
-                {boundary.vertices.length > 0 ? `${boundary.vertices.length} vertices` : "6 vertices"}
+                {boundary.vertices.length} vertices
               </p>
             </div>
             <div>
               <p className="text-[#647078]">Area (auto-calc)</p>
               <p className="mt-0.5 font-bold text-[#17252B]">
-                {approximateAreaM2 !== "—" ? `${approximateAreaM2} m²` : "42.8 m²"}
+                {approximateAreaM2 !== "—" ? `${approximateAreaM2} m²` : "Not measured"}
               </p>
             </div>
           </div>
@@ -761,13 +728,9 @@ export function BoundaryDraftCanvas({
               <rect width={CANVAS_WIDTH} height={CANVAS_HEIGHT} fill="#FFFFFF" />
 
               {/* Image Floorplan */}
-              {source === "upload" && (
+              {source === "upload" && uploadedFile?.previewAvailable && (
                 <image
-                  href={
-                    uploadedFile && uploadedFile.previewAvailable
-                      ? uploadedFile.objectUrl
-                      : "/intake-step3-floorplan.png"
-                  }
+                  href={uploadedFile.objectUrl}
                   x="0"
                   y="0"
                   width={CANVAS_WIDTH}
@@ -815,25 +778,29 @@ export function BoundaryDraftCanvas({
                         stroke="#FFFFFF"
                         strokeWidth={2}
                       />
-                      {/* Midpoint measurement label */}
-                      <rect
-                        x={(calibration.p1.x + calibration.p2.x) / 2 - 28}
-                        y={(calibration.p1.y + calibration.p2.y) / 2 - 18}
-                        width={56}
-                        height={18}
-                        rx={4}
-                        fill="#0B514B"
-                      />
-                      <text
-                        x={(calibration.p1.x + calibration.p2.x) / 2}
-                        y={(calibration.p1.y + calibration.p2.y) / 2 - 5}
-                        fill="#FFFFFF"
-                        fontSize="10"
-                        fontWeight="bold"
-                        textAnchor="middle"
-                      >
-                        {calibration.realLength ? `${calibration.realLength} ${calibration.unit}` : "3.0 m"}
-                      </text>
+                      {calibration.realLength != null && calibration.realLength > 0 && (
+                        <>
+                          {/* Midpoint measurement label */}
+                          <rect
+                            x={(calibration.p1.x + calibration.p2.x) / 2 - 28}
+                            y={(calibration.p1.y + calibration.p2.y) / 2 - 18}
+                            width={56}
+                            height={18}
+                            rx={4}
+                            fill="#0B514B"
+                          />
+                          <text
+                            x={(calibration.p1.x + calibration.p2.x) / 2}
+                            y={(calibration.p1.y + calibration.p2.y) / 2 - 5}
+                            fill="#FFFFFF"
+                            fontSize="10"
+                            fontWeight="bold"
+                            textAnchor="middle"
+                          >
+                            {`${calibration.realLength} ${calibration.unit}`}
+                          </text>
+                        </>
+                      )}
                     </g>
                   ) : (
                     pointerPos &&

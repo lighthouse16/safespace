@@ -33,7 +33,7 @@ function formatMovePlainLanguage(move: {
   }
   const moveStr = parts.length > 0 ? parts.join(", ") : `${move.distanceCm} cm`;
   const rotStr = move.rotationDelta ? ` and rotate ${move.rotationDelta}°` : "";
-  return `Move ${move.furnitureName} ${moveStr}${rotStr} to improve movement clearance.`;
+  return `Move ${move.furnitureName} ${moveStr}${rotStr}.`;
 }
 
 export function Stage5Improve() {
@@ -231,11 +231,7 @@ export function Stage5Improve() {
     }
   };
 
-  const optionMeta = [
-    { tag: "Recommended", benefit: "Best overall improvement" },
-    { tag: "Alternative layout", benefit: "Good improvement" },
-    { tag: "Minimal changes", benefit: "Small improvement" },
-  ];
+  const afterEval = isAppliedReviewMode ? currentFindings : activeCandidate?.evaluation;
 
   return (
     <div className="flex flex-col h-full w-full overflow-y-auto bg-[#F7F8F8] p-4 sm:p-6 lg:p-8">
@@ -305,7 +301,6 @@ export function Stage5Improve() {
             <div className="grid grid-cols-1 md:grid-cols-3 gap-3.5">
               {candidates.slice(0, 3).map((cand, idx) => {
                 const isSelected = activeCandidate?.id === cand.id;
-                const meta = optionMeta[idx] || { tag: "Alternative layout", benefit: "Improved route" };
 
                 return (
                   <button
@@ -337,19 +332,15 @@ export function Stage5Improve() {
                         <span className="text-sm font-bold text-[#17252B] block leading-snug">
                           Option {idx + 1}
                         </span>
-                        <span
-                          className={`text-xs font-semibold ${
-                            idx === 0 ? "text-[#0B514B]" : "text-[#647078]"
-                          }`}
-                        >
-                          {meta.tag}
+                        <span className="text-xs font-semibold text-[#647078]">
+                          {cand.metrics.actionableDeficitsCount} deficit{cand.metrics.actionableDeficitsCount === 1 ? "" : "s"}
                         </span>
                       </div>
                     </div>
 
                     <div className="text-right">
                       <span className="text-xs text-[#647078] block">
-                        {meta.benefit}
+                        {cand.moveCount} move{cand.moveCount === 1 ? "" : "s"}
                       </span>
                     </div>
                   </button>
@@ -407,7 +398,7 @@ export function Stage5Improve() {
                     {isAppliedReviewMode ? "Before: Original Baseline" : "Before"}
                   </h3>
                   <p className="text-xs text-[#647078] mt-0.5">
-                    Current layout with identified movement and accessibility issues.
+                    Current layout evaluated against the configured movement route.
                   </p>
                 </div>
                 <div className="sr-only">
@@ -431,35 +422,21 @@ export function Stage5Improve() {
               {/* Key Issues Strip matching 10-workspace-improve.png */}
               <div className="rounded-xl border border-[#E2E6E8] bg-[#F7F8F8] p-4 space-y-2.5">
                 <span className="text-xs font-semibold text-[#647078] block">
-                  Key issues
+                  Before evaluation
                 </span>
-                <div className="grid grid-cols-3 gap-2">
+                <div className="grid grid-cols-2 gap-2">
                   <div className="flex items-center gap-2.5">
                     <AlertTriangle className="w-5 h-5 text-amber-500 shrink-0" />
-                    <div>
-                      <span className="text-lg font-bold text-[#17252B] leading-none block">3</span>
-                      <span className="text-[11px] text-[#647078] leading-tight block">Accessibility risks</span>
-                    </div>
-                  </div>
-
-                  <div className="flex items-center gap-2.5">
-                    <AlertTriangle className="w-5 h-5 text-red-600 shrink-0" />
                     <div>
                       <span className="text-lg font-bold text-[#17252B] leading-none block">
                         {beforeEval.summary.actionableDeficitsCount}
                       </span>
-                      <span className="text-[11px] text-[#647078] leading-tight block">Narrow clearances</span>
+                      <span className="text-[11px] text-[#647078] leading-tight block">Actionable deficits</span>
                     </div>
                   </div>
-
-                  <div className="flex items-center gap-2.5">
-                    <div className="size-5 rounded-full bg-slate-400 flex items-center justify-center text-white text-[11px] font-bold shrink-0">
-                      !
-                    </div>
-                    <div>
-                      <span className="text-lg font-bold text-[#17252B] leading-none block">1</span>
-                      <span className="text-[11px] text-[#647078] leading-tight block">Potential obstruction</span>
-                    </div>
+                  <div className="text-xs text-[#647078]">
+                    <span className="font-semibold block text-[#17252B]">Route status</span>
+                    {beforeEval.summary.routeFeasibility.replaceAll("-", " ")}
                   </div>
                 </div>
               </div>
@@ -482,7 +459,11 @@ export function Stage5Improve() {
                       : "Proposed"}
                   </h3>
                   <p className="text-xs text-[#647078] mt-0.5">
-                    Updated layout with improved movement clearance and reduced risks.
+                    {isAppliedReviewMode
+                      ? "Current accepted draft compared with original baseline."
+                      : activeCandidate
+                      ? "Candidate layout; review measured findings before applying."
+                      : "No measured layout alternative available."}
                   </p>
                 </div>
                 <div className="sr-only">
@@ -490,7 +471,7 @@ export function Stage5Improve() {
                     ? `${currentFindings.summary.actionableDeficitsCount} deficit${currentFindings.summary.actionableDeficitsCount === 1 ? "" : "s"}`
                     : activeCandidate
                     ? `${activeCandidate.metrics.actionableDeficitsCount} deficit${activeCandidate.metrics.actionableDeficitsCount === 1 ? "" : "s"}`
-                    : "0 deficits"}
+                    : "No alternative evaluated"}
                 </div>
               </div>
 
@@ -539,24 +520,9 @@ export function Stage5Improve() {
                         </div>
                       ))
                     ) : (
-                      <>
-                        <div className="flex items-start gap-2 text-xs text-[#17252B]">
-                          <span className="size-5 rounded-full bg-[#0B514B] text-white flex items-center justify-center text-[10px] font-bold shrink-0 mt-0.5">
-                            1
-                          </span>
-                          <span className="leading-snug">
-                            Move side chair 45 cm toward wall to improve movement clearance.
-                          </span>
-                        </div>
-                        <div className="flex items-start gap-2 text-xs text-[#17252B]">
-                          <span className="size-5 rounded-full bg-[#0B514B] text-white flex items-center justify-center text-[10px] font-bold shrink-0 mt-0.5">
-                            2
-                          </span>
-                          <span className="leading-snug">
-                            Shift console table 30 cm to widen corridor and maintain clear route.
-                          </span>
-                        </div>
-                      </>
+                      <p className="text-xs text-[#647078]">
+                        {isAppliedReviewMode ? "Accepted layout; move instructions available when selecting an alternative." : "No furniture moves in this option."}
+                      </p>
                     )}
                   </div>
                 </div>
@@ -564,34 +530,28 @@ export function Stage5Improve() {
                 {/* Right: Improvement Summary Mint Card */}
                 <div className="rounded-xl bg-[#EBF7F5] border border-[#CDEAE3] p-3.5 space-y-1.5 flex flex-col justify-center">
                   <span className="text-[11px] font-semibold text-[#0B514B] block">
-                    Improvement summary
+                    {afterEval ? "Measured layout summary" : "No alternative measured"}
                   </span>
-                  <div className="grid grid-cols-3 gap-2 text-left">
-                    <div>
-                      <span className="text-lg font-bold text-[#0B514B] leading-none block">
-                        67%
-                      </span>
-                      <span className="text-[10px] text-[#647078] leading-tight block mt-0.5">
-                        Fewer accessibility risks
-                      </span>
+                  {afterEval && (
+                    <div className="grid grid-cols-2 gap-2 text-left">
+                      <div>
+                        <span className="text-lg font-bold text-[#0B514B] leading-none block">
+                          {afterEval.summary.actionableDeficitsCount}
+                        </span>
+                        <span className="text-[10px] text-[#647078] leading-tight block mt-0.5">
+                          Actionable deficits
+                        </span>
+                      </div>
+                      <div>
+                        <span className="text-xs font-bold text-[#0B514B] block">
+                          {afterEval.summary.routeFeasibility.replaceAll("-", " ")}
+                        </span>
+                        <span className="text-[10px] text-[#647078] leading-tight block mt-0.5">
+                          Route status
+                        </span>
+                      </div>
                     </div>
-                    <div>
-                      <span className="text-lg font-bold text-[#0B514B] leading-none block">
-                        +45 cm
-                      </span>
-                      <span className="text-[10px] text-[#647078] leading-tight block mt-0.5">
-                        Minimum clearance width
-                      </span>
-                    </div>
-                    <div>
-                      <span className="text-lg font-bold text-[#0B514B] leading-none block">
-                        0
-                      </span>
-                      <span className="text-[10px] text-[#647078] leading-tight block mt-0.5">
-                        Major obstructions
-                      </span>
-                    </div>
-                  </div>
+                  )}
                 </div>
               </div>
             </div>

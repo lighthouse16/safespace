@@ -37,16 +37,6 @@ import { ReportModal } from "../src/components/workflow/ReportModal";
 import { MOBILITY_PROFILES } from "../src/lib/spatial-model";
 import AssessmentsPage from "../src/app/assessments/page";
 
-// Retired page components
-import RetiredAnalysisPage from "../src/app/assessments/queen-care-clinic/analysis/page";
-import RetiredModelPage from "../src/app/assessments/queen-care-clinic/model/page";
-import RetiredOptionsPage from "../src/app/assessments/queen-care-clinic/options/page";
-import RetiredComparePage from "../src/app/assessments/queen-care-clinic/options/compare/page";
-import RetiredReportPage from "../src/app/assessments/queen-care-clinic/report/page";
-import RetiredLegacyReportPage from "../src/app/reports/queen-care-clinic/page";
-import RetiredReviewsPage from "../src/app/reviews/page";
-import RetiredClinicReviewPage from "../src/app/reviews/queen-care-clinic/page";
-
 const RETIRED_ROUTES_FILES = [
   "src/app/assessments/queen-care-clinic/analysis/page.tsx",
   "src/app/assessments/queen-care-clinic/model/page.tsx",
@@ -56,17 +46,6 @@ const RETIRED_ROUTES_FILES = [
   "src/app/reports/queen-care-clinic/page.tsx",
   "src/app/reviews/page.tsx",
   "src/app/reviews/queen-care-clinic/page.tsx",
-];
-
-const RETIRED_COMPONENTS = [
-  { name: "analysis", comp: RetiredAnalysisPage },
-  { name: "model", comp: RetiredModelPage },
-  { name: "options", comp: RetiredOptionsPage },
-  { name: "compare", comp: RetiredComparePage },
-  { name: "report", comp: RetiredReportPage },
-  { name: "legacy-report", comp: RetiredLegacyReportPage },
-  { name: "reviews", comp: RetiredReviewsPage },
-  { name: "clinic-review", comp: RetiredClinicReviewPage },
 ];
 
 const FABRICATED_MARKERS = [
@@ -141,41 +120,9 @@ function createValidTestAssessment(): PersistedAssessmentState {
 // 1. Retired Routes Decommissioning & Truthfulness
 // ---------------------------------------------------------------------------
 
-test("Adversarial QA: Retired routes do NOT contain Server Component redirect()", () => {
+test("Adversarial QA: Retired route stubs are absent", () => {
   for (const relPath of RETIRED_ROUTES_FILES) {
-    const fullPath = path.resolve(process.cwd(), relPath);
-    assert.ok(fs.existsSync(fullPath), `File exists: ${relPath}`);
-    const code = fs.readFileSync(fullPath, "utf-8");
-    assert.ok(
-      !code.includes("redirect("),
-      `Retired route ${relPath} must NOT call redirect()`
-    );
-    assert.ok(
-      !code.includes("next/navigation"),
-      `Retired route ${relPath} must NOT import next/navigation redirect`
-    );
-  }
-});
-
-test("Adversarial QA: Retired routes render truthful retirement notices and canonical links", () => {
-  for (const { name, comp } of RETIRED_COMPONENTS) {
-    const html = renderToStaticMarkup(React.createElement(comp));
-    assert.ok(
-      html.includes("Legacy Route Retired"),
-      `Route ${name} must render 'Legacy Route Retired' badge`
-    );
-    assert.ok(
-      html.includes("Legacy Demonstration Route Decommissioned"),
-      `Route ${name} must announce decommissioned route`
-    );
-    assert.ok(
-      html.includes('href="/"'),
-      `Route ${name} must link to canonical workspace '/'`
-    );
-    assert.ok(
-      html.includes('href="/assessments"'),
-      `Route ${name} must link to '/assessments'`
-    );
+    assert.equal(fs.existsSync(path.resolve(process.cwd(), relPath)), false, `Retired route must stay absent: ${relPath}`);
   }
 });
 
@@ -327,17 +274,6 @@ test("Adversarial QA: handleOpenUserAssessment in AssessmentsPage switches activ
 // 2. Zero Fabricated Risk Scores, Lux Readings, Quotes, or Clinician Sign-Offs
 // ---------------------------------------------------------------------------
 
-test("Adversarial QA: Zero fabricated markers in retired components markup", () => {
-  for (const { name, comp } of RETIRED_COMPONENTS) {
-    const html = renderToStaticMarkup(React.createElement(comp));
-    for (const marker of FABRICATED_MARKERS) {
-      assert.ok(
-        !html.includes(marker),
-        `Marker "${marker}" found in retired component ${name}`
-      );
-    }
-  }
-});
 
 // ---------------------------------------------------------------------------
 // 3. Demo / User Switching & Preservation of User Assessment

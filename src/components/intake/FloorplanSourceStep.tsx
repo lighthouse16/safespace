@@ -91,7 +91,7 @@ export function FloorplanSourceStep({
                 </span>
               </div>
               <p className="mt-1 text-xs text-[#647078]">
-                Use a PDF, PNG or DWG file of your current floorplan.
+                Use a PNG, JPG, or SVG image to calibrate and trace. PDF preview only.
               </p>
               <span className="sr-only">
                 Import PNG, JPEG, or SVG to calibrate scale and trace boundaries. PDF supports browser preview only.

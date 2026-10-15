@@ -74,24 +74,14 @@ export function Stage1Layout() {
         tables += 1;
       } else if (cat === "cabinet" || name.includes("storage") || name.includes("wardrobe") || name.includes("cabinet")) {
         storage += 1;
-      } else if (cat === "medical-fixture" || name.includes("appliance") || name.includes("fridge")) {
-        appliances += 1;
       } else if (name.includes("bath") || name.includes("toilet") || name.includes("sink") || name.includes("sanitary")) {
         sanitary += 1;
-      } else {
-        // distribute remaining
+      } else if (name.includes("appliance") || name.includes("fridge") || name.includes("dispenser")) {
         appliances += 1;
       }
     }
 
-    return {
-      beds: beds || 2,
-      sofas: sofas || 3,
-      tables: tables || 2,
-      storage: storage || 4,
-      appliances: appliances || 4,
-      sanitary: sanitary || 4,
-    };
+    return { beds, sofas, tables, storage, appliances, sanitary };
   }, [furniture]);
 
   return (

@@ -2,7 +2,6 @@ import Link from "next/link";
 import {
   ArrowRight,
   Check,
-  ChevronDown,
   FileUp,
   Footprints,
   SlidersHorizontal,
@@ -21,23 +20,8 @@ export default function HomePage() {
             <BrandMark />
           </Link>
 
-          {/* Center Navigation Links */}
           <nav aria-label="Public navigation" className="hidden items-center gap-8 text-sm font-medium text-[#647078] md:flex">
-            <div className="flex items-center gap-1 hover:text-[#17252B] cursor-pointer">
-              <span>Product</span>
-              <ChevronDown size={14} className="text-[#647078]" />
-            </div>
-            <div className="flex items-center gap-1 hover:text-[#17252B] cursor-pointer">
-              <span>Use cases</span>
-              <ChevronDown size={14} className="text-[#647078]" />
-            </div>
-            <div className="flex items-center gap-1 hover:text-[#17252B] cursor-pointer">
-              <span>Resources</span>
-              <ChevronDown size={14} className="text-[#647078]" />
-            </div>
-            <Link href="#pricing" className="hover:text-[#17252B]">
-              Pricing
-            </Link>
+            <Link href="/assessments" className="hover:text-[#17252B]">Assessments</Link>
           </nav>
 
           {/* Right Header Actions */}
@@ -124,7 +108,7 @@ export default function HomePage() {
                 <h3 className="text-base font-bold text-[#17252B]">Import a floorplan</h3>
               </div>
               <p className="mt-4 text-xs leading-relaxed text-[#647078]">
-                Upload your existing floorplan (PDF, PNG or DWG) and get started in seconds.
+                Upload a PNG, JPG, or SVG floorplan to calibrate and trace. PDF preview only.
               </p>
             </div>
 

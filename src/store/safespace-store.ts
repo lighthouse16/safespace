@@ -38,6 +38,24 @@ import {
 } from "@/lib/spatial";
 import {
   SAFESPACE_STORAGE_VERSION,
+  type AssessmentMetadata,
+  type CalibrationProvenance,
+  type PersistedAssessmentState,
+} from "@/lib/storage/persistence";
+import type { PersistedFloorplanImage } from "@/lib/storage/image-db";
+import type { DeletionResult } from "@/lib/storage/coordinated-storage";
+import { browserAssessmentRepository } from "@/lib/services/assessment-repository";
+
+import {
+  isValidFootprintPlacement,
+  findFeasibleFootprintPlacement,
+  furnitureToWorldFootprint,
+  wallToObstacleFootprint,
+  doorToObstacleFootprint,
+  type ObstacleFootprint,
+} from "@/lib/spatial";
+
+const {
   savePersistedAssessment,
   loadPersistedAssessment,
   getPersistedAssessment,
@@ -47,28 +65,11 @@ import {
   addPendingMediaCleanup,
   getPendingMediaCleanups,
   removePendingMediaCleanup,
-  type AssessmentMetadata,
-  type CalibrationProvenance,
-  type PersistedAssessmentState,
-} from "@/lib/storage/persistence";
-import {
   saveFloorplanImage,
   getFloorplanImage,
   deleteFloorplanImage,
-  type PersistedFloorplanImage,
-} from "@/lib/storage/image-db";
-import {
   coordinatedDeleteAssessment,
-  type DeletionResult,
-} from "@/lib/storage/coordinated-storage";
-import {
-  isValidFootprintPlacement,
-  findFeasibleFootprintPlacement,
-  furnitureToWorldFootprint,
-  wallToObstacleFootprint,
-  doorToObstacleFootprint,
-  type ObstacleFootprint,
-} from "@/lib/spatial";
+} = browserAssessmentRepository;
 
 export type WorkflowStage = "layout" | "profile" | "routes" | "analysis" | "improve";
 

@@ -43,7 +43,7 @@ export type IntakeReviewStepProps = {
   boundary: BoundaryState;
   onBackToDraft: () => void;
   onResetAll: () => void;
-  onApplyRecommendedBoundary?: () => void;
+  onSaved?: () => void;
 };
 
 export function IntakeReviewStep({
@@ -54,7 +54,7 @@ export function IntakeReviewStep({
   boundary,
   onBackToDraft,
   onResetAll,
-  onApplyRecommendedBoundary,
+  onSaved,
 }: IntakeReviewStepProps) {
   const router = useRouter();
   const createAndLoadUserAssessment = useSafeSpaceStore((s) => s.createAndLoadUserAssessment);
@@ -129,6 +129,7 @@ export function IntakeReviewStep({
         return;
       }
 
+      onSaved?.();
       if (res.previousMediaCleanupFailed) {
         setIsSubmitting(false);
         setCleanupWarning(
@@ -228,7 +229,7 @@ export function IntakeReviewStep({
                 <span>Assessment name</span>
               </div>
               <span className="font-semibold text-[#17252B] text-right truncate max-w-[240px]">
-                {details.assessmentName || "Unit A12 accessibility review"}
+                {details.assessmentName.trim() || "Not provided"}
               </span>
             </div>
 
@@ -238,7 +239,7 @@ export function IntakeReviewStep({
                 <span>Facility or residence</span>
               </div>
               <span className="font-medium text-[#17252B] text-right truncate max-w-[240px]">
-                {details.facilityName || "Harbor View Residence"}
+                {details.facilityName.trim() || "Not provided"}
               </span>
             </div>
 
@@ -248,7 +249,7 @@ export function IntakeReviewStep({
                 <span>Space or area name</span>
               </div>
               <span className="font-medium text-[#17252B] text-right truncate max-w-[240px]">
-                {details.spaceName || "Living room & corridor"}
+                {details.spaceName.trim() || "Not provided"}
               </span>
             </div>
 
@@ -260,7 +261,7 @@ export function IntakeReviewStep({
               <span className="font-medium text-[#17252B]">
                 {details.environmentType === "residence"
                   ? "Residential"
-                  : ENVIRONMENT_TYPE_LABELS[details.environmentType] || "Residential"}
+                  : ENVIRONMENT_TYPE_LABELS[details.environmentType] || "Not provided"}
               </span>
             </div>
 
@@ -287,7 +288,7 @@ export function IntakeReviewStep({
                 <User size={18} strokeWidth={1.8} className="text-[#647078]" />
                 <span>Created by</span>
               </div>
-              <span className="font-medium text-[#17252B]">Jordan Diaz</span>
+              <span className="font-medium text-[#17252B]">Not recorded</span>
             </div>
 
             <div className="flex items-start justify-between py-3 gap-4">
@@ -347,17 +348,6 @@ export function IntakeReviewStep({
                         opacity="0.92"
                       />
 
-                      {/* Ghost Boundary Polygon when none traced */}
-                      {boundary.vertices.length === 0 && (
-                        <polygon
-                          points="172,110 636,110 636,285 654,285 654,457 172,457"
-                          fill="rgba(11, 81, 75, 0.08)"
-                          stroke="#0B514B"
-                          strokeWidth={2.5}
-                          strokeDasharray="6 4"
-                          opacity={0.65}
-                        />
-                      )}
 
                       {/* Boundary Polygon */}
                       {boundary.isClosed && boundary.vertices.length >= 3 ? (
@@ -401,24 +391,8 @@ export function IntakeReviewStep({
                       />
                     </div>
 
-                    {/* Action Banner when no boundary has been traced */}
-                    {boundary.vertices.length === 0 && onApplyRecommendedBoundary && (
-                      <div className="absolute inset-x-3 bottom-3 rounded-lg bg-white/95 backdrop-blur-xs border border-[#0B514B]/30 p-2.5 shadow-md flex items-center justify-between gap-2 z-10">
-                        <div className="min-w-0 text-left">
-                          <p className="text-xs font-bold text-[#17252B]">No custom boundary traced</p>
-                          <p className="text-[10px] text-[#647078] truncate">Apply verified outline to proceed</p>
-                        </div>
-                        <button
-                          type="button"
-                          onClick={onApplyRecommendedBoundary}
-                          className="rounded-lg bg-[#0B514B] px-3 py-1.5 text-xs font-semibold text-white shadow-xs hover:bg-[#073D38] transition cursor-pointer shrink-0"
-                        >
-                          Use recommended boundary
-                        </button>
-                      </div>
-                    )}
-                  </div>
-                );
+                    </div>
+                  );
               })()}
               <span className="sr-only">
                 Boundary contains {boundary.vertices.length} traced vertices using current scale calibration ({calibration.pixelsPerCm ? calibration.pixelsPerCm.toFixed(2) : "0"} px/cm).
@@ -437,7 +411,7 @@ export function IntakeReviewStep({
                   <div>
                     <p className="text-[11px] text-[#647078]">Scale</p>
                     <p className="mt-0.5 font-bold text-[#17252B]">
-                      {calibration.pixelsPerCm ? `1:${Math.round(100 / (calibration.pixelsPerCm))}` : "1:100"}
+                      {calibration.pixelsPerCm ? `${calibration.pixelsPerCm.toFixed(2)} px/cm` : "Not calibrated"}
                     </p>
                   </div>
                 </div>
@@ -447,7 +421,7 @@ export function IntakeReviewStep({
                   <div>
                     <p className="text-[11px] text-[#647078]">Boundary type</p>
                     <p className="mt-0.5 font-bold text-[#17252B]">
-                      Traced apartment boundary
+                      {boundary.isClosed ? "Closed boundary" : boundary.vertices.length ? "Boundary in progress" : "Not drawn"}
                     </p>
                   </div>
                 </div>
@@ -458,8 +432,8 @@ export function IntakeReviewStep({
                     <p className="text-[11px] text-[#647078]">Estimated dimensions</p>
                     <p className="mt-0.5 font-bold text-[#17252B]">
                       {previewValidation.boundsCm
-                        ? `${(previewValidation.boundsCm.widthCm / 100).toFixed(1)} m (W) × ${(previewValidation.boundsCm.heightCm / 100).toFixed(1)} m (L) (≈ ${(previewValidation.areaCm2 ? previewValidation.areaCm2 / 10000 : 0).toFixed(1)} m²)`
-                        : "11.8 m (W) × 9.4 m (L) (≈ 110.9 m²)"}
+                        ? `${(previewValidation.boundsCm.widthCm / 100).toFixed(1)} m (W) × ${(previewValidation.boundsCm.heightCm / 100).toFixed(1)} m (L)${previewValidation.areaCm2 !== undefined ? ` (≈ ${(previewValidation.areaCm2 / 10000).toFixed(1)} m²)` : ""}`
+                        : "Not measured"}
                     </p>
                   </div>
                 </div>
@@ -469,7 +443,7 @@ export function IntakeReviewStep({
                   <div className="min-w-0">
                     <p className="text-[11px] text-[#647078]">Source file</p>
                     <p className="mt-0.5 font-bold text-[#17252B] truncate">
-                      {uploadedFile?.name || "HarborView_A12_Floorplan.png"}
+                      {uploadedFile?.name || "Manual drawing"}
                     </p>
                   </div>
                 </div>
@@ -485,10 +459,10 @@ export function IntakeReviewStep({
         </span>
         <div>
           <p className="font-bold text-[#17252B]">
-            Confirming intake creates an independent user assessment.
+            Confirming intake saves this assessment in this browser.
           </p>
           <p className="mt-0.5 text-[#073D38]">
-            This will save the intake information, create a new user assessment, and open it in the main workspace so your team can start reviewing and making changes.
+            Only one assessment is saved on this device. Confirming a new one replaces the previous saved assessment after your confirmation, then opens the local workspace. Uploaded floorplan images are stored in this browser’s IndexedDB on this device and persist across reloads; they are not backed up to an account.
           </p>
         </div>
       </div>
