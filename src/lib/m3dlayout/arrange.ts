@@ -34,6 +34,11 @@ function sizeOf(className: string): Size {
   return DEFAULT_SIZE[className] ?? { width: 70, depth: 60, height: 75 };
 }
 
+export function pieceFootprint(className: string): { width: number; depth: number } {
+  const size = sizeOf(className);
+  return { width: size.width, depth: size.depth };
+}
+
 function fit(size: Size, box: Box): Size {
   return {
     width: Math.min(size.width, Math.max(30, box.width - 24)),

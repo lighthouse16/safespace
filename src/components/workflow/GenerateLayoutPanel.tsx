@@ -96,7 +96,7 @@ export function GenerateLayoutPanel() {
       <div>
         <h2 className="text-xs font-bold text-[#0B514B] uppercase tracking-wider">Generate layout</h2>
         <p className="text-[11px] text-[#647078] leading-snug mt-1">
-          Rooms are built from the outline you traced, so that shape is the floor. A sofa sits in front of the television, chairs sit around the table, and the bathtub stays on the bathroom wall. Objects the model invents, such as extra beds or plants, are left out.
+          Rooms are built from the outline you traced. A room with more furniture gets a larger share of that outline, so the living room does not swallow the plan. A sofa sits in front of the television, chairs sit around the table, and the bathtub stays on the bathroom wall.
         </p>
       </div>
 

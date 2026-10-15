@@ -187,7 +187,7 @@ test("rooms fill the traced outline instead of a rectangle around it", () => {
     { x: 0, y: 320 },
   ];
   const requests = splitRoomRequests(
-    "a living room with a sofa and a television, a kitchen with a table and 4 chairs, a bathroom with a toilet and a bathtub",
+    "a living room with a sofa, a coffee table, and a television, a kitchen with a countertop, a table with 6 chairs, a fridge, a cupboard, a bathroom with a toilet, a sink, and a bathtub",
   );
   const plan = composeRoomFrames(requests, { polygon: territory });
   assert.ok(plan);
@@ -209,6 +209,10 @@ test("rooms fill the traced outline instead of a rectangle around it", () => {
   assert.ok(covered >= 4);
   const roomArea = plan.rooms.reduce((sum, room) => sum + polygonArea(room.polygon ?? []), 0);
   assert.ok(Math.abs(roomArea - polygonArea(territory)) < 1);
+  const areas = plan.rooms.map((room) => polygonArea(room.polygon ?? []));
+  assert.ok(areas[0] < areas[1]);
+  assert.ok(areas[0] < roomArea * 0.45);
+  assert.ok(areas[2] > roomArea * 0.18);
 
   const living = plan.rooms[0];
   const furniture = arrangeRoomFurniture({

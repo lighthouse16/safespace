@@ -3,6 +3,7 @@ import { isPointInPolygon } from "@/lib/spatial/geometry/polygons";
 import type { Point2D, RoomCategory, SpatialRoom, SpatialWall } from "@/lib/spatial-model";
 import type { LayoutFrame } from "./scene-adapter";
 import type { PromptTranslation, RoomType } from "./prompt-agent";
+import { pieceFootprint } from "./arrange";
 
 export type FramedRoom = {
   id: string;
@@ -114,89 +115,72 @@ function cellKey(cell: GridCell): string {
   return `${cell.col},${cell.row}`;
 }
 
-function pickSeeds(cells: GridCell[], count: number): GridCell[] {
-  const used = new Set<string>();
-  const leftmost = [...cells].sort((a, b) => a.cx - b.cx || a.cy - b.cy)[0];
-  const seeds = [leftmost];
-  used.add(cellKey(leftmost));
-  const pool = cells.filter((cell) => !used.has(cellKey(cell)));
-  if (count <= 1 || pool.length === 0) return seeds;
-  const maxX = Math.max(...pool.map((cell) => cell.x1));
-  let column = pool.filter((cell) => Math.abs(cell.x1 - maxX) < 0.5).sort((a, b) => a.cy - b.cy);
-  if (column.length < count - 1) column = [...pool].sort((a, b) => b.cx - a.cx || a.cy - b.cy);
-  for (let index = 0; index < count - 1; index += 1) {
-    const slot = count === 2 ? 0 : Math.round((index * (column.length - 1)) / (count - 2));
-    let cell = column[Math.min(slot, column.length - 1)];
-    if (!cell || used.has(cellKey(cell))) cell = pool.find((item) => !used.has(cellKey(item))) ?? cell;
-    if (!cell) break;
-    seeds.push(cell);
-    used.add(cellKey(cell));
+function contentWeight(request: PromptTranslation, spec: (typeof ROOM_SPEC)[RoomType]): number {
+  const pieces = request.pieces ?? [];
+  if (pieces.length === 0) return spec.width * spec.depth;
+  let area = 0;
+  for (const piece of pieces) {
+    const size = pieceFootprint(piece.className);
+    const count = Math.max(1, Math.min(piece.count, 10));
+    const around = piece.className.includes("chair") ? 2 : 2.6;
+    area += size.width * size.depth * count * around;
   }
-  return seeds;
+  return Math.max(area, 20000);
 }
 
-function growRooms(cells: GridCell[], targets: number[]): number[] {
-  const owner = new Map<string, number>();
-  const area = targets.map(() => 0);
-  const byKey = new Map(cells.map((cell) => [cellKey(cell), cell]));
-  const seeds = pickSeeds(cells, targets.length);
-  const claim = (cell: GridCell, room: number) => {
-    const key = cellKey(cell);
-    if (owner.has(key)) return;
-    owner.set(key, room);
-    area[room] += cell.area;
-  };
-  seeds.forEach((cell, index) => claim(cell, index));
-
-  const neighbors = (cell: GridCell): GridCell[] => {
-    const found: GridCell[] = [];
-    for (const [dCol, dRow] of [[1, 0], [-1, 0], [0, 1], [0, -1]] as const) {
-      const next = byKey.get(`${cell.col + dCol},${cell.row + dRow}`);
-      if (next) found.push(next);
-    }
-    return found;
-  };
-
-  let guard = cells.length * cells.length;
-  while (owner.size < cells.length && guard > 0) {
-    guard -= 1;
-    let room = -1;
-    let deficit = -Infinity;
-    for (let index = 0; index < targets.length; index += 1) {
-      const gap = targets[index] - area[index];
-      const canGrow = cells.some((cell) => owner.get(cellKey(cell)) === index && neighbors(cell).some((next) => !owner.has(cellKey(next))));
-      if (canGrow && gap > deficit) {
-        deficit = gap;
-        room = index;
-      }
-    }
-    if (room < 0) break;
-    const seed = seeds[room] ?? seeds[0];
-    const options = cells
-      .filter((cell) => owner.get(cellKey(cell)) === room)
-      .flatMap((cell) => neighbors(cell))
-      .filter((cell) => !owner.has(cellKey(cell)));
-    options.sort((a, b) => (a.cx - seed.cx) ** 2 + (a.cy - seed.cy) ** 2 - ((b.cx - seed.cx) ** 2 + (b.cy - seed.cy) ** 2));
-    if (options[0]) claim(options[0], room);
+function assignByShare(
+  cells: GridCell[],
+  indices: number[],
+  weights: number[],
+  roomOffset: number,
+  owners: number[],
+) {
+  if (indices.length === 0) return;
+  if (weights.length <= 1 || indices.length === 1) {
+    indices.forEach((index) => {
+      owners[index] = roomOffset;
+    });
+    return;
   }
-
-  const unassigned = () => cells.filter((cell) => !owner.has(cellKey(cell)));
-  let leftover = unassigned();
-  while (leftover.length > 0) {
-    const adjacent = leftover.find((cell) => neighbors(cell).some((next) => owner.has(cellKey(next))));
-    if (!adjacent) {
-      const room = area.indexOf(Math.min(...area));
-      leftover.forEach((cell) => claim(cell, room));
-      break;
+  const share = weights[0] / weights.reduce((sum, weight) => sum + weight, 0);
+  const minX = Math.min(...indices.map((index) => cells[index].x0));
+  const maxX = Math.max(...indices.map((index) => cells[index].x1));
+  const minY = Math.min(...indices.map((index) => cells[index].y0));
+  const maxY = Math.max(...indices.map((index) => cells[index].y1));
+  const axis: "x" | "y" = maxX - minX >= maxY - minY ? "x" : "y";
+  const edges = uniqueSorted(
+    indices.flatMap((index) => (axis === "x" ? [cells[index].x0, cells[index].x1] : [cells[index].y0, cells[index].y1])),
+  );
+  const total = indices.reduce((sum, index) => sum + cells[index].area, 0);
+  let bestScore = Infinity;
+  let bestLeft: number[] = [];
+  let bestRight: number[] = [];
+  for (const edge of edges) {
+    const left = indices.filter((index) => (axis === "x" ? cells[index].cx : cells[index].cy) < edge);
+    const right = indices.filter((index) => (axis === "x" ? cells[index].cx : cells[index].cy) >= edge);
+    if (left.length === 0 || right.length === 0) continue;
+    const leftArea = left.reduce((sum, index) => sum + cells[index].area, 0);
+    const score = Math.abs(leftArea / total - share);
+    if (score < bestScore) {
+      bestScore = score;
+      bestLeft = left;
+      bestRight = right;
     }
-    const touch = neighbors(adjacent)
-      .map((cell) => owner.get(cellKey(cell)))
-      .filter((room): room is number => room !== undefined);
-    const room = touch.sort((a, b) => targets[b] - area[b] - (targets[a] - area[a]))[0] ?? 0;
-    claim(adjacent, room);
-    leftover = unassigned();
   }
-  return cells.map((cell) => owner.get(cellKey(cell)) ?? 0);
+  if (bestLeft.length === 0 || bestRight.length === 0) {
+    const ordered = [...indices].sort((a, b) => cells[a].cx - cells[b].cx || cells[a].cy - cells[b].cy);
+    const midpoint = Math.max(1, Math.min(ordered.length - 1, Math.round(ordered.length * share)));
+    bestLeft = ordered.slice(0, midpoint);
+    bestRight = ordered.slice(midpoint);
+  }
+  assignByShare(cells, bestLeft, [weights[0]], roomOffset, owners);
+  assignByShare(cells, bestRight, weights.slice(1), roomOffset + 1, owners);
+}
+
+function ownersByContent(cells: GridCell[], weights: number[]): number[] {
+  const owners = cells.map(() => 0);
+  assignByShare(cells, cells.map((_, index) => index), weights, 0, owners);
+  return owners;
 }
 
 function simplifyOutline(points: Point2D[]): Point2D[] {
@@ -365,11 +349,8 @@ function partitionWalls(cells: GridCell[], owners: number[]): SpatialWall[] {
 function composeInsidePolygon(ready: PromptTranslation[], specs: Array<(typeof ROOM_SPEC)[RoomType]>, polygon: Polygon2D): GeneratedPlan | null {
   const cells = interiorCells(polygon);
   if (cells.length === 0) return null;
-  const weights = specs.map((spec) => spec.width * spec.depth);
-  const weightSum = weights.reduce((sum, weight) => sum + weight, 0);
-  const totalArea = cells.reduce((sum, cell) => sum + cell.area, 0);
-  const targets = weights.map((weight) => (totalArea * weight) / weightSum);
-  const owners = growRooms(cells, targets);
+  const weights = ready.map((request, index) => contentWeight(request, specs[index]));
+  const owners = ownersByContent(cells, weights);
   const groups = ready.map((_, index) => cells.filter((_, cellIndex) => owners[cellIndex] === index));
   const framed: FramedRoom[] = ready.map((request, index) => {
     const spec = specs[index];
