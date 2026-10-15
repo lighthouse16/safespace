@@ -18,6 +18,7 @@ import {
   Unlock,
   ChevronRight,
 } from "lucide-react";
+import { GenerateLayoutPanel } from "./GenerateLayoutPanel";
 
 export function Stage1Layout() {
   const {
@@ -226,6 +227,8 @@ export function Stage1Layout() {
           }`}
         >
           <div className="space-y-3.5">
+            <GenerateLayoutPanel />
+
             {/* Room Fixtures Summary */}
             <div className="border-b border-slate-100 pb-2.5">
               <span className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider block">

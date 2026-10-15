@@ -145,6 +145,7 @@ export interface SafeSpaceState {
   confirmAllRemaining: () => void;
   deleteFurniture: (id: string) => void;
   addFurniture: (category: SpatialFurniture["category"]) => void;
+  replaceFurnitureLayout: (items: SpatialFurniture[]) => void;
   undo: () => void;
   redo: () => void;
 
@@ -687,6 +688,29 @@ export const useSafeSpaceStore = create<SafeSpaceState>((set, get) => ({
       routeResult: newRouteResult,
       placementError: null,
       ...invalidateOptimizationAndAppliedBaseline(updated),
+    });
+    persistUserMutation(get, set);
+  },
+
+  replaceFurnitureLayout: (items) => {
+    if (items.length === 0) {
+      set({
+        placementError: "The layout model returned no furniture to place.",
+      });
+      return;
+    }
+    const { furniture, history, rooms, activeProfile, routeWaypoints, walls, doors, canonicalBoundary } = get();
+    const newHistory = [...history, cloneFurniture(furniture)].slice(-20);
+    const newRouteResult = computeStoreRoute(items, rooms, activeProfile, routeWaypoints, walls, doors, canonicalBoundary);
+    set({
+      furniture: items,
+      selectedFurnitureId: items[0]?.id ?? null,
+      selectedHazardId: null,
+      history: newHistory,
+      future: [],
+      routeResult: newRouteResult,
+      placementError: null,
+      ...invalidateOptimizationAndAppliedBaseline(items),
     });
     persistUserMutation(get, set);
   },
