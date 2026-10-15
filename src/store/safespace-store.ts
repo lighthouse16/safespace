@@ -752,6 +752,7 @@ export const useSafeSpaceStore = create<SafeSpaceState>((set, get) => ({
       return;
     }
     const { furniture, history, structurePast, rooms, walls, doors, canonicalBoundary, activeProfile, routeWaypoints } = get();
+    const newHistory = [...history, cloneFurniture(furniture)].slice(-20);
     const previous = {
       historyLength: newHistory.length,
       rooms,
@@ -759,7 +760,6 @@ export const useSafeSpaceStore = create<SafeSpaceState>((set, get) => ({
       doors,
       canonicalBoundary,
     };
-    const newHistory = [...history, cloneFurniture(furniture)].slice(-20);
     const newRouteResult = computeStoreRoute(
       plan.furniture,
       plan.rooms,
