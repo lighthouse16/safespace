@@ -89,10 +89,29 @@ async function check() {
   await floor.click({ position: { x: Math.floor(rect.width/2), y: Math.floor(rect.height/2) } });
   assert.equal(await page.locator("#manual-observation-layer > g").count(), 1);
 
+  // Exercise Profile, Routes and Report in a real browser.
+  await stages.nth(1).click();
+  await page.getByRole("heading", { name: "Select mobility profile" }).waitFor();
+  const wheelchairProfile = page.getByRole("button", { name: /Wheelchair/i }).first();
+  await wheelchairProfile.click();
+  assert.equal(await wheelchairProfile.getAttribute("aria-pressed"), "true");
+
+  await stages.nth(2).click();
+  await page.getByRole("button", { name: "Open report" }).click();
+  const report = page.getByRole("dialog", { name: "SafeSpace Assessment Summary Report" });
+  await report.waitFor();
+  assert.ok(await report.getByText("Local Facility").count() > 0,
+    "Report must use actual saved assessment metadata");
+  await report.getByRole("button", { name: "Close summary report" }).click();
+
   await stages.nth(3).click();
   await page.getByRole("button", { name: "Summarize findings" }).click();
   assert.equal(await page.getByText(/Local spatial evaluator/).count(), 1);
   assert.equal(await page.getByText(/not medical advice/).count(), 1);
+
+  await stages.nth(4).click();
+  assert.ok(await page.getByRole("heading", { name: /Layout Improvement Options|Applied Layout Review/ }).count() > 0,
+    "Stage 5 must render a truthful optimization state");
 
   await page.goto(base + "/assessments", { waitUntil: "networkidle" });
   assert.ok(await page.getByText("Browser guest acceptance").count() > 0);
@@ -116,7 +135,7 @@ async function check() {
 
   assert.equal(protectedRequests.length, 0, "Guest must never call protected API");
   assert.deepEqual(pageErrors, [], "Guest flow must not generate browser errors");
-  console.log("GUEST BROWSER E2E PASS: intake, calibration, boundary, save, CAD, analysis, reopen; no auth/API.");
+  console.log("GUEST BROWSER E2E PASS: intake, calibration, CAD, profile, routes, report, analysis, improve, reopen, PNG upload; no auth/API.");
 }
 
 try {

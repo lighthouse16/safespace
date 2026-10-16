@@ -178,7 +178,8 @@ export function Stage2Profile() {
                 min="60"
                 max="150"
                 step="5"
-                aria-label="Minimum clearance in mm"
+                aria-label="Minimum clearance in centimeters"
+                aria-valuetext={`${minClearanceMm.toLocaleString()} mm`}
                 value={activeProfile.minClearanceCm}
                 onChange={(e) =>
                   updateProfile({ minClearanceCm: Number(e.target.value) })
@@ -216,7 +217,8 @@ export function Stage2Profile() {
                 min="100"
                 max="200"
                 step="5"
-                aria-label="Turning space in mm"
+                aria-label="Turning space in centimeters"
+                aria-valuetext={`${turningSpaceMm.toLocaleString()} mm`}
                 value={activeProfile.turningSpaceCm}
                 onChange={(e) =>
                   updateProfile({ turningSpaceCm: Number(e.target.value) })
