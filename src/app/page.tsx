@@ -2,7 +2,7 @@ import Link from "next/link";
 import Image from "next/image";
 import { ArrowRight } from "lucide-react";
 import { BrandMark } from "@/components/brand/brand-mark";
-import abstractFloorplan from "../../public/landing/abstract-floorplan@2x.png";
+import abstractFloorplan from "../../public/landing/abstract-floorplan@2x.webp";
 import decorArc from "../../public/landing/decor-arc-bottom-left.png";
 
 export default function HomePage() {
@@ -43,7 +43,7 @@ export default function HomePage() {
           <div className="lg:col-span-5 flex flex-col items-start z-10">
             <h1
               id="hero-title"
-              className="text-4xl sm:text-5xl lg:text-6xl font-bold tracking-tight leading-[1.08]"
+              className="text-4xl sm:text-5xl xl:text-6xl font-bold tracking-tight leading-[1.08]"
             >
               <span className="block text-[#17252B]">Design safer</span>
               <span className="block text-[#0B514B] mt-1 whitespace-nowrap">movement paths</span>
