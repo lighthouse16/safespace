@@ -29,9 +29,16 @@ Local assessments, local evaluator output, CAD editing and local optimization do
 
 ## External AI and room generation
 
-- **Local Analysis:** the on-device geometry evaluator provides measurable findings and a deterministic, evidence-only summary without an account or model API key. This is not Gemini output and does not diagnose medical risk.
-- **Gemini:** external interpretation/explanation is an optional consent-gated server workflow that requires its own correctly configured authenticated service. Live Gemini tests are skipped when credentials are not provided.
-- **M3DLayout:** room composition and prompt preparation run locally, but actual model inference requires a compatible external API hosted separately (for example, Colab with a live endpoint). In the Layout panel, enter the compatible API base URL without appending `/generate`; the browser saves it only on this device. The checkpoint is **not** bundled with this repo.
+- **Deterministic Local Evaluator:** The on-device geometry evaluator provides measurable findings and a deterministic, evidence-only summary without requiring an account or model API key (`Deterministic Local Engine`). This is not Gemini output and does not diagnose medical risk.
+- **Production Gemini AI Gateway (Server-Side Isolated):**
+  - **Models & Defaults:** `gemini-3.1-flash-lite` for multimodal floorplan detection (`/api/gemini/interpretation`) and evidence-grounded findings explanation (`/api/gemini/explanation`). `gemini-3.1-flash-lite-image` for cost-controlled 1K interior conceptual previews (`/api/gemini/visualize`), with an optional toggle for `gemini-3.1-flash-image`.
+  - **Account-Free Guest Workflow:** Guest users can access Gemini features anonymously through server-side gateway routes without creating Supabase accounts or logging in.
+  - **Zero Key Exposure:** `GEMINI_API_KEY` is loaded strictly on the server from `.env.local` (never committed or exposed to client-side bundles or network payloads).
+  - **Cost Controls & Rate Limiting:** Sliding-window IP rate limiting (15/min interpretation, 25/min explanation, 4/min visualization) and global daily request budget controls prevent unbounded API spend. Free-tier quota exhaustion (`RESOURCE_EXHAUSTED` / `QUOTA_EXCEEDED`) is parsed into actionable feedback without disrupting CAD or local analysis.
+  - **Truthful Labeling:** Visualizations and explanations are explicitly badged (`Gemini AI` vs `Deterministic Local Engine`), with conceptual renders prominently labeled as non-metric representations.
+- **M3DLayout & Procedural Planner:**
+  - **External M3DLayout:** When a Colab endpoint URL is configured, predictions are converted directly into spatial room furniture (`sceneToFurniture`) with interactive Discard/Apply verification.
+  - **Offline Procedural Planner:** When no Colab endpoint is configured, the system honestly labels and runs the deterministic procedural layout generator (`arrangeRoomFurniture`) with boundary collision avoidance.
 
 ## Verification
 
@@ -41,14 +48,16 @@ npm run lint
 npm test
 npm run build
 npm run test:browser:guest
+npm run build:pages
 ```
 
 The browser test requires Chrome Stable and uses Playwright Core. It launches its own temporary Next.js server and validates the unauthenticated intake/calibration/drafting/save/CAD/analysis/reopen flow plus PNG upload. It must not call authenticated API routes.
 
-Some database tests depend on a running local Supabase container; live external Gemini and M3DLayout require separate integration environments. A local test pass does not verify external infrastructure or production deployment.
+Live Gemini integration tests (`tests/gemini-live-smoke.test.ts`) require `GEMINI_API_KEY` in `.env.local`. When unconfigured, live tests skip gracefully.
 
 ## Deployment
 
-This is a **Next.js full-stack server** project. GitHub Pages can host static files but **cannot run its authenticated API routes**. The GitHub Actions workflow checks typecheck, lint, focused unit tests, production build and guest browser smoke; it intentionally does not deploy to GitHub Pages.
+- **Full-Stack Server Mode:** Recommended for complete functionality including server-side Gemini gateway routes and optional Supabase account sync.
+- **GitHub Pages Static Export (`npm run build:pages`):** Generates a static SPA in `out/` with server API routes excluded. Static clients can connect to any hosted SafeSpace gateway by setting `NEXT_PUBLIC_GEMINI_GATEWAY_URL`. CORS is preconfigured for `https://lighthouse16.github.io` and local origins.
 
 For any future server deployment, configure the target host, data-handling policy, environment variables, database migration and rollback, observability, and external API budgets separately. See [Unified Main Handoff](docs/unified-main-handoff.md).

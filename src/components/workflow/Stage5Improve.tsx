@@ -14,6 +14,7 @@ import {
   ChevronRight,
 } from "lucide-react";
 import type { LayoutCandidate } from "@/lib/spatial";
+import { AIConceptPreviewModal } from "./AIConceptPreviewModal";
 
 function formatMovePlainLanguage(move: {
   furnitureName: string;
@@ -67,6 +68,7 @@ export function Stage5Improve() {
   });
 
   const [actionFeedback, setActionFeedback] = useState<{ type: "success" | "error"; message: string } | null>(null);
+  const [conceptModalOpen, setConceptModalOpen] = useState(false);
   const feedbackTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // Clean up feedback timer on unmount
@@ -578,6 +580,16 @@ export function Stage5Improve() {
           </div>
 
           <div className="flex items-center gap-3">
+            <button
+              type="button"
+              onClick={() => setConceptModalOpen(true)}
+              title="Preview AI 3D conceptual visual render"
+              className="py-2.5 px-3.5 rounded-lg border border-teal-200 bg-teal-50 hover:bg-teal-100 text-[#0B514B] text-xs font-semibold flex items-center gap-1.5 transition cursor-pointer shadow-2xs"
+            >
+              <Sparkles className="w-3.5 h-3.5 text-[#0B514B]" />
+              <span>AI Concept Preview</span>
+            </button>
+
             {!isAppliedReviewMode && (
               <button
                 type="button"
@@ -611,6 +623,16 @@ export function Stage5Improve() {
             ) : null}
           </div>
         </div>
+
+        {/* AI Concept Preview Modal */}
+        <AIConceptPreviewModal
+          isOpen={conceptModalOpen}
+          onClose={() => setConceptModalOpen(false)}
+          layoutTitle={isAppliedReviewMode ? "Applied Layout" : activeCandidate ? `Option ${activeCandidateIndex + 1}` : "Proposed Space"}
+          furniture={isAppliedReviewMode ? furniture : activeCandidate ? activeCandidate.furniture : furniture}
+          rooms={rooms}
+          isAlternative={!isAppliedReviewMode}
+        />
       </div>
     </div>
   );

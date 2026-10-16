@@ -7,9 +7,10 @@ import { generateM3DLayout, readStoredApiBase, storeApiBase } from "@/lib/m3dlay
 import { splitRoomRequests } from "@/lib/m3dlayout/prompt-agent";
 import { composeRoomFrames, type GeneratedPlan } from "@/lib/m3dlayout/room-plan";
 import { arrangeRoomFurniture } from "@/lib/m3dlayout/arrange";
+import { sceneToFurniture, type LayoutFrame } from "@/lib/m3dlayout/scene-adapter";
 import type { SpatialFurniture } from "@/lib/spatial-model";
 
-type PendingPlan = GeneratedPlan & { furniture: SpatialFurniture[] };
+type PendingPlan = GeneratedPlan & { furniture: SpatialFurniture[]; source: string };
 
 export function GenerateLayoutPanel() {
   const applyGeneratedPlan = useSafeSpaceStore((state) => state.applyGeneratedPlan);
@@ -47,13 +48,41 @@ export function GenerateLayoutPanel() {
     }
     setBusy(true);
     try {
-      storeApiBase(apiUrl);
+      const isColabConfigured = Boolean(apiUrl.trim());
+      if (isColabConfigured) {
+        storeApiBase(apiUrl);
+      }
       const furniture: SpatialFurniture[] = [];
+      let usedModelCount = 0;
+
       for (let index = 0; index < plan.framed.length; index += 1) {
         const room = plan.framed[index];
-        setStatus(`Generating ${room.name} (${index + 1} of ${plan.framed.length})…`);
-        const scene = await generateM3DLayout(apiUrl, room.prompt, seed + index);
         const requested = requests[index]?.pieces ?? [];
+
+        if (isColabConfigured) {
+          setStatus(`Calling M3DLayout for ${room.name} (${index + 1} of ${plan.framed.length})…`);
+          try {
+            const scene = await generateM3DLayout(apiUrl, room.prompt, seed + index);
+            const frame: LayoutFrame = {
+              roomId: room.id,
+              centerX: room.rect.x + room.rect.width / 2,
+              centerY: room.rect.y + room.rect.depth / 2,
+              maxWidthCm: Math.max(60, room.rect.width - 20),
+              maxDepthCm: Math.max(60, room.rect.depth - 20),
+            };
+            const modelItems = sceneToFurniture(scene, frame, room.id);
+            if (modelItems.length > 0) {
+              furniture.push(...modelItems);
+              usedModelCount += 1;
+              continue;
+            }
+          } catch (modelErr) {
+            console.warn(`[M3DLayout] Model call failed for ${room.name}, falling back to procedural:`, modelErr);
+          }
+        }
+
+        // Truthful offline procedural fallback
+        setStatus(`Arranging ${room.name} procedurally (${index + 1} of ${plan.framed.length})…`);
         const arranged = arrangeRoomFurniture({
           pieces: requested,
           roomType: room.roomType,
@@ -61,16 +90,19 @@ export function GenerateLayoutPanel() {
           roomId: room.id,
           idPrefix: room.id,
         });
-        if (arranged.length === 0 && scene.class_names?.length) {
-          setError(`${room.name} did not include furniture that could be placed.`);
-        }
         furniture.push(...arranged);
       }
+
       if (furniture.length === 0) {
-        setError("The model answered, but none of the boxes could be placed.");
+        setError("Could not place furniture within the given boundary.");
         return;
       }
-      setPending({ ...plan, furniture });
+
+      const sourceLabel = usedModelCount > 0
+        ? `M3DLayout Diffusion Model (${usedModelCount} room${usedModelCount > 1 ? "s" : ""})`
+        : "Offline Procedural Planner";
+
+      setPending({ ...plan, furniture, source: sourceLabel });
       setStatus(null);
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : "Layout generation failed.");
@@ -148,14 +180,19 @@ export function GenerateLayoutPanel() {
         className="w-full py-1.5 px-2 bg-[#0B514B] hover:bg-[#083f3a] disabled:opacity-50 text-white rounded-lg text-xs font-semibold flex items-center justify-center gap-1.5 transition cursor-pointer"
       >
         <Sparkles className="w-3.5 h-3.5" />
-        {busy ? status || "Generating on Colab…" : "Generate layout"}
+        {busy ? status || "Generating layout…" : apiUrl.trim() ? "Generate with M3DLayout (Colab)" : "Generate layout (Offline Procedural)"}
       </button>
 
       {pending && (
-        <div className="rounded-lg border border-[#E2E6E8] bg-white p-2 space-y-2">
-          <p className="text-[11px] font-semibold text-[#17252B]">
-            {pending.rooms.length} room frames, {pending.furniture.length} objects
-          </p>
+        <div className="rounded-lg border border-[#E2E6E8] bg-white p-2.5 space-y-2">
+          <div className="flex items-center justify-between">
+            <p className="text-[11px] font-semibold text-[#17252B]">
+              {pending.rooms.length} room frames, {pending.furniture.length} objects
+            </p>
+            <span className="text-[10px] px-2 py-0.5 rounded-full font-medium bg-teal-50 text-[#0B514B] border border-teal-200">
+              {pending.source}
+            </span>
+          </div>
           <ul className="max-h-28 overflow-y-auto text-[11px] text-[#647078] space-y-0.5">
             {pending.rooms.map((room) => (
               <li key={room.id}>
@@ -163,13 +200,22 @@ export function GenerateLayoutPanel() {
               </li>
             ))}
           </ul>
-          <button
-            type="button"
-            onClick={onAccept}
-            className="w-full py-1.5 px-2 border border-[#0B514B] bg-[#F0F5F4] text-[#0B514B] rounded-lg text-xs font-semibold cursor-pointer"
-          >
-            Add room frames
-          </button>
+          <div className="flex items-center gap-2 pt-1">
+            <button
+              type="button"
+              onClick={() => setPending(null)}
+              className="flex-1 py-1.5 px-2 border border-slate-200 bg-white text-slate-700 hover:bg-slate-50 rounded-lg text-xs font-semibold cursor-pointer transition"
+            >
+              Discard
+            </button>
+            <button
+              type="button"
+              onClick={onAccept}
+              className="flex-1 py-1.5 px-2 border border-[#0B514B] bg-[#F0F5F4] text-[#0B514B] hover:bg-teal-100 rounded-lg text-xs font-semibold cursor-pointer transition"
+            >
+              Apply proposal
+            </button>
+          </div>
         </div>
       )}
 

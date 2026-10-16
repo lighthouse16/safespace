@@ -1,0 +1,172 @@
+import type { InterpretedElementCandidate } from "@/lib/server/ai/floorplan-interpreter";
+import type { FurnitureCategory } from "@/lib/spatial-model";
+import type { Point2D } from "@/lib/spatial/schema";
+
+function getGatewayBaseUrl(): string {
+  const customGateway = process.env.NEXT_PUBLIC_GEMINI_GATEWAY_URL?.trim();
+  if (customGateway) {
+    return customGateway.replace(/\/+$/, "");
+  }
+  return "";
+}
+
+export interface InterpretationRequestPayload {
+  userConsent: true;
+  imageMimeType: string;
+  imageBase64: string;
+  pixelsPerCm: number;
+  imageWidth?: number;
+  imageHeight?: number;
+  canvasWidth?: number;
+  canvasHeight?: number;
+  canonicalBoundary?: readonly Point2D[] | Point2D[];
+  requestedModel?: string;
+}
+
+export interface InterpretationResponsePayload {
+  elements: InterpretedElementCandidate[];
+  rawCount: number;
+  filteredCount: number;
+  model: string;
+  scaleUsed: number;
+  humanReviewRequired: boolean;
+  disclaimer: string;
+}
+
+export interface ExplanationRequestPayload {
+  userConsent: true;
+  assessmentName: string;
+  profileLabel: string;
+  findings: Array<{
+    title: string;
+    severity?: string;
+    description: string;
+    evidence?: string;
+  }>;
+  metrics?: {
+    actionableDeficitsCount?: number;
+    minimumClearanceCm?: number | null;
+    routeFeasibility?: string;
+  };
+  requestedModel?: string;
+}
+
+export interface ExplanationResponsePayload {
+  explanation: {
+    executiveSummary: string;
+    clinicalRiskNarrative: string;
+    caregiverRecommendations: string[];
+    measuredFacts: {
+      minimumClearanceCm: number | null;
+      actionableDeficitsCount: number;
+      routeFeasibility: string;
+    };
+    disclaimer: string;
+  };
+  model: string;
+  timestamp: string;
+  source: "gemini" | "evaluator";
+}
+
+export interface VisualizationRequestPayload {
+  userConsent: true;
+  roomType?: string;
+  furnitureList: Array<{
+    name: string;
+    category?: FurnitureCategory;
+    widthCm?: number;
+    depthCm?: number;
+  }>;
+  layoutTitle?: string;
+  isAlternative?: boolean;
+  requestedModel?: string;
+  isPremium?: boolean;
+}
+
+export interface VisualizationResponsePayload {
+  imageBase64: string;
+  imageMimeType: string;
+  model: string;
+  disclaimer: string;
+  timestamp: string;
+}
+
+export async function requestFloorplanInterpretation(
+  payload: InterpretationRequestPayload
+): Promise<InterpretationResponsePayload> {
+  const base = getGatewayBaseUrl();
+  const url = `${base}/api/gemini/interpretation`;
+
+  const res = await fetch(url, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+    signal: AbortSignal.timeout(35_000),
+  });
+
+  const data = await res.json();
+  if (!res.ok) {
+    throw new Error(data.error || `Interpretation request failed with status ${res.status}`);
+  }
+  return data as InterpretationResponsePayload;
+}
+
+export async function requestFindingsExplanation(
+  payload: ExplanationRequestPayload
+): Promise<ExplanationResponsePayload> {
+  const base = getGatewayBaseUrl();
+  const url = `${base}/api/gemini/explanation`;
+
+  const res = await fetch(url, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+    signal: AbortSignal.timeout(30_000),
+  });
+
+  const data = await res.json();
+  if (!res.ok) {
+    throw new Error(data.error || `Explanation request failed with status ${res.status}`);
+  }
+  return data as ExplanationResponsePayload;
+}
+
+export async function requestInteriorVisualization(
+  payload: VisualizationRequestPayload
+): Promise<VisualizationResponsePayload> {
+  const base = getGatewayBaseUrl();
+  const url = `${base}/api/gemini/visualize`;
+
+  const res = await fetch(url, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+    signal: AbortSignal.timeout(50_000),
+  });
+
+  const data = await res.json();
+  if (!res.ok) {
+    throw new Error(data.error || `Visualization request failed with status ${res.status}`);
+  }
+  return data as VisualizationResponsePayload;
+}
+
+export async function checkGatewayHealth(): Promise<{
+  status: string;
+  geminiConfigured: boolean;
+  models?: { text: string; image: string };
+}> {
+  const base = getGatewayBaseUrl();
+  const url = `${base}/api/gemini/health`;
+
+  try {
+    const res = await fetch(url, {
+      method: "GET",
+      signal: AbortSignal.timeout(5000),
+    });
+    if (!res.ok) return { status: "error", geminiConfigured: false };
+    return await res.json();
+  } catch {
+    return { status: "unreachable", geminiConfigured: false };
+  }
+}

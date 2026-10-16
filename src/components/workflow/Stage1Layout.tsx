@@ -28,6 +28,7 @@ import {
   AIInterpretationReviewModal,
   type InterpretedElementCandidate,
 } from "@/components/ai/AIInterpretationReviewModal";
+import { requestFloorplanInterpretation } from "@/lib/services/gemini-gateway-client";
 import { GenerateLayoutPanel } from "./GenerateLayoutPanel";
 
 type CatalogItem = { group: string; category: FurnitureCategory; name: string; dim: string };
@@ -75,10 +76,10 @@ export function Stage1Layout() {
     setSnapToGrid,
     zoom,
     setZoom,
-    assessmentId,
     hasFloorplanImage,
     floorplanImageBlobUrl,
     calibrationProvenance,
+    canonicalBoundary,
     addCustomFurnitureBatch,
   } = useSafeSpaceStore();
 
@@ -117,6 +118,13 @@ export function Stage1Layout() {
   const handleTriggerAIInterpretation = async () => {
     if (!floorplanImageBlobUrl) return;
     setAiError(null);
+
+    // Validate calibration scale before sending to AI
+    if (!calibrationProvenance?.pixelsPerCm || calibrationProvenance.pixelsPerCm <= 0) {
+      setAiError("Calibration scale required. Calibrate reference dimension before AI detection.");
+      return;
+    }
+
     setIsInterpretingAI(true);
     try {
       const blob = await fetch(floorplanImageBlobUrl).then((r) => r.blob());
@@ -131,23 +139,34 @@ export function Stage1Layout() {
         reader.readAsDataURL(blob);
       });
 
-      const res = await fetch(`/api/v1/assessments/${assessmentId || "active"}/ai/interpretation`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          userConsent: true,
-          imageMimeType: blob.type.startsWith("image/") ? blob.type : "image/png",
-          imageBase64: base64,
-          scaleInfo: {
-            pixelsPerCm: calibrationProvenance?.pixelsPerCm || 1,
-          },
-        }),
-      });
+      // Get natural image dimensions if possible
+      let imageWidth = 800;
+      let imageHeight = 600;
+      try {
+        const img = new Image();
+        img.src = floorplanImageBlobUrl;
+        await new Promise((resolve) => {
+          if (img.complete) resolve(true);
+          else {
+            img.onload = () => resolve(true);
+            img.onerror = () => resolve(false);
+          }
+        });
+        if (img.naturalWidth > 0 && img.naturalHeight > 0) {
+          imageWidth = img.naturalWidth;
+          imageHeight = img.naturalHeight;
+        }
+      } catch {}
 
-      const data = await res.json();
-      if (!res.ok) {
-        throw new Error(data.error || "Interpretation failed");
-      }
+      const data = await requestFloorplanInterpretation({
+        userConsent: true,
+        imageMimeType: blob.type.startsWith("image/") ? blob.type : "image/png",
+        imageBase64: base64,
+        pixelsPerCm: calibrationProvenance.pixelsPerCm,
+        imageWidth,
+        imageHeight,
+        canonicalBoundary: canonicalBoundary && canonicalBoundary.length >= 3 ? canonicalBoundary : undefined,
+      });
 
       setAiCandidates(data.elements || []);
       setAiModalOpen(true);
@@ -392,6 +411,26 @@ export function Stage1Layout() {
                 onClick={clearPlacementError}
                 className="text-amber-700 hover:text-amber-900 font-bold ml-2 text-xs cursor-pointer"
                 aria-label="Dismiss error"
+              >
+                ✕
+              </button>
+            </div>
+          )}
+
+          {aiError && (
+            <div
+              role="alert"
+              className="mb-2 px-3 py-1.5 rounded-lg bg-rose-50 border border-rose-200 text-xs text-rose-900 flex items-center justify-between shrink-0 shadow-2xs z-20"
+            >
+              <div className="flex items-center gap-1.5">
+                <AlertTriangle className="w-3.5 h-3.5 text-rose-600 shrink-0" />
+                <span>{aiError}</span>
+              </div>
+              <button
+                type="button"
+                onClick={() => setAiError(null)}
+                className="text-rose-700 hover:text-rose-900 font-bold ml-2 text-xs cursor-pointer"
+                aria-label="Dismiss AI error"
               >
                 ✕
               </button>
