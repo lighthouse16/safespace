@@ -1,6 +1,7 @@
 import type { SpatialFurniture, SpatialRoom } from "@/lib/spatial-model";
 import { computePolygonBoundsCm, type Polygon2D } from "@/lib/spatial";
 import { titleNameForClass } from "./vocabulary";
+import { resolveGeneratedFurniture } from "./collision-layout";
 
 /** JSON body returned by the Colab FastAPI `/generate` route. */
 export type M3DGenerateResponse = {
@@ -73,39 +74,6 @@ function supportsLeaning(category: SpatialFurniture["category"]): boolean {
  * M3DLayout translations are meters with Y up. SafeSpace stores a top-left
  * corner in centimeters on the floor, so floor axes are X and Z.
  */
-function overlaps(a: SpatialFurniture, b: SpatialFurniture): boolean {
-  const pad = 12;
-  return a.x < b.x + b.width + pad && a.x + a.width + pad > b.x && a.y < b.y + b.depth + pad && a.y + a.depth + pad > b.y;
-}
-
-function separateFurniture(items: SpatialFurniture[], frame: LayoutFrame): SpatialFurniture[] {
-  const minX = frame.centerX - frame.maxWidthCm / 2;
-  const minY = frame.centerY - frame.maxDepthCm / 2;
-  const maxX = frame.centerX + frame.maxWidthCm / 2;
-  const maxY = frame.centerY + frame.maxDepthCm / 2;
-  const placed: SpatialFurniture[] = [];
-  for (const item of items) {
-    let next = { ...item };
-    for (let attempt = 0; attempt < 30; attempt += 1) {
-      if (!placed.some((other) => overlaps(next, other))) break;
-      const shifted = next.x + Math.max(24, next.width * 0.35);
-      if (shifted + next.width <= maxX) {
-        next = { ...next, x: shifted };
-      } else {
-        next = { ...next, x: minX, y: next.y + Math.max(24, next.depth * 0.35) };
-      }
-      if (next.y + next.depth > maxY) break;
-    }
-    next = {
-      ...next,
-      x: Math.min(Math.max(next.x, minX), Math.max(minX, maxX - next.width)),
-      y: Math.min(Math.max(next.y, minY), Math.max(minY, maxY - next.depth)),
-    };
-    placed.push(next);
-  }
-  return placed;
-}
-
 export function sceneToFurniture(
   scene: M3DGenerateResponse,
   frame: LayoutFrame,
@@ -178,7 +146,17 @@ export function sceneToFurniture(
     };
   });
 
-  return separateFurniture(mapped, frame);
+  // The raw model may output intersecting boxes. Apply the same fail-closed
+  // geometry policy as the text-driven furniture arranger, never clamp a
+  // collision back into the room.
+  return resolveGeneratedFurniture(mapped, {
+    rect: {
+      x: frame.centerX - frame.maxWidthCm / 2,
+      y: frame.centerY - frame.maxDepthCm / 2,
+      width: frame.maxWidthCm,
+      depth: frame.maxDepthCm,
+    },
+  }).furniture;
 }
 
 export function layoutFrameFromWorkspace(input: {
