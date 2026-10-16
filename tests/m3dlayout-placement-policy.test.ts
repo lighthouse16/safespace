@@ -15,7 +15,7 @@ test("overlapping Colab boxes are separated or rejected, never accepted overlapp
     angles: [0, 0, 0],
   }, frame);
   assert.equal(input.length, 3);
-  assert.equal(new Set(input.map(f => f.x)).size, 1, "model duplicates are preserved before validation");
+  assert.equal(new Set(input.map(f => f.x + f.width / 2)).size, 1, "model centers are preserved before validation");
   const result = placeModelFurniture(input, frame);
   assert.equal(result.furniture.length, 3);
   assert.equal(result.unplaced.length, 0);
