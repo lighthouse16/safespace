@@ -1,5 +1,6 @@
 import type { SpatialFurniture } from "@/lib/spatial-model";
 import type { LayoutFrame } from "./scene-adapter";
+import type { Polygon2D } from "@/lib/spatial";
 import { furnitureToWorldFootprint, findFeasibleFootprintPlacement, type ObstacleFootprint } from "@/lib/spatial/geometry/placement";
 
 /**
@@ -10,6 +11,7 @@ import { furnitureToWorldFootprint, findFeasibleFootprintPlacement, type Obstacl
 export function placeModelFurniture(
   items: SpatialFurniture[],
   frame: LayoutFrame,
+  options?: { roomBoundary?: Polygon2D; fixedObstacles?: readonly ObstacleFootprint[] },
 ): { furniture: SpatialFurniture[]; unplaced: SpatialFurniture[] } {
   const wallInsetCm = 8;
   const objectGapCm = 6;
@@ -23,7 +25,8 @@ export function placeModelFurniture(
     { x: left, y: top }, { x: right, y: top },
     { x: right, y: bottom }, { x: left, y: bottom },
   ];
-  const obstacles: ObstacleFootprint[] = [];
+  const obstacles: ObstacleFootprint[] = [...(options?.fixedObstacles ?? [])];
+  const effectiveBoundary = options?.roomBoundary && options.roomBoundary.length >= 3 ? options.roomBoundary : boundary;
   const accepted = new Map<string, SpatialFurniture>();
   const unplaced: SpatialFurniture[] = [];
 
@@ -41,7 +44,7 @@ export function placeModelFurniture(
     const preferredPoint = { x: item.x + item.width / 2, y: item.y + item.depth / 2 };
     const placement = findFeasibleFootprintPlacement(
       { width: item.width, depth: item.depth },
-      boundary,
+      effectiveBoundary,
       obstacles,
       { preferredPoint, rotations: [item.rotation], stepCm: 10 },
     );
