@@ -8,6 +8,7 @@ import { splitRoomRequests } from "@/lib/m3dlayout/prompt-agent";
 import { composeRoomFrames, placeOpenings, type GeneratedPlan } from "@/lib/m3dlayout/room-plan";
 import { sceneToFurniture } from "@/lib/m3dlayout/scene-adapter";
 import { placeModelFurniture } from "@/lib/m3dlayout/placement-policy";
+import { wallToObstacleFootprint, doorToObstacleFootprint } from "@/lib/spatial/geometry/placement";
 import type { SpatialDoor, SpatialFurniture } from "@/lib/spatial-model";
 
 type PendingPlan = GeneratedPlan & { furniture: SpatialFurniture[]; openings: SpatialDoor[] };
@@ -49,6 +50,12 @@ export function GenerateLayoutPanel() {
     try {
       storeApiBase(apiUrl);
       const furniture: SpatialFurniture[] = [];
+      const boundary = canonicalBoundary && canonicalBoundary.length >= 3 ? canonicalBoundary : plan.boundary;
+      const openings = placeOpenings(plan.walls, boundary, requests);
+      const fixedObstacles = [
+        ...plan.walls.map(wallToObstacleFootprint),
+        ...openings.filter((door) => door.name !== "Window").map(doorToObstacleFootprint),
+      ];
       for (let index = 0; index < plan.framed.length; index += 1) {
         const room = plan.framed[index];
         setStatus(`Generating ${room.name} (${index + 1} of ${plan.framed.length})…`);
@@ -57,7 +64,11 @@ export function GenerateLayoutPanel() {
         if (modeled.length === 0) {
           throw new Error(`Colab returned no usable furniture boxes for ${room.name}. The plan was not changed.`);
         }
-        const placed = placeModelFurniture(modeled, room.frame);
+        const roomGeometry = plan.rooms.find((candidate) => candidate.id === room.id);
+        const placed = placeModelFurniture(modeled, room.frame, {
+          roomBoundary: roomGeometry?.polygon,
+          fixedObstacles,
+        });
         if (placed.unplaced.length > 0) {
           throw new Error(`${room.name}: ${placed.unplaced.length} of ${modeled.length} model objects cannot fit without overlap. Nothing was applied. Try fewer items or a larger room.`);
         }
@@ -67,8 +78,7 @@ export function GenerateLayoutPanel() {
         setError("The model answered, but none of the boxes could be placed.");
         return;
       }
-      const boundary = canonicalBoundary && canonicalBoundary.length >= 3 ? canonicalBoundary : plan.boundary;
-      setPending({ ...plan, furniture, openings: placeOpenings(plan.walls, boundary, requests) });
+      setPending({ ...plan, furniture, openings });
       setPlacementNote("Colab model positions were used and validated for collisions. Review the generated rooms before applying.");
       setStatus(null);
     } catch (cause) {
