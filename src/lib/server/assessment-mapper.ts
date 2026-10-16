@@ -4,7 +4,9 @@ import type {
   CalibrationProvenance,
 } from "@/lib/storage/persistence";
 import type { Polygon2D } from "@/lib/spatial";
-import type { MobilityProfileData, RouteWaypoint, SpatialFurniture } from "@/lib/spatial-model";
+import type {
+  MobilityProfileData, RouteWaypoint, SpatialFurniture, SpatialWall, SpatialHazard
+} from "@/lib/spatial-model";
 
 export interface DbAssessmentRow {
   id: string;
@@ -23,7 +25,8 @@ export interface DbSceneRow {
   assessment_id: string;
   boundary: Polygon2D | null;
   furniture: SpatialFurniture[];
-  walls?: unknown[];
+  walls?: SpatialWall[];
+  hazards?: SpatialHazard[];
   doors?: unknown[];
   windows?: unknown[];
 }
@@ -135,6 +138,8 @@ export function dbRowsToPersistedState(params: {
     activeProfileSnapshot,
     routeWaypoints: route?.checkpoints || [],
     furniture: scene?.furniture || [],
+    walls: scene?.walls || [],
+    hazards: scene?.hazards || [],
     appliedLayoutBaseline: optimization?.snapshot_before_apply || null,
     appliedCandidateId: optimization?.selected_candidate_id || null,
     appliedSceneFingerprint: null,

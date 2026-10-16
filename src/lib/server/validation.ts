@@ -94,6 +94,31 @@ export const AssessmentUpdateSchema = z.object({
   notes: z.string().optional(),
 });
 
+export const SpatialWallSchema = z.object({
+  id: z.string().min(1).max(160),
+  start: Point2DSchema,
+  end: Point2DSchema,
+  thickness: z.number().finite().positive().max(200),
+  isExterior: z.boolean().optional(),
+});
+
+export const SpatialHazardSchema = z.object({
+  id: z.string().min(1).max(160),
+  code: z.string().max(160),
+  title: z.string().trim().min(1).max(160),
+  severity: z.enum(["high", "medium", "low"]),
+  position: Point2DSchema,
+  relatedFurnitureId: z.string().optional(),
+  plainDescription: z.string().max(4000),
+  measuredEvidence: z.string().max(4000),
+  measuredClearanceCm: z.number().finite().optional(),
+  requiredClearanceCm: z.number().finite().optional(),
+  detectionConfidence: z.number().finite().min(0).max(1),
+  requiresReview: z.boolean(),
+  recommendation: z.string().max(4000),
+  resolvedInAlternative: z.array(z.string()).optional(),
+});
+
 export const FullAssessmentPayloadSchema = z.object({
   schemaVersion: z.literal(1).default(1),
   assessmentType: z.enum(["demo", "user"]).default("user"),
@@ -104,6 +129,8 @@ export const FullAssessmentPayloadSchema = z.object({
   activeProfileSnapshot: MobilityProfileDataSchema.nullable().optional(),
   routeWaypoints: z.array(RouteWaypointSchema).default([]),
   furniture: z.array(SpatialFurnitureSchema).default([]),
+  walls: z.array(SpatialWallSchema).default([]),
+  hazards: z.array(SpatialHazardSchema).default([]),
   appliedLayoutBaseline: z.array(SpatialFurnitureSchema).nullable().optional(),
   appliedCandidateId: z.string().nullable().optional(),
   appliedSceneFingerprint: z.string().nullable().optional(),

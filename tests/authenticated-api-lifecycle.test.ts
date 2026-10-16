@@ -183,6 +183,17 @@ test("Authenticated API Lifecycle: End-to-end full product flow", async (t) => {
           isStableSupport: false,
         },
       ],
+      walls: [{
+        id: "manual-wall-cloud", start: { x: 80, y: 100 }, end: { x: 160, y: 100 },
+        thickness: 12, isExterior: false,
+      }],
+      hazards: [{
+        id: "manual-hazard-cloud", code: "MANUAL", title: "Observed loose cable",
+        severity: "medium", position: { x: 200, y: 150 },
+        plainDescription: "User-authored note", measuredEvidence: "Not measured; review required",
+        detectionConfidence: 0, requiresReview: true,
+        recommendation: "Inspect and verify the location",
+      }],
     };
 
     const putRes = await fetch(`${BASE_URL}/api/v1/assessments/${assessmentId}`, {
@@ -380,6 +391,9 @@ test("Authenticated API Lifecycle: End-to-end full product flow", async (t) => {
     assert.equal(getData.assessment.metadata.id, assessmentId);
     assert.equal(getData.assessment.metadata.name, "Geriatric Suite 202");
     assert.equal(getData.assessment.hasFloorplanImage, true);
+    assert.equal(getData.assessment.walls?.[0]?.id, "manual-wall-cloud", "Authored wall must survive cloud round-trip");
+    assert.equal(getData.assessment.hazards?.[0]?.title, "Observed loose cable", "User hazard note must survive cloud round-trip");
+    assert.equal(getData.assessment.hazards?.[0]?.requiresReview, true);
   });
 
   await t.test("9. Permanent Deletion cascades cleanly", async () => {

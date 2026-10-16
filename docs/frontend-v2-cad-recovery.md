@@ -1,5 +1,7 @@
 # Frontend V2 CAD Recovery — Integration Notes
 
+> **Historical note:** This document records the original isolated PR #23 and its limitations. In the unified code line, migration `supabase/migrations/002_scene_annotations.sql` plus API/store changes now persist authored walls/hazards to Supabase, with a tested authenticated cloud round-trip. For current verification and deployment gates, see `docs/unified-main-handoff.md`. The original statement below that cloud storage is unsupported no longer describes the unified branch.
+
 **Base:** `origin/feat/full-stack-v1` at `9e5483c` (teammate's latest at branch creation).
 
 **Source:** local `backup/frontend-stage-3-local-wip`, commits `f4b1e5d`, `eb36e7f`, `1d033a0`, `73bc8fc`, `633854c`.

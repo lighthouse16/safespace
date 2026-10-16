@@ -135,6 +135,8 @@ export async function PUT(request: Request, context: RouteContext) {
       p_notes: payload.metadata?.notes || "",
       p_boundary: payload.canonicalBoundary || [],
       p_furniture: payload.furniture || [],
+      p_walls: payload.walls || [],
+      p_hazards: payload.hazards || [],
       p_calibration: calibrationParam,
       p_mobility: mobilityParam,
       p_route: routeParam,

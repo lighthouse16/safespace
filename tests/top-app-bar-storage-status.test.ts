@@ -28,7 +28,7 @@ test("top bar reflects canonical save state without marking demo or prior stages
     assert.equal(badge().textContent?.trim(), "Unsaved");
 
     await act(async () => useSafeSpaceStore.setState({ storageStatus: "saved" }));
-    assert.equal(badge().textContent?.trim(), "Saved");
+    assert.equal(badge().textContent?.trim(), "Saved locally");
 
     await act(async () => useSafeSpaceStore.setState({ storageStatus: "error", storageError: "Storage unavailable" }));
     assert.equal(badge().textContent?.trim(), "Error");

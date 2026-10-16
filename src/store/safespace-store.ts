@@ -388,30 +388,16 @@ function persistUserMutation(
 
     const saveRes = savePersistedAssessment(payload);
     if (saveRes.success) {
-      const unsupportedSceneDetails = state.walls.length > 0 || state.hazards.length > 0;
-      const syncNotice = "Walls and manually authored hazard notes are saved in this browser only. The cloud assessment API does not yet persist them.";
-      set({
-        storageStatus: "saved",
-        storageError: null,
-        hasFloorplanImage,
-        ...(unsupportedSceneDetails ? { remoteSyncStatus: "failed" as const, remoteSyncError: syncNotice } : {}),
-      });
+      set({ storageStatus: "saved", storageError: null, hasFloorplanImage });
       if (typeof window !== "undefined" && state.assessmentMetadata?.id) {
         const currentSeq = ++remoteSyncSequence;
-        set({
-          remoteSyncStatus: unsupportedSceneDetails ? "failed" : "pending",
-          remoteSyncError: unsupportedSceneDetails ? syncNotice : null,
-        });
+        set({ remoteSyncStatus: "pending", remoteSyncError: null });
         serverAssessmentService
           .saveAssessment(state.assessmentMetadata.id, payload)
           .then((res) => {
             if (currentSeq !== remoteSyncSequence) return;
             if (res.success) {
-              if (unsupportedSceneDetails) {
-                set({ remoteSyncStatus: "failed", remoteSyncError: syncNotice });
-              } else {
-                set({ remoteSyncStatus: "synced", remoteSyncError: null });
-              }
+              set({ remoteSyncStatus: "synced", remoteSyncError: null });
             } else {
               const isConflict =
                 res.error?.includes("409") ||
@@ -509,6 +495,8 @@ export const useSafeSpaceStore = create<SafeSpaceState>((set, get) => ({
       activeProfileSnapshot: state.activeProfile,
       routeWaypoints: state.routeWaypoints,
       furniture: state.furniture,
+      walls: state.walls,
+      hazards: state.hazards,
       appliedLayoutBaseline: state.baselineFurnitureSnapshot,
       appliedCandidateId: state.appliedCandidateId,
       appliedSceneFingerprint: state.appliedSceneFingerprint,
