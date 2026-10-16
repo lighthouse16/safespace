@@ -9,8 +9,7 @@
     "lint": "eslint .",
     "typecheck": "tsc --noEmit",
     "test": "tsx --test tests/**/*.test.ts",
-    "test:browser:guest": "node scripts/smoke-guest-browser.mjs",
-    "verify:export": "tsx scripts/verify-static-export.ts"
+    "test:browser:guest": "node scripts/smoke-guest-browser.mjs"
   },
   "keywords": [],
   "author": "",

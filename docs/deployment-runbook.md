@@ -1,73 +1,52 @@
-# SafeSpace Production Deployment Runbook
+# SafeSpace — Deployment and Local Verification
 
-## 1. Prerequisites & Environment Variables
+> **Current baseline:** the account-free, local-first Next.js application on `main`. This document replaces the former, outdated GitHub Pages/static-export and production-ready checklists. A successful CI run is not a production release approval.
 
-Configure the following environment variables in production (Vercel, AWS, or Docker runtime):
+## 1. Default experience
 
-| Variable | Required | Description | Example |
-| :--- | :--- | :--- | :--- |
-| `NEXT_PUBLIC_SUPABASE_URL` | **Yes** | Supabase Project URL | `https://[project-ref].supabase.co` |
-| `NEXT_PUBLIC_SUPABASE_ANON_KEY` | **Yes** | Supabase Public Anon Key | `eyJhbGci...` |
-| `SUPABASE_SERVICE_ROLE_KEY` | Recommended | Supabase Service Role Key for admin ops | `eyJhbGci...` |
-| `SESSION_SECRET` | **Yes** | Secret for session tokens and encryption | 32+ character random string |
-| `GEMINI_API_KEY` | Optional | Google Gemini API Key for AI interpretation | `AIzaSy...` |
-| `EXPORT_GH_PAGES` | Optional | Set to `"true"` only for static GH Pages deploy | `"false"` |
+Visitors use the 2D layout editor, manual drafting, mobility/routing evaluation, deterministic findings and local optimization **without creating an account**. Draft metadata, geometry and changes are saved in browser localStorage; floorplan images use IndexedDB. Browser storage is not a cloud backup. Clear-site-data, another browser or another device does not recover the same assessment.
 
-## 2. Database Setup & Migration
+The optional account-backed Supabase server routes remain access-controlled. Do **not** grant anonymous read/write to user-owned Supabase tables or accept caller-selected ownership to remove a login screen.
 
-Run the migration script against your Supabase or PostgreSQL database:
+## 2. Local development and checks
 
 ```bash
-# Using Supabase CLI:
-supabase db push
-
-# Or via psql directly:
-psql -h db.[project-ref].supabase.co -U postgres -d postgres -f supabase/migrations/001_initial_schema.sql
+npm ci
+npm run dev
 ```
 
-Verify that all tables and RLS policies are enabled:
-```sql
-SELECT tablename, rowsecurity FROM pg_tables WHERE schemaname = 'public';
-```
-All application tables must show `rowsecurity = true`.
+Then visit `http://localhost:3000`. The cloud account mode is disabled unless explicitly opted in.
 
-## 3. Private Storage Bucket Setup
-
-1. In Supabase Dashboard, navigate to **Storage**.
-2. Verify bucket `floorplans` exists with:
-   - **Public**: `false` (Private)
-   - **File size limit**: `52428800` (50MB)
-   - **Allowed MIME types**: `image/png, image/jpeg, image/webp, application/pdf`
-3. Storage policies in `001_initial_schema.sql` enforce that users can only upload/read/delete files inside `floorplans/{userId}/*`.
-
-## 4. Building & Running the Application
-
-### Production Build
 ```bash
+npm run typecheck
+npm run lint
+npm test
 npm run build
+npm run test:browser:guest
 ```
 
-### Starting the Production Server
-```bash
-npm run start
-```
+The guest browser smoke requires Google Chrome stable. It creates a disposable test assessment in an isolated browser context, tests manual calibration, boundary, CAD notes, analysis, reopen and PNG upload, and must not call authenticated APIs. Some Supabase-backed test suites require a separately running local Supabase database. Live Gemini and external M3DLayout inference need their own configured environments and have not been approved for production.
 
-### Production Health Check
-Verify API health:
-```bash
-curl -I https://[your-domain]/api/v1/auth/session
-# Expect HTTP 200 {"authenticated":false,"user":null}
-```
+## 3. Server deployment
 
-## 5. Automated Verification Checklist
+The app has Next.js route handlers and therefore requires a **server-capable host** with a supported Node.js runtime. **Do not deploy to GitHub Pages** or use the obsolete `EXPORT_GH_PAGES` option; it was removed because it is incompatible with full-stack routes. CI on GitHub Actions only tests and builds.
 
-Before releasing to production:
-- [x] Run full unit & integration test suite: `npm test` (252 passing tests, 0 failures)
-- [x] Run static export verification: `npm run verify:export` (6 HTML files verified, 8 retired routes absent, 0 fabricated markers)
-- [x] Run TypeScript typecheck: `npm run typecheck` (0 errors)
-- [x] Run linter: `npm run lint` (0 errors, 0 warnings)
-- [x] Verify Docker PostgreSQL migration & RLS isolation: `npx tsx --test tests/db-schema-isolation.test.ts` (4/4 passing)
-- [x] Verify spatial parity: `npx tsx --test tests/spatial-parity.test.ts` (2/2 passing)
-- [x] Verify Stage 5 optimization engine: `npx tsx --test tests/stage5-optimizer.test.ts` (23/23 passing)
-- [x] Verify full 23-step journey: `npx tsx --test tests/full-stack-journey.test.ts` (13/13 passing, strict HTTP status assertions, zero 401 fallbacks)
+Before any production release, confirm the chosen hosting plan, environment variables, access controls, data retention, backups, HTTPS, monitoring, rate limiting and rollback strategy. Never commit `.env*` files. Keep service-role credentials server-side.
 
+## 4. Optional Supabase account-backed deployment
+
+This is *not* required for the default guest product. For an explicitly authorized account-backed deployment:
+
+1. Configure `NEXT_PUBLIC_ENABLE_CLOUD_ACCOUNTS=true` **at build time**, `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY`, and only the genuinely required private server credentials for the selected hosting environment.
+2. Apply **both** `supabase/migrations/001_initial_schema.sql` and `supabase/migrations/002_scene_annotations.sql` to a backed-up target database in the correct order.
+3. Revalidate `auth.uid()` ownership checks, PostgreSQL `SECURITY DEFINER` RPC grants, RLS isolation, concurrent/stale optimizer candidate rejection, Supabase Storage policies and authenticated API flows using real tokens.
+4. Separately validate media round-trips, application restart durability and the handling of all failed API writes. Require explicit release authorization before migrating a production database.
+
+## 5. External inference
+
+- `GEMINI_API_KEY` is only needed for live Gemini server features when they are explicitly used. Consent, evidence grounding and server-side secret protection are mandatory; the guest spatial evidence summary is deterministic and does not call Gemini.
+- M3DLayout inference depends on a separately running, compatible endpoint. Do not claim it works live without a successful round-trip test and relevant rate/availability limits.
+
+## 6. Release evidence
+
+Local and CI verification must be recorded separately; never replace an actual test with a previous result or mark skipped external tests as passing. See `docs/guest-local-first.md` and `docs/unified-main-handoff.md`. Historical architecture and Gate-0 documents describe earlier milestones and are preserved solely as project history.

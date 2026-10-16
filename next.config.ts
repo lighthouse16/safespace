@@ -1,13 +1,8 @@
 import type { NextConfig } from "next";
 
-// GitHub Actions is a CI runner, not a static hosting target. Full-stack route
-// handlers must remain available during CI and on a server-capable host.
-// Legacy Pages export is opt-in only for a separate, explicit static build.
-const isGithubPages = process.env.EXPORT_GH_PAGES === "true";
-
+// SafeSpace uses a Next.js server runtime for its API routes.
+// GitHub Pages static export is no longer supported by this app.
 const nextConfig: NextConfig = {
-  output: isGithubPages ? "export" : undefined,
-  basePath: isGithubPages ? "/safespace" : "",
   images: {
     unoptimized: true,
   },

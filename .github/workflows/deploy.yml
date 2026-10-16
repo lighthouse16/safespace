@@ -1,8 +1,7 @@
 name: SafeSpace Full-Stack Build Check
 
-# The previous workflow automatically published ./out to GitHub Pages.
-# The Next.js server routes (Supabase Auth/API/Gemini) cannot run on Pages.
-# Keep main verifiable; enable a real full-stack host in a separate deployment change.
+# Build and verify the Next.js server application, including account-free
+# browser E2E. Deploy only via a separately approved server-capable host.
 on:
   push:
     branches: ["main"]
@@ -41,5 +40,4 @@ jobs:
       - name: Browser guest end-to-end smoke (Chrome)
         run: npm run test:browser:guest
 
-# No deploy job: the prior static GitHub Pages deployment is not compatible
-# with authenticated full-stack server routes.
+# No deployment job; GitHub Pages cannot run Next.js API routes.
