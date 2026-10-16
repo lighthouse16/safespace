@@ -3,7 +3,7 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { Sparkles } from "lucide-react";
 import { useSafeSpaceStore } from "@/store/safespace-store";
-import { generateM3DLayout, readStoredApiBase, storeApiBase } from "@/lib/m3dlayout/client";
+import { checkM3DBackend, generateM3DLayout } from "@/lib/m3dlayout/client";
 import { splitRoomRequests } from "@/lib/m3dlayout/prompt-agent";
 import { composeRoomFrames, placeOpenings, type GeneratedPlan } from "@/lib/m3dlayout/room-plan";
 import { sceneToFurniture } from "@/lib/m3dlayout/scene-adapter";
@@ -16,7 +16,7 @@ type PendingPlan = GeneratedPlan & { furniture: SpatialFurniture[]; openings: Sp
 export function GenerateLayoutPanel() {
   const applyGeneratedPlan = useSafeSpaceStore((state) => state.applyGeneratedPlan);
   const canonicalBoundary = useSafeSpaceStore((state) => state.canonicalBoundary);
-  const [apiUrl, setApiUrl] = useState("");
+  const [backendStatus, setBackendStatus] = useState<"checking" | "ready" | "offline" | "unconfigured">("checking");
   const [query, setQuery] = useState("a living room with a sofa, a coffee table, and a television");
   const [seed, setSeed] = useState(0);
   const [busy, setBusy] = useState(false);
@@ -25,7 +25,25 @@ export function GenerateLayoutPanel() {
   const [pending, setPending] = useState<PendingPlan | null>(null);
   const [placementNote, setPlacementNote] = useState<string | null>(null);
 
-  useEffect(() => { const task = window.setTimeout(() => setApiUrl(readStoredApiBase()), 0); return () => window.clearTimeout(task); }, []);
+  useEffect(() => {
+    let mounted = true;
+    checkM3DBackend()
+      .then((result) => {
+        if (mounted) setBackendStatus(!result.configured ? "unconfigured" : result.reachable ? "ready" : "offline");
+      })
+      .catch(() => { if (mounted) setBackendStatus("offline"); });
+    return () => { mounted = false; };
+  }, []);
+
+  const recheckBackend = async () => {
+    setBackendStatus("checking");
+    try {
+      const result = await checkM3DBackend();
+      setBackendStatus(!result.configured ? "unconfigured" : result.reachable ? "ready" : "offline");
+    } catch {
+      setBackendStatus("offline");
+    }
+  };
 
   const requests = useMemo(() => splitRoomRequests(query), [query]);
   const ready = requests.every((request) => request.ready);
@@ -48,7 +66,6 @@ export function GenerateLayoutPanel() {
     }
     setBusy(true);
     try {
-      storeApiBase(apiUrl);
       const furniture: SpatialFurniture[] = [];
       const boundary = canonicalBoundary && canonicalBoundary.length >= 3 ? canonicalBoundary : plan.boundary;
       const openings = placeOpenings(plan.walls, boundary, requests);
@@ -59,7 +76,7 @@ export function GenerateLayoutPanel() {
       for (let index = 0; index < plan.framed.length; index += 1) {
         const room = plan.framed[index];
         setStatus(`Generating ${room.name} (${index + 1} of ${plan.framed.length})…`);
-        const scene = await generateM3DLayout(apiUrl, room.prompt, seed + index);
+        const scene = await generateM3DLayout("", room.prompt, seed + index);
         const modeled = sceneToFurniture(scene, room.frame, room.id);
         if (modeled.length === 0) {
           throw new Error(`Colab returned no usable furniture boxes for ${room.name}. The plan was not changed.`);
@@ -111,16 +128,20 @@ export function GenerateLayoutPanel() {
         </p>
       </div>
 
-      <label className="block text-[11px] text-[#647078]">
-        Colab API URL
-        <input
-          value={apiUrl}
-          onChange={(event) => setApiUrl(event.target.value)}
-          placeholder="https://your-subdomain.ngrok-free.app"
-          spellCheck={false}
-          className="mt-1 w-full rounded-lg border border-[#E2E6E8] bg-white px-2 py-1.5 text-xs text-[#17252B]"
-        />
-      </label>
+      <div className="flex items-center justify-between gap-2 text-[11px] text-[#647078]" role="status">
+        <span>
+          Model backend: {backendStatus === "ready" ? "reachable" : backendStatus === "checking" ? "checking…" :
+            backendStatus === "unconfigured" ? "not configured" : "unreachable (runtime may be sleeping)"}
+        </span>
+        <button type="button" onClick={() => void recheckBackend()}
+          className="rounded border border-[#D2DDDA] px-2 py-1 hover:bg-white cursor-pointer"
+          disabled={busy || backendStatus === "checking"}>Recheck</button>
+      </div>
+      {backendStatus === "unconfigured" && (
+        <p className="text-[11px] text-amber-900">
+          The deployment owner needs to set M3D_INFERENCE_URL on the Next.js server.
+        </p>
+      )}
 
       <label className="block text-[11px] text-[#647078]">
         What should the rooms contain?
@@ -154,11 +175,11 @@ export function GenerateLayoutPanel() {
       <button
         type="button"
         onClick={onGenerate}
-        disabled={busy || !ready}
+        disabled={busy || !ready || backendStatus === "unconfigured"}
         className="w-full py-1.5 px-2 bg-[#0B514B] hover:bg-[#083f3a] disabled:opacity-50 text-white rounded-lg text-xs font-semibold flex items-center justify-center gap-1.5 transition cursor-pointer"
       >
         <Sparkles className="w-3.5 h-3.5" />
-        {busy ? status || "Generating on Colab…" : "Generate layout"}
+        {busy ? status || "Generating layout…" : "Generate layout"}
       </button>
 
       {placementNote && <p className="text-[11px] text-[#0B514B]">{placementNote}</p>}
