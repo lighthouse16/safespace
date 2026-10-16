@@ -1,7 +1,7 @@
-name: SafeSpace Full-Stack Build Check
+name: SafeSpace Verify and Deploy
 
-# Build and verify the Next.js server application, including account-free
-# browser E2E. Deploy only via a separately approved server-capable host.
+# Verify the full-stack source, then deploy a separate guest-only static
+# artifact to GitHub Pages. Authenticated server APIs are NOT deployed there.
 on:
   push:
     branches: ["main"]
@@ -40,4 +40,43 @@ jobs:
       - name: Browser guest end-to-end smoke (Chrome)
         run: npm run test:browser:guest
 
-# No deployment job; GitHub Pages cannot run Next.js API routes.
+  pages-export:
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+      - name: Install dependencies
+        run: npm ci
+      - name: Build isolated static guest website
+        run: npm run build:pages
+      - name: Smoke test deployed artifact locally
+        run: node scripts/smoke-pages-browser.mjs
+      - name: Upload GitHub Pages artifact
+        uses: actions/upload-pages-artifact@v4
+        with:
+          path: ./out
+
+  deploy-pages:
+    needs: pages-export
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Deploy guest website to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4
+

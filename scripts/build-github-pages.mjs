@@ -1,9 +1,7 @@
 /**
- * Generate a GitHub Pages artifact for SafeSpace's account-free guest workflow.
- *
- * Keeps the full-stack source tree untouched. GitHub Pages cannot run API route
- * handlers, so the disposable staged build intentionally omits /app/api.
- * NEVER use this artifact to claim Supabase/cloud/Gemini API functionality.
+ * Produce a GitHub Pages artifact for the account-free SafeSpace client.
+ * Runs Next.js in a disposable, separately installed static-only project.
+ * GitHub Pages cannot host Next.js API routes; omit those only in staging.
  *
  * Usage: npm run build:pages
  */
@@ -15,67 +13,67 @@ import { spawn } from "node:child_process";
 
 const root = process.cwd();
 const stage = await mkdtemp(join(tmpdir(), "safespace-pages-"));
-const exportDir = resolve(root, "out");
-const files = ["package.json", "package-lock.json", "tsconfig.json", "postcss.config.mjs", "next-env.d.ts"];
-const folders = ["src", "public"];
+const artifact = resolve(root, "out");
 
-async function command(cmd, args, cwd, env = {}) {
-  console.log("[pages] Running:", cmd, args.join(" "), "in", cwd);
-  await new Promise((done, fail) => {
+async function run(command, args, cwd) {
+  console.log("[pages] Running:", command, args.join(" "), "in", cwd);
+  await new Promise((ok, fail) => {
     const isWin = process.platform === "win32";
-    const isShellCmd = isWin && (cmd.endsWith(".cmd") || cmd.endsWith(".bat"));
-    const p = spawn(cmd, args, {
+    const isShell = isWin && (command.endsWith(".cmd") || command.endsWith(".bat"));
+    const child = spawn(command, args, {
       cwd,
       stdio: "inherit",
-      shell: isShellCmd,
-      env: { ...process.env, ...env, NEXT_PUBLIC_ENABLE_CLOUD_ACCOUNTS: "false", EXPORT_GH_PAGES: "false" }
+      shell: isShell,
+      env: {
+        ...process.env,
+        NEXT_PUBLIC_ENABLE_CLOUD_ACCOUNTS: "false",
+        EXPORT_GH_PAGES: "false",
+      },
     });
-    p.on("error", fail);
-    p.on("close", (code) => code === 0 ? done() : fail(new Error(cmd + " failed (" + code + ")")));
+    child.on("error", fail);
+    child.on("close", (code) => code === 0 ? ok() : fail(new Error(command + " exited " + code)));
   });
 }
 
 try {
-  for (const filename of files) await copyFile(resolve(root, filename), join(stage, filename));
-  for (const folder of folders) await cp(resolve(root, folder), join(stage, folder), { recursive: true });
-
-  const api = join(stage, "src", "app", "api");
-  if (!existsSync(api)) throw new Error("Expected server API routes not found; refusing unverified staging layout");
-  await rm(api, { recursive: true });
+  for (const file of ["package.json", "package-lock.json", "tsconfig.json", "postcss.config.mjs", "next-env.d.ts"]) {
+    await copyFile(resolve(root, file), join(stage, file));
+  }
+  for (const directory of ["src", "public"]) {
+    await cp(resolve(root, directory), join(stage, directory), { recursive: true });
+  }
+  const serverRoutes = join(stage, "src", "app", "api");
+  if (!existsSync(serverRoutes)) throw new Error("Unexpected app structure: no API routes to exclude");
+  await rm(serverRoutes, { recursive: true });
 
   await writeFile(join(stage, "next.config.mjs"), [
-    "// ONLY for the disposable GitHub Pages guest static build.",
+    "// Temporary guest-only static build. Never deploy server secrets here.",
     "export default {",
-    '  output: "export",',
-    '  basePath: "/safespace",',
+    "  output: 'export',",
+    "  basePath: '/safespace',",
     "  trailingSlash: true,",
     "  images: { unoptimized: true },",
     "};",
-    ""
+    "",
   ].join("\n"));
 
-  // npm ci in a detached directory avoids junction-based Turbopack root failures.
-  await command(process.platform === "win32" ? "npm.cmd" : "npm", ["ci", "--no-audit", "--no-fund"], stage);
-  await command(process.execPath, [join(stage, "node_modules", "next", "dist", "bin", "next"), "build"], stage);
+  await run(process.platform === "win32" ? "npm.cmd" : "npm", ["ci", "--no-audit", "--no-fund"], stage);
+  await run(process.execPath, [join(stage, "node_modules", "next", "dist", "bin", "next"), "build"], stage);
 
-  const builtDir = join(stage, "out");
+  const pages = join(stage, "out");
   for (const page of ["index.html", "assessments/index.html", "assessments/new/index.html", "workspace/index.html"]) {
-    if (!existsSync(join(builtDir, page))) {
-      throw new Error("Missing Pages export route: " + page);
-    }
+    if (!existsSync(join(pages, page))) throw new Error("Static export missing " + page);
   }
-  if (existsSync(join(builtDir, "api"))) {
-    throw new Error("Server API unexpectedly included in static Pages artifact");
-  }
-  await writeFile(join(builtDir, ".nojekyll"), "");
-  await rm(exportDir, { recursive: true, force: true });
-  await cp(builtDir, exportDir, { recursive: true });
-  console.log("[pages] Generated guest-only Pages artifact:", exportDir);
-  console.log("[pages] Excludes server API routes. Cloud account services are unavailable on Pages.");
+  if (existsSync(join(pages, "api"))) throw new Error("API unexpectedly present in Pages artifact");
+
+  await writeFile(join(pages, ".nojekyll"), "");
+  await rm(artifact, { recursive: true, force: true });
+  await cp(pages, artifact, { recursive: true });
+  console.log("[pages] Guest-only static site is ready at out/");
 } catch (error) {
-  console.error("[pages] Static export failed:", error);
+  console.error("[pages] Failed:", error);
   process.exitCode = 1;
 } finally {
   try { await rm(stage, { recursive: true, force: true, maxRetries: 3, retryDelay: 500 }); }
-  catch (error) { console.warn("[pages] Could not clean temp staging:", error.message); }
+  catch (error) { console.warn("[pages] Staging cleanup:", error.message); }
 }
