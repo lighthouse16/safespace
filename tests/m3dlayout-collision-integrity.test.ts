@@ -1,6 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { arrangeRoomFurniture } from "../src/lib/m3dlayout/arrange";
+import { sceneToFurniture } from "../src/lib/m3dlayout/scene-adapter";
 import { resolveGeneratedFurniture, validateGeneratedPlanGeometry } from "../src/lib/m3dlayout/collision-layout";
 import { useSafeSpaceStore } from "../src/store/safespace-store";
 import { splitRoomRequests } from "../src/lib/m3dlayout/prompt-agent";
@@ -224,4 +225,17 @@ test("final store gate rejects an overlapping generated plan atomically", () => 
   } finally {
     useSafeSpaceStore.setState(saved);
   }
+});
+
+test("raw Colab scene with coincident model boxes cannot return overlapping furniture", () => {
+  const furniture = sceneToFurniture({
+    class_names: ["sofa", "chair", "coffee_table", "chair"],
+    translations: [[0, 0, 0], [0, 0, 0], [0, 0, 0], [0, 0, 0]],
+    sizes: [[1.7, 0.8, 0.8], [0.5, 0.8, 0.5], [0.9, 0.4, 0.6], [0.5, 0.8, 0.5]],
+    angles: [0, 0, 0, 0],
+  }, { roomId: "test", centerX: 300, centerY: 240, maxWidthCm: 580, maxDepthCm: 460 });
+  assert.equal(furniture.length, 4);
+  assertNoOverlap(furniture, [
+    {x:10,y:10},{x:590,y:10},{x:590,y:470},{x:10,y:470},
+  ]);
 });
