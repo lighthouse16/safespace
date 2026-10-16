@@ -69,10 +69,27 @@ async function check() {
     "Entering calibration must activate the calibration tool automatically");
   await page.getByLabel("Reference length (real-world)").fill("2");
   await page.getByRole("button", { name: /Apply scale/ }).click();
-  for (const [x,y] of [[100,90],[350,90],[350,335],[100,335]]) {
+  const snap = page.getByRole("switch", { name: "Snap to grid" });
+  assert.equal(await snap.getAttribute("aria-checked"), "false",
+    "Uploaded or manually drawn polygons must support arbitrary points by default");
+  await snap.click();
+  assert.equal(await snap.getAttribute("aria-checked"), "true");
+  await snap.click();
+  assert.equal(await snap.getAttribute("aria-checked"), "false");
+  for (const [x,y] of [[103,93],[353,93],[353,338],[103,338]]) {
     await draft.click({ position: { x, y } });
   }
   assert.equal(await page.getByText("4 vertices").count(), 2);
+  // Real regression: SVG vertex circles used to swallow pointerdown,
+  // preventing clicking the initial point from closing the polygon.
+  await draft.locator("circle.cursor-pointer").first().click();
+  assert.equal(await page.getByText("Boundary polygon closed").count(), 1);
+  // Also preserve explicit Close Boundary as an accessible alternative.
+  await page.getByRole("button", { name: "Redraw boundary" }).click();
+  await page.getByRole("button", { name: "Draw boundary" }).last().click();
+  for (const [x,y] of [[103,93],[353,93],[353,338],[103,338]]) {
+    await draft.click({ position: { x, y } });
+  }
   await page.getByRole("button", { name: "Close Boundary" }).click();
   assert.equal(await page.getByText("Boundary polygon closed").count(), 1);
   await page.getByRole("button", { name: "Continue to review" }).last().click();

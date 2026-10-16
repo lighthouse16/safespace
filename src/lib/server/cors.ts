@@ -2,6 +2,8 @@ import { NextResponse } from "next/server";
 
 const DEFAULT_ALLOWED_ORIGINS = [
   "https://lighthouse16.github.io",
+  // The full-stack Vercel frontend is also a supported same-site demo origin.
+  "https://safespace-gateway.vercel.app",
   "http://localhost:3000",
   "http://127.0.0.1:3000",
   "http://localhost:3006",
