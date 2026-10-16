@@ -14,7 +14,7 @@ Previously `GenerateLayoutPanel` POSTed each prompt to the Colab `/generate` API
 - This is a geometry check, **not** proof of accessibility, circulation clearance, or safety compliance.
 
 ## End-to-end live verification needed
-The connected Windows desktop was offline when these changes were authored. No currently running Google Colab/ngrok URL was available; therefore **no live inference, browser E2E, lint, typecheck, or complete suite has been verified yet**.
+Desktop Commander later connected to Lighthouselap. We created a **separate Git worktree** at `D:\\projects\\Hack\\safespace-colab-worktree`. Verified: npm dependencies installed, TypeScript typecheck passed, production build passed before the final polygon/wall/door addition, ESLint 0 errors with two unrelated test-file warnings, and all **19/19 targeted M3DLayout tests passed** after the obstacle addition. The earlier full-suite run produced **270 pass, 3 fail, 1 skip**: 25-second test server startup timeout in authenticated API lifecycle, and two PostgreSQL/RPC tests failing assertions. No currently running Google Colab/ngrok URL was available, so **live inference and browser E2E are still unverified**. The mock API-contract tests use a stubbed `fetch`, not the real Colab inference service.
 
 1. Bring up the actual Colab notebook and confirm its FastAPI `/generate` route; verify the response fields `class_names`, `translations`, `sizes`, `angles` and units.
 2. Validate tunnel CORS, HTTPS, preflight OPTIONS, ngrok warning bypass, cold-start latency, timeout, and at least one error path; **do not expose ngrok auth tokens**.
