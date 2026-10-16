@@ -70,7 +70,9 @@ jobs:
 
   deploy-pages:
     needs: pages-export
-    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    # A manual main dispatch must publish the rebuilt artifact as well.
+    # This is necessary when the build-time public gateway URL changes.
+    if: (github.event_name == 'push' || github.event_name == 'workflow_dispatch') && github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     permissions:
       contents: read
