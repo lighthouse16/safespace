@@ -31,7 +31,8 @@ test("Model Config: Text model selection respects supported list and rejects uns
 test("Model Config: Image model selection respects standard vs premium tiers", () => {
   assert.equal(getActiveImageModel("gemini-3.1-flash-lite-image", false), "gemini-3.1-flash-lite-image");
   assert.equal(getActiveImageModel("gemini-3.1-flash-image", true), "gemini-3.1-flash-image");
-  assert.equal(getActiveImageModel("gemini-nano-banana-2.1", false), "gemini-nano-banana-2.1");
+  // Unsupported model falls back safely to default without silent upgrade
+  assert.equal(getActiveImageModel("gemini-nano-banana-2.1", false), DEFAULT_IMAGE_MODEL);
 
   // Invalid model safely defaults without silent upgrade
   assert.equal(getActiveImageModel("dall-e-4", false), DEFAULT_IMAGE_MODEL);

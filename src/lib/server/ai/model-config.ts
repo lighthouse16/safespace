@@ -17,7 +17,6 @@ export type SupportedTextModel = (typeof SUPPORTED_TEXT_MODELS)[number];
 export const SUPPORTED_IMAGE_MODELS = [
   "gemini-3.1-flash-lite-image",
   "gemini-3.1-flash-image",
-  "gemini-nano-banana-2.1",
 ] as const;
 
 export const RETIRED_MODELS = [

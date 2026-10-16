@@ -157,8 +157,9 @@ export function AIConceptPreviewModal({
           </div>
 
           {/* Active Image or Generation Card */}
-          {activeImage ? (
-            <div className="space-y-3">
+          {/* Active Image Preview */}
+          {activeImage && (
+            <div className="space-y-2">
               <div className="relative rounded-xl border border-[#E2E6E8] overflow-hidden bg-slate-950 flex items-center justify-center min-h-[320px]">
                 {/* eslint-disable-next-line @next/next/no-img-element */}
                 <img
@@ -176,19 +177,15 @@ export function AIConceptPreviewModal({
                 </div>
               </div>
 
-              <div className="flex items-center justify-between text-xs text-[#647078]">
+              <div className="flex items-center justify-between text-xs text-[#647078] px-1">
                 <span>Generated: {new Date(activeImage.timestamp).toLocaleTimeString()}</span>
-                <button
-                  type="button"
-                  disabled={isGenerating}
-                  onClick={handleGenerate}
-                  className="text-xs text-[#0B514B] hover:underline font-semibold cursor-pointer disabled:opacity-50"
-                >
-                  {isGenerating ? "Regenerating..." : "Regenerate concept image"}
-                </button>
+                <span>Active cache tier: {modelTier}</span>
               </div>
             </div>
-          ) : (
+          )}
+
+          {/* Empty State when no image generated for this fingerprint */}
+          {!activeImage && (
             <div className="rounded-xl border border-dashed border-[#CBD5E1] bg-[#FAFBF9] p-8 text-center space-y-4">
               <div className="mx-auto size-12 rounded-xl bg-teal-50 flex items-center justify-center text-[#0B514B]">
                 <ImageIcon size={24} />
@@ -200,33 +197,6 @@ export function AIConceptPreviewModal({
                 <p className="text-xs text-[#647078] leading-relaxed">
                   Sends current spatial layout metadata ({furniture.length} fixtures, room boundary coordinates) to Gemini to produce an architectural interior visualization (target 1K resolution).
                 </p>
-              </div>
-
-              {/* Controls */}
-              <div className="max-w-xs mx-auto space-y-3 pt-2 text-left">
-                <label className="block text-xs font-medium text-[#17252B]">
-                  Model Quality
-                  <select
-                    value={modelTier}
-                    onChange={(e) => setModelTier(e.target.value as "standard" | "premium")}
-                    className="mt-1 w-full rounded-lg border border-[#E2E6E8] bg-white px-2.5 py-1.5 text-xs text-[#17252B]"
-                  >
-                    <option value="standard">gemini-3.1-flash-lite-image (1K Standard, Cost-Efficient)</option>
-                    <option value="premium">gemini-3.1-flash-image (Premium Quality)</option>
-                  </select>
-                </label>
-
-                <label className="flex items-start gap-2 text-xs text-[#647078] cursor-pointer">
-                  <input
-                    type="checkbox"
-                    checked={userConsent}
-                    onChange={(e) => setUserConsent(e.target.checked)}
-                    className="mt-0.5 rounded border-slate-300 text-[#0B514B] focus:ring-[#0B514B]"
-                  />
-                  <span>
-                    I consent to processing room dimensions, spatial fixture coordinates, and furniture descriptions through Google Gemini. No personal identifiers are transmitted.
-                  </span>
-                </label>
               </div>
 
               <button
@@ -249,6 +219,56 @@ export function AIConceptPreviewModal({
               </button>
             </div>
           )}
+
+          {/* Model Quality & Opt-in Consent Controls (Persistent across states) */}
+          <div className="rounded-xl border border-[#E2E6E8] bg-[#FAFBF9] p-3 space-y-2 text-left">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+              <label className="text-xs font-medium text-[#17252B] flex items-center gap-2">
+                <span>Model Quality:</span>
+                <select
+                  value={modelTier}
+                  onChange={(e) => setModelTier(e.target.value as "standard" | "premium")}
+                  className="rounded-lg border border-[#E2E6E8] bg-white px-2.5 py-1 text-xs text-[#17252B]"
+                >
+                  <option value="standard">gemini-3.1-flash-lite-image (1K Standard, Cost-Efficient)</option>
+                  <option value="premium">gemini-3.1-flash-image (Premium Quality)</option>
+                </select>
+              </label>
+
+              {activeImage && (
+                <button
+                  type="button"
+                  disabled={isGenerating || !userConsent}
+                  onClick={handleGenerate}
+                  className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-[#0B514B] hover:bg-[#083E39] text-white text-xs font-semibold shadow-xs transition disabled:opacity-50 cursor-pointer"
+                >
+                  {isGenerating ? (
+                    <>
+                      <Loader2 size={13} className="animate-spin" />
+                      <span>Rendering...</span>
+                    </>
+                  ) : (
+                    <>
+                      <Sparkles size={13} />
+                      <span>Regenerate concept image</span>
+                    </>
+                  )}
+                </button>
+              )}
+            </div>
+
+            <label className="flex items-start gap-2 text-xs text-[#647078] cursor-pointer pt-1 border-t border-slate-200/60">
+              <input
+                type="checkbox"
+                checked={userConsent}
+                onChange={(e) => setUserConsent(e.target.checked)}
+                className="mt-0.5 rounded border-slate-300 text-[#0B514B] focus:ring-[#0B514B]"
+              />
+              <span>
+                I consent to processing room dimensions, spatial fixture coordinates, and furniture descriptions through Google Gemini. No personal identifiers are transmitted.
+              </span>
+            </label>
+          </div>
 
           {/* Error Message */}
           {error && (

@@ -102,7 +102,7 @@ export interface VisualizationResponsePayload {
   timestamp: string;
 }
 
-async function parseResponseOrThrow<T>(res: Response, operationName: string): Promise<T> {
+export async function parseResponseOrThrow<T>(res: Response, operationName: string): Promise<T> {
   const text = await res.text();
   let data: Record<string, unknown> | null = null;
   try {

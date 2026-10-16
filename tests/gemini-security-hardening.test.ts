@@ -1,13 +1,17 @@
 import test from "node:test";
 import assert from "node:assert/strict";
+import { execFile } from "node:child_process";
+import { promisify } from "node:util";
 import { checkRateLimit, getClientIp, resetRateLimits } from "@/lib/server/rate-limiter";
 import { validateOrigin, handleCorsPreflight } from "@/lib/server/cors";
 import { verifyImageBinary } from "@/lib/server/request-guard";
 import { isModelRetired, SUPPORTED_IMAGE_MODELS } from "@/lib/server/ai/model-config";
+import { GET as getHealth } from "@/app/api/gemini/health/route";
 import { POST as postExplanation } from "@/app/api/gemini/explanation/route";
 import { POST as postInterpretation } from "@/app/api/gemini/interpretation/route";
 import { POST as postVisualize } from "@/app/api/gemini/visualize/route";
 
+const pExecFile = promisify(execFile);
 const VALID_PNG_BASE64 = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==";
 
 // =========================================================================
@@ -322,3 +326,93 @@ test("Security P2: Retired model gemini-2.5-flash-image is removed and rejected"
   const data = await res.json();
   assert.match(data.error || "", /retired/i);
 });
+
+// =========================================================================
+// P0: Multi-Instance Shared Atomic Rate Limiting
+// =========================================================================
+
+test("Security P0: Multi-Instance - Shared limiter holds across separate OS processes", async () => {
+  resetRateLimits();
+  const testIp = `multi-proc-ip-${Date.now()}`;
+  const script = `
+    import { checkRateLimit } from './src/lib/server/rate-limiter.ts';
+    const r1 = checkRateLimit('${testIp}', 'visualize');
+    const r2 = checkRateLimit('${testIp}', 'visualize');
+    const r3 = checkRateLimit('${testIp}', 'visualize');
+    console.log(JSON.stringify([r1.allowed, r2.allowed, r3.allowed]));
+  `;
+
+  // Spawn two separate OS processes concurrently requesting 'visualize' route (max 4 per min)
+  const [proc1, proc2] = await Promise.all([
+    pExecFile(process.execPath, ["--import", "tsx", "-e", script], { cwd: process.cwd() }),
+    pExecFile(process.execPath, ["--import", "tsx", "-e", script], { cwd: process.cwd() }),
+  ]);
+
+  const res1 = JSON.parse(proc1.stdout.trim()) as boolean[];
+  const res2 = JSON.parse(proc2.stdout.trim()) as boolean[];
+  const combined = [...res1, ...res2];
+
+  const allowedCount = combined.filter((r) => r === true).length;
+  const rejectedCount = combined.filter((r) => r === false).length;
+
+  assert.equal(allowedCount, 4, "Across both OS instances, exactly 4 requests must be allowed");
+  assert.equal(rejectedCount, 2, "Across both OS instances, exactly 2 requests must be rejected with 429");
+});
+
+// =========================================================================
+// P2: Secret Leakage Prevention
+// =========================================================================
+
+test("Security P2: Secret Leakage - GEMINI_API_KEY is isolated and never returned in API responses or client configs", async () => {
+  const secretKey = process.env.GEMINI_API_KEY || "TEST_SECRET_KEY_12345";
+  const originalKey = process.env.GEMINI_API_KEY;
+  process.env.GEMINI_API_KEY = secretKey;
+
+  try {
+    // 1. Health endpoint GET response must never leak the raw key
+    const healthReq = new Request("http://localhost/api/gemini/health");
+    const healthRes = await getHealth(healthReq);
+    const healthText = await healthRes.text();
+    assert.equal(healthText.includes(secretKey), false, "Health endpoint must not leak GEMINI_API_KEY");
+
+    // 2. Explanation error response must never leak key
+    const explainReq = new Request("http://localhost/api/gemini/explanation", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ invalid: true }),
+    });
+    const explainRes = await postExplanation(explainReq);
+    const explainText = await explainRes.text();
+    assert.equal(explainText.includes(secretKey), false, "Explanation error must not leak GEMINI_API_KEY");
+
+    // 3. Interpretation error response must never leak key
+    const interpReq = new Request("http://localhost/api/gemini/interpretation", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ invalid: true }),
+    });
+    const interpRes = await postInterpretation(interpReq);
+    const interpText = await interpRes.text();
+    assert.equal(interpText.includes(secretKey), false, "Interpretation error must not leak GEMINI_API_KEY");
+
+    // 4. Visualize error response must never leak key
+    const visReq = new Request("http://localhost/api/gemini/visualize", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ invalid: true }),
+    });
+    const visRes = await postVisualize(visReq);
+    const visText = await visRes.text();
+    assert.equal(visText.includes(secretKey), false, "Visualize error must not leak GEMINI_API_KEY");
+
+    // 5. Public env variables check: NEXT_PUBLIC_ must never expose raw GEMINI_API_KEY
+    assert.equal(process.env.NEXT_PUBLIC_GEMINI_API_KEY, undefined, "NEXT_PUBLIC_GEMINI_API_KEY must never be set");
+  } finally {
+    if (originalKey !== undefined) {
+      process.env.GEMINI_API_KEY = originalKey;
+    } else {
+      delete process.env.GEMINI_API_KEY;
+    }
+  }
+});
+

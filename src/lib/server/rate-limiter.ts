@@ -117,7 +117,7 @@ function getLockFilePath(): string {
   return join(getStorageDir(), "state.lock");
 }
 
-function acquireLock(lockPath: string, maxWaitMs = 150): boolean {
+function acquireLock(lockPath: string, maxWaitMs = 500): boolean {
   const start = Date.now();
   while (Date.now() - start < maxWaitMs) {
     try {
@@ -176,8 +176,12 @@ function saveSharedState(state: SharedStoreData): void {
  */
 export function resetRateLimits(): void {
   const filePath = getStateFilePath();
+  const lockPath = getLockFilePath();
   try {
     if (existsSync(filePath)) unlinkSync(filePath);
+  } catch {}
+  try {
+    if (existsSync(lockPath)) unlinkSync(lockPath);
   } catch {}
   memoryFallbackStore = {
     globalDailyCost: 0,
@@ -206,6 +210,15 @@ export function checkRateLimit(ip: string, routeKey: string): RateLimitCheckResu
   const config = ROUTE_LIMITS[routeKey] || ROUTE_LIMITS.default;
   const lockPath = getLockFilePath();
   const lockAcquired = acquireLock(lockPath);
+
+  if (!lockAcquired) {
+    return {
+      allowed: false,
+      remaining: 0,
+      retryAfterSeconds: 1,
+      reason: "Rate limiter state lock contention. Please retry in 1 second.",
+    };
+  }
 
   try {
     const now = Date.now();
