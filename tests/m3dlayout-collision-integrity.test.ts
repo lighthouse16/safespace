@@ -3,8 +3,8 @@ import assert from "node:assert/strict";
 import { arrangeRoomFurniture } from "../src/lib/m3dlayout/arrange";
 import { resolveGeneratedFurniture } from "../src/lib/m3dlayout/collision-layout";
 import { splitRoomRequests } from "../src/lib/m3dlayout/prompt-agent";
-import { composeRoomFrames } from "../src/lib/m3dlayout/room-plan";
-import { furnitureToWorldFootprint, wallToObstacleFootprint } from "../src/lib/spatial/geometry/placement";
+import { composeRoomFrames, placeOpenings } from "../src/lib/m3dlayout/room-plan";
+import { furnitureToWorldFootprint, wallToObstacleFootprint, doorToObstacleFootprint } from "../src/lib/spatial/geometry/placement";
 import { isFootprintContainedInBoundary, polygonIntersectsPolygon } from "../src/lib/spatial/geometry/intersections";
 import type { SpatialFurniture } from "../src/lib/spatial-model";
 import type { Polygon2D } from "../src/lib/spatial";
@@ -134,4 +134,49 @@ test("duplicates, invalid dimensions and extreme room parameters never succeed s
   assert.throws(() => resolveGeneratedFurniture([piece("bad", NaN, 0, 40, 40)], {
     rect: { x: 0, y: 0, width: 500, depth: 500 },
   }), /Invalid dimensions/);
+});
+
+test("real Generate pipeline: demo living room and multi-room plan place ALL furniture without overlap", () => {
+  const scenarios = [
+    "a living room with a sofa, a coffee table, and a television",
+    "a living room with a sofa and a television, a kitchen with a table and 6 chairs, a bathroom with a toilet and a sink",
+  ];
+  for (const text of scenarios) {
+    const requests = splitRoomRequests(text);
+    const plan = composeRoomFrames(requests);
+    assert.ok(plan);
+    const openings = placeOpenings(plan.walls, plan.boundary, requests);
+    const obstacles = [
+      ...plan.walls.map(wallToObstacleFootprint),
+      ...openings.filter((opening) => opening.name !== "Window").map(doorToObstacleFootprint),
+    ];
+    const all: SpatialFurniture[] = [];
+    for (let i = 0; i < plan.framed.length; i++) {
+      const room = plan.framed[i];
+      const roomBoundary = plan.rooms.find((candidate) => candidate.id === room.id)?.polygon;
+      const items = arrangeRoomFurniture({
+        pieces: requests[i].pieces,
+        roomType: room.roomType,
+        rect: room.rect,
+        roomId: room.id,
+        idPrefix: room.id,
+        roomBoundary,
+        obstacles,
+      });
+      assert.ok(items.length > 0, `expected furniture in ${room.name}`);
+      assertNoOverlap(items, roomBoundary ?? [
+        {x:room.rect.x,y:room.rect.y},
+        {x:room.rect.x+room.rect.width,y:room.rect.y},
+        {x:room.rect.x+room.rect.width,y:room.rect.y+room.rect.depth},
+        {x:room.rect.x,y:room.rect.y+room.rect.depth},
+      ], obstacles.map((obstacle) => obstacle.footprint));
+      all.push(...items);
+    }
+    // Defensive global pair check: neighboring rooms may share a partition.
+    for (let i=0; i<all.length; i++) {
+      for (let j=i+1; j<all.length; j++) {
+        assert.equal(polygonIntersectsPolygon(furnitureToWorldFootprint(all[i]).footprint, furnitureToWorldFootprint(all[j]).footprint), false);
+      }
+    }
+  }
 });
