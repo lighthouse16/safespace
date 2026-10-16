@@ -53,3 +53,21 @@ test("different model translations produce different furniture positions", () =>
   const far = create(4);
   assert.notEqual(near[0].x, far[0].x);
 });
+
+test("room boundaries and physical obstacles are respected", () => {
+  const input = sceneToFurniture({
+    class_names: ["chair", "table"],
+    translations: [[0, 0, 0], [1, 0, 0]],
+    sizes: [[0.5, 0.8, 0.5], [0.9, 0.8, 0.6]],
+    angles: [0, 0],
+  }, frame);
+  const roomBoundary = [{ x: 0, y: 0 }, { x: 500, y: 0 }, { x: 500, y: 400 }, { x: 0, y: 400 }];
+  const blocked = [{ id: "interior-wall", footprint: [{x: 240,y:0},{x:260,y:0},{x:260,y:400},{x:240,y:400}] }];
+  const result = placeModelFurniture(input, frame, { roomBoundary, fixedObstacles: blocked });
+  for (const item of result.furniture) {
+    const footprint = furnitureToWorldFootprint(item).footprint;
+    assert.ok(isFootprintContainedInBoundary(footprint, roomBoundary));
+    assert.equal(polygonIntersectsPolygon(footprint, blocked[0].footprint), false);
+  }
+  assert.equal(result.furniture.length + result.unplaced.length, input.length);
+});
