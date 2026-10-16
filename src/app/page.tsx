@@ -1,159 +1,75 @@
 import Link from "next/link";
-import {
-  ArrowRight,
-  Check,
-  FileUp,
-  Footprints,
-  SlidersHorizontal,
-} from "lucide-react";
+import Image from "next/image";
+import { ArrowRight } from "lucide-react";
 import { BrandMark } from "@/components/brand/brand-mark";
-import { HeroPreviewCard } from "@/components/landing/HeroPreviewCard";
+import abstractFloorplan from "../../public/landing/abstract-floorplan@2x.png";
 
 export default function HomePage() {
   return (
-    <div className="min-h-screen bg-[#F7F8F8] text-[#17252B]">
-      {/* Top Navigation Bar */}
-      <header className="sticky top-0 z-50 border-b border-[#E2E6E8] bg-white">
-        <div className="mx-auto flex h-18 max-w-7xl items-center justify-between px-6 lg:px-8">
-          {/* Logo */}
-          <Link href="/" aria-label="SafeSpace home">
-            <BrandMark />
+    <div className="min-h-screen bg-[#F7F8F8] text-[#17252B] flex items-center justify-center p-4 sm:p-6 lg:p-10">
+      <main
+        id="main-content"
+        className="relative w-full max-w-[1240px] rounded-[24px] sm:rounded-[32px] border border-[#E2E6E8] bg-white p-6 sm:p-10 lg:p-14 shadow-xs"
+        role="main"
+      >
+        {/* Brand Logo & Wordmark - Top Left */}
+        <div className="flex items-center">
+          <Link
+            href="/"
+            aria-label="SafeSpace home"
+            className="inline-flex items-center rounded-md focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#0B514B]"
+          >
+            <span className="sr-only">SafeSpace</span>
+            <BrandMark height={32} />
           </Link>
-
-          {/* Right Header Actions */}
-          <div className="flex items-center gap-3">
-            <Link
-              href="/assessments/new"
-              className="inline-flex items-center gap-2 rounded-lg bg-[#0B514B] px-5 py-2.5 text-sm font-semibold text-white shadow-xs hover:bg-[#073D38] transition-colors"
-            >
-              <span>Start assessment</span>
-              <ArrowRight size={16} />
-            </Link>
-          </div>
         </div>
-      </header>
 
-      <main id="main-content">
         {/* Hero Section */}
-        <section aria-labelledby="hero-title" className="mx-auto max-w-7xl px-6 py-12 lg:px-8 lg:py-16">
-          <div className="grid items-center gap-12 lg:grid-cols-12 lg:gap-8">
-            {/* Left Hero Content */}
-            <div className="lg:col-span-5">
-              <p className="text-xs font-bold uppercase tracking-wider text-[#647078]">
-                ACCESSIBILITY INSIGHTS FOR SAFER SPACES
-              </p>
-              <h1
-                id="hero-title"
-                className="mt-4 text-4xl font-extrabold tracking-tight text-[#17252B] sm:text-5xl lg:text-6xl lg:leading-[1.1]"
+        <section
+          aria-labelledby="hero-title"
+          className="mt-8 sm:mt-12 lg:mt-14 grid grid-cols-1 items-center gap-8 lg:grid-cols-12 lg:gap-12"
+        >
+          {/* Left Hero Content: Headline, Description & Single CTA */}
+          <div className="lg:col-span-5 flex flex-col items-start z-10">
+            <h1
+              id="hero-title"
+              className="text-4xl sm:text-5xl lg:text-[54px] font-bold tracking-tight leading-[1.08]"
+            >
+              <span className="block text-[#17252B]">Design safer</span>
+              <span className="block text-[#16736D] mt-1">movement paths</span>
+            </h1>
+
+            <p className="mt-5 sm:mt-6 text-base sm:text-lg leading-relaxed text-[#647078] max-w-md">
+              Review floorplans for accessibility and safety with clear, actionable spatial insight.
+            </p>
+
+            {/* Exactly one primary CTA */}
+            <div className="mt-8 sm:mt-10">
+              <Link
+                href="/assessments/new"
+                className="inline-flex items-center gap-2.5 rounded-xl bg-[#0B514B] px-6 py-3.5 text-base font-semibold text-white shadow-xs hover:bg-[#073D38] transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#0B514B]"
               >
-                Check your space <br />
-                for safer movement
-              </h1>
-              <p className="mt-6 text-base leading-relaxed text-[#647078] sm:text-lg">
-                SafeSpace helps teams review room layouts, walking routes, and accessibility risks using a floorplan-based workflow.
-              </p>
-
-              {/* CTAs */}
-              <div className="mt-8 flex flex-wrap items-center gap-4">
-                <Link
-                  href="/assessments/new"
-                  className="inline-flex items-center gap-2 rounded-lg bg-[#0B514B] px-6 py-3.5 text-sm font-semibold text-white shadow-xs hover:bg-[#073D38] transition-colors"
-                >
-                  <span>Start assessment</span>
-                  <ArrowRight size={16} />
-                </Link>
-              </div>
-
-              {/* Checklist */}
-              <div className="mt-8 flex flex-wrap items-center gap-6 text-xs font-medium text-[#17252B]">
-                <div className="flex items-center gap-2">
-                  <Check size={16} className="text-[#0B514B]" strokeWidth={2.5} />
-                  <span>Floorplan-based workflow</span>
-                </div>
-                <div className="flex items-center gap-2">
-                  <Check size={16} className="text-[#0B514B]" strokeWidth={2.5} />
-                  <span>Built for teams</span>
-                </div>
-                <div className="flex items-center gap-2">
-                  <Check size={16} className="text-[#0B514B]" strokeWidth={2.5} />
-                  <span>Actionable insights</span>
-                </div>
-              </div>
-            </div>
-
-            {/* Right Hero Preview Card (Floating 2D Workspace Mockup matching 01-landing.png) */}
-            <div className="lg:col-span-7">
-              <HeroPreviewCard />
+                <span>Start assessment</span>
+                <ArrowRight size={18} strokeWidth={2.2} aria-hidden="true" />
+              </Link>
             </div>
           </div>
-        </section>
 
-        {/* 3 Process Steps Section with Connected Arrows */}
-        <section aria-labelledby="process-heading" className="mx-auto max-w-7xl px-6 py-12 lg:px-8">
-          <h2 id="process-heading" className="sr-only">How SafeSpace Works</h2>
-          <div className="flex flex-col md:flex-row md:items-center gap-4">
-            {/* Step 1 */}
-            <div className="flex-1 rounded-2xl border border-[#E2E6E8] bg-white p-6 shadow-2xs">
-              <div className="flex items-center gap-4">
-                <span className="flex size-8 items-center justify-center rounded-full bg-[#F0F3F4] text-xs font-bold text-[#17252B]">
-                  1
-                </span>
-                <div className="flex size-10 items-center justify-center rounded-xl bg-[#E6F0EE] text-[#0B514B]">
-                  <FileUp size={20} strokeWidth={2} />
-                </div>
-                <h3 className="text-base font-bold text-[#17252B]">Import a floorplan</h3>
-              </div>
-              <p className="mt-4 text-xs leading-relaxed text-[#647078]">
-                Upload a PNG, JPG, or SVG floorplan to calibrate and trace. PDF preview only.
-              </p>
-            </div>
-
-            <ArrowRight size={20} className="hidden md:block text-[#647078] shrink-0" aria-hidden="true" />
-
-            {/* Step 2 */}
-            <div className="flex-1 rounded-2xl border border-[#E2E6E8] bg-white p-6 shadow-2xs">
-              <div className="flex items-center gap-4">
-                <span className="flex size-8 items-center justify-center rounded-full bg-[#F0F3F4] text-xs font-bold text-[#17252B]">
-                  2
-                </span>
-                <div className="flex size-10 items-center justify-center rounded-xl bg-[#E6F0EE] text-[#0B514B]">
-                  <Footprints size={20} strokeWidth={2} />
-                </div>
-                <h3 className="text-base font-bold text-[#17252B]">Review movement routes</h3>
-              </div>
-              <p className="mt-4 text-xs leading-relaxed text-[#647078]">
-                Map walking routes, check accessibility and identify potential risks.
-              </p>
-            </div>
-
-            <ArrowRight size={20} className="hidden md:block text-[#647078] shrink-0" aria-hidden="true" />
-
-            {/* Step 3 */}
-            <div className="flex-1 rounded-2xl border border-[#E2E6E8] bg-white p-6 shadow-2xs">
-              <div className="flex items-center gap-4">
-                <span className="flex size-8 items-center justify-center rounded-full bg-[#F0F3F4] text-xs font-bold text-[#17252B]">
-                  3
-                </span>
-                <div className="flex size-10 items-center justify-center rounded-xl bg-[#E6F0EE] text-[#0B514B]">
-                  <SlidersHorizontal size={20} strokeWidth={2} />
-                </div>
-                <h3 className="text-base font-bold text-[#17252B]">Improve the layout</h3>
-              </div>
-              <p className="mt-4 text-xs leading-relaxed text-[#647078]">
-                Make informed changes and export a clear report for your team.
-              </p>
+          {/* Right Hero Preview: Abstract Architectural Floorplan Illustration */}
+          <div className="lg:col-span-7 flex items-center justify-center lg:justify-end">
+            <div className="relative w-full max-w-[580px] lg:max-w-none">
+              <Image
+                src={abstractFloorplan}
+                alt="Abstract architectural floorplan illustration with movement paths"
+                priority
+                quality={95}
+                sizes="(max-width: 768px) 100vw, (max-width: 1200px) 58vw, 680px"
+                className="w-full h-auto object-contain select-none pointer-events-none"
+              />
             </div>
           </div>
         </section>
       </main>
-
-      {/* Public Footer */}
-      <footer className="border-t border-[#E2E6E8] bg-white py-6 text-center text-xs text-[#647078]">
-        <div className="mx-auto flex max-w-7xl items-center justify-between px-6 lg:px-8">
-          <span>© {new Date().getFullYear()} SafeSpace</span>
-          <span>Spatial clarity for more accessible spaces.</span>
-        </div>
-      </footer>
     </div>
   );
 }
