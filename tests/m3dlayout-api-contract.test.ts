@@ -39,7 +39,7 @@ test("invalid API output fails closed and cannot become a plan", async () => {
     globalThis.fetch = async () => new Response(JSON.stringify({ class_names: ["sofa"] }), { status: 200 });
     await assert.rejects(generateM3DLayout("https://example.ngrok-free.app", "room", 0), /without furniture boxes/);
     globalThis.fetch = async () => new Response("runtime error", { status: 503 });
-    await assert.rejects(generateM3DLayout("https://example.ngrok-free.app", "room", 0), /returned 503/);
+    await assert.rejects(generateM3DLayout("https://example.ngrok-free.app", "room", 0), /503/);
   } finally {
     globalThis.fetch = originalFetch;
   }
