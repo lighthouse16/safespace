@@ -48,8 +48,9 @@ async function check() {
   });
   await page.goto(base + "/assessments", { waitUntil: "networkidle" });
   assert.equal(await page.getByRole("button", { name: "Sign in" }).count(), 0);
-  assert.equal(await page.getByText("On this device").count(), 1);
-  assert.equal(await page.getByText(/No account is needed/).count(), 1);
+  // Next.js client hydration can finish just after networkidle on GitHub runners.
+  await page.getByText("On this device").waitFor({ state: "visible", timeout: 15000 });
+  await page.getByText(/No account is needed/).waitFor({ state: "visible", timeout: 15000 });
 
   await page.getByRole("link", { name: /New assessment/ }).first().click();
   await page.getByLabel("Assessment name").fill("Browser guest acceptance");
