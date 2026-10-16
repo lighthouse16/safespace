@@ -2,10 +2,12 @@
  * SafeSpace Shared Abuse Prevention & Rate Limiter
  *
  * Implements:
- * 1. Shared atomic persistence across multi-process and serverless instances.
- * 2. Fail-closed emergency shutdown via GEMINI_DAILY_BUDGET=0.
- * 3. Real-money budget protection with explicit per-model cost & daily ceilings.
- * 4. Non-spoofable client IP identity resolution (rejects rotated leftmost X-Forwarded-For).
+ * 1. Atomic limits across processes sharing ONE host filesystem (demo only).
+ * 2. Emergency shutdown via GEMINI_DAILY_BUDGET=0.
+ * 3. Budget represents weighted REQUEST UNITS, not guaranteed USD spend.
+ * 4. Unknown proxy identity conservatively shares one anonymous quota.
+ * This is NOT a distributed serverless limiter. Use durable shared storage
+ * before enabling a billed, internet-facing multi-instance gateway.
  */
 
 import { existsSync, mkdirSync, readFileSync, writeFileSync, openSync, closeSync, unlinkSync, statSync } from "node:fs";
@@ -30,49 +32,27 @@ export function getDailyBudgetCeiling(): number {
   const envBudget = process.env.GEMINI_DAILY_BUDGET;
   if (envBudget !== undefined) {
     const parsed = parseInt(envBudget, 10);
-    return Number.isFinite(parsed) ? parsed : 200;
+    return Number.isFinite(parsed) ? parsed : 25;
   }
-  return 200;
+  return 25;
 }
 
 /**
- * Extracts client IP securely.
- * Rejects client-spoofed leftmost X-Forwarded-For entries by taking the rightmost IP
- * appended by the trusted reverse proxy, or using platform-authenticated headers.
+ * Derive an IP only from a specifically trusted, sanitizing hosting proxy.
+ * Header names alone are not authentication. Unconfigured or missing proxy
+ * metadata uses one conservative global anonymous demo bucket instead of
+ * trusting caller-provided X-Forwarded-For, X-Real-IP or custom headers.
  */
 export function getClientIp(request: Request): string {
-  // 1. Configured trusted platform header
-  const trustedHeader = process.env.TRUSTED_IP_HEADER?.trim();
-  if (trustedHeader) {
-    const val = request.headers.get(trustedHeader)?.trim();
-    if (val) return sanitizeIp(val.split(",")[0].trim());
-  }
-
-  // 2. Vercel edge header (set by Vercel infrastructure, cannot be forged)
-  const vercelIp = request.headers.get("x-vercel-forwarded-for");
-  if (vercelIp) return sanitizeIp(vercelIp.split(",")[0].trim());
-
-  // 3. Cloudflare connecting IP
-  const cfIp = request.headers.get("cf-connecting-ip");
-  if (cfIp) return sanitizeIp(cfIp.trim());
-
-  // 4. Trusted reverse proxy real-ip
-  const realIp = request.headers.get("x-real-ip");
-  if (realIp) return sanitizeIp(realIp.trim());
-
-  // 5. Standard X-Forwarded-For:
-  // ATTACK RESISTANCE: The client controls the first element (leftmost).
-  // The nearest trusted reverse proxy appends the caller's actual socket IP to the end (rightmost).
-  const forwarded = request.headers.get("x-forwarded-for");
-  if (forwarded) {
-    const parts = forwarded.split(",").map((p) => p.trim()).filter(Boolean);
-    if (parts.length > 0) {
-      // Use rightmost IP to resist client rotation
-      return sanitizeIp(parts[parts.length - 1]);
-    }
-  }
-
-  return "anonymous-local";
+  const platform = process.env.TRUSTED_PROXY_PLATFORM;
+  const header = platform === "vercel"
+    ? "x-vercel-forwarded-for"
+    : platform === "cloudflare" ? "cf-connecting-ip" : null;
+  if (!header) return "anonymous-unverified-client";
+  const forwarded = request.headers.get(header)?.trim();
+  if (!forwarded) return "anonymous-unverified-client";
+  const ip = forwarded.split(",")[0].trim();
+  return ip ? sanitizeIp(ip) : "anonymous-unverified-client";
 }
 
 function sanitizeIp(ip: string): string {
@@ -161,7 +141,9 @@ function loadSharedState(): SharedStoreData {
       const content = readFileSync(filePath, "utf-8");
       return JSON.parse(content) as SharedStoreData;
     }
-  } catch {}
+  } catch {
+    throw new Error("Rate limiter state unreadable");
+  }
   return memoryFallbackStore;
 }
 
@@ -174,7 +156,7 @@ function saveSharedState(state: SharedStoreData): void {
     const filePath = getStateFilePath();
     writeFileSync(filePath, JSON.stringify(state), "utf-8");
   } catch {
-    memoryFallbackStore = state;
+    throw new Error("Rate limiter state could not be persisted");
   }
 }
 
@@ -309,6 +291,10 @@ export function checkRateLimit(ip: string, routeKey: string): RateLimitCheckResu
       remaining: config.maxRequests - timestamps.length,
       consumedCost: state.globalDailyCost,
     };
+  } catch {
+    // No reservation can be trusted when the quota store fails.
+    return { allowed: false, remaining: 0, retryAfterSeconds: 30,
+      reason: "AI quota storage unavailable; request blocked to protect the demo key." };
   } finally {
     if (lockAcquired) {
       releaseLock(lockPath);

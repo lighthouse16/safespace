@@ -101,18 +101,21 @@ test("Security P0: getClientIp resists attacker rotation of leftmost X-Forwarded
   const ip1 = getClientIp(req1);
   const ip2 = getClientIp(req2);
 
-  assert.equal(ip1, "198.51.100.25", "Must resolve to nearest trusted proxy hop");
-  assert.equal(ip2, "198.51.100.25", "Must resolve to nearest trusted proxy hop");
+  assert.equal(ip1, "anonymous-unverified-client", "Do not trust arbitrary X-Forwarded-For");
+  assert.equal(ip2, "anonymous-unverified-client", "All unknown callers share a conservative quota");
   assert.equal(ip1, ip2, "Both rotated requests must resolve to the identical client IP");
 });
 
 test("Security P0: getClientIp prioritizes platform-authenticated headers (Vercel, Cloudflare)", () => {
+  const previousPlatform = process.env.TRUSTED_PROXY_PLATFORM;
+  try {
   const reqVercel = new Request("http://localhost/api/gemini/health", {
     headers: {
       "x-vercel-forwarded-for": "192.0.2.42",
       "x-forwarded-for": "spoofed.ip.1, spoofed.ip.2",
     },
   });
+  process.env.TRUSTED_PROXY_PLATFORM = "vercel";
   assert.equal(getClientIp(reqVercel), "192.0.2.42");
 
   const reqCf = new Request("http://localhost/api/gemini/health", {
@@ -121,7 +124,12 @@ test("Security P0: getClientIp prioritizes platform-authenticated headers (Verce
       "x-forwarded-for": "spoofed.ip.1",
     },
   });
+  process.env.TRUSTED_PROXY_PLATFORM = "cloudflare";
   assert.equal(getClientIp(reqCf), "192.0.2.99");
+  } finally {
+    if (previousPlatform === undefined) delete process.env.TRUSTED_PROXY_PLATFORM;
+    else process.env.TRUSTED_PROXY_PLATFORM = previousPlatform;
+  }
 });
 
 // =========================================================================

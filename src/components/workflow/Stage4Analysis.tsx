@@ -29,6 +29,10 @@ export function Stage4Analysis() {
     toggleLayer,
     assessmentMetadata,
     activeProfile,
+    canonicalBoundary,
+    furniture,
+    walls,
+    routeWaypoints,
   } = useSafeSpaceStore();
 
   const evaluation = getSpatialFindings();
@@ -97,6 +101,12 @@ export function Stage4Analysis() {
           minimumClearanceCm: summary.minimumClearanceCm,
           routeFeasibility: summary.routeFeasibility,
         },
+        // Send canonical geometry to the server evaluator first. User-provided
+        // metrics alone are NEVER classified as independently verified.
+        geometry: canonicalBoundary ? {
+          units: "cm", boundary: canonicalBoundary, furniture,
+          walls, waypoints: routeWaypoints, profile: activeProfile,
+        } : undefined,
       });
 
       setAiExplanation({

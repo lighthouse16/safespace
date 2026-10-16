@@ -5,6 +5,7 @@ import { explainFindingsWithGemini } from "@/lib/server/ai/findings-explainer";
 import { runServerEvaluation } from "@/lib/server/spatial/evaluator-service";
 import type { SpatialEvaluationResult } from "@/lib/spatial";
 import { z } from "zod";
+import { Polygon2DSchema, SpatialFurnitureSchema, SpatialWallSchema, RouteWaypointSchema, MobilityProfileDataSchema } from "@/lib/server/validation";
 
 export async function OPTIONS(request: Request) {
   return handleCorsPreflight(request);
@@ -32,14 +33,14 @@ const AnonymousExplanationSchema = z.object({
       routeFeasibility: z.string().optional(),
     })
     .optional(),
-  geometry: z
-    .object({
-      boundary: z.array(z.object({ x: z.number(), y: z.number() })).optional(),
-      furniture: z.array(z.any()).optional(),
-      waypoints: z.array(z.any()).optional(),
-      profile: z.any().optional(),
-    })
-    .optional(),
+  geometry: z.object({
+    units: z.literal("cm"),
+    boundary: Polygon2DSchema.max(80),
+    furniture: z.array(SpatialFurnitureSchema).max(60),
+    walls: z.array(SpatialWallSchema).max(40).default([]),
+    waypoints: z.array(RouteWaypointSchema).max(12),
+    profile: MobilityProfileDataSchema,
+  }).optional(),
   requestedModel: z.string().optional(),
 });
 
@@ -125,11 +126,12 @@ export async function POST(request: Request) {
       }
     : undefined;
 
-  if (geometry?.profile && Array.isArray(geometry.furniture) && Array.isArray(geometry.waypoints)) {
+  if (geometry) {
     try {
       const serverEval = await runServerEvaluation({
-        boundary: geometry.boundary || null,
+        boundary: geometry.boundary,
         furniture: geometry.furniture,
+        walls: geometry.walls,
         waypoints: geometry.waypoints,
         profile: geometry.profile,
       });
@@ -148,10 +150,11 @@ export async function POST(request: Request) {
           minimumClearanceCm: res.summary.minimumClearanceCm,
           routeFeasibility: res.summary.routeFeasibility,
         };
+      } else {
+        return jsonResponse({ error: "Server-side geometry evaluation rejected", details: serverEval.errors }, 422, request);
       }
     } catch {
-      // Evaluation fallback to unverified client claims with strict disclaimer
-      provenance = "unverified-client-claims";
+      return jsonResponse({ error: "Server-side geometry evaluation failed" }, 422, request);
     }
   }
 

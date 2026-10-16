@@ -24,13 +24,14 @@ export async function POST(request: Request, context: RouteContext) {
       );
     }
 
-    const { boundary, furniture, routeWaypoints, profile } = result.data;
+    const { boundary, furniture, routeWaypoints, profile, walls } = result.data;
     const evalRes = await runServerEvaluation({
       assessmentId: id,
       assessmentType: "user",
       boundary,
       furniture,
       waypoints: routeWaypoints,
+      walls,
       profile,
       persistResult: true,
       request,

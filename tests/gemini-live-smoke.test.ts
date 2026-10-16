@@ -83,7 +83,8 @@ test("Gemini AI: Live API smoke test (Controlled Explanation)", async (t) => {
   assert.ok((explanationRes.data.executiveSummary?.length ?? 0) > 0);
   assert.ok((explanationRes.data.clinicalRiskNarrative?.length ?? 0) > 0);
   assert.equal(explanationRes.data.model, "gemini-3.1-flash-lite");
-  assert.equal(explanationRes.data.measuredFacts.minimumClearanceCm, 65);
+  assert.equal(explanationRes.data.measuredFacts, null, "Browser metrics are not independently verified");
+  assert.equal(explanationRes.data.clientReportedMetrics?.minimumClearanceCm, 65);
 });
 
 test("Gemini AI: Live Image Generation (Billed Key or Handled 429 Free Tier)", async (t) => {

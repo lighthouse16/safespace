@@ -1,5 +1,5 @@
 import type { InterpretedElementCandidate } from "@/lib/server/ai/floorplan-interpreter";
-import type { FurnitureCategory } from "@/lib/spatial-model";
+import type { FurnitureCategory, SpatialFurniture, RouteWaypoint, MobilityProfileData, SpatialWall } from "@/lib/spatial-model";
 import type { Point2D } from "@/lib/spatial/schema";
 
 function getGatewayBaseUrl(): string {
@@ -49,6 +49,14 @@ export interface ExplanationRequestPayload {
     routeFeasibility?: string;
   };
   requestedModel?: string;
+  geometry?: {
+    units: "cm";
+    boundary: readonly Point2D[];
+    furniture: SpatialFurniture[];
+    walls: SpatialWall[];
+    waypoints: RouteWaypoint[];
+    profile: MobilityProfileData;
+  };
 }
 
 export interface ExplanationResponsePayload {
@@ -60,7 +68,13 @@ export interface ExplanationResponsePayload {
       minimumClearanceCm: number | null;
       actionableDeficitsCount: number;
       routeFeasibility: string;
+    } | null;
+    clientReportedMetrics?: {
+      minimumClearanceCm: number | null;
+      actionableDeficitsCount: number;
+      routeFeasibility: string;
     };
+    evidenceIntegrity?: "unverified-client-claims" | "server-verified";
     disclaimer: string;
   };
   model: string;

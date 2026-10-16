@@ -1,11 +1,20 @@
 import test from "node:test";
 import assert from "node:assert/strict";
+import { mkdtempSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { checkRateLimit } from "../src/lib/server/rate-limiter";
 import { getCorsHeaders } from "../src/lib/server/cors";
 import { GET as getHealth } from "../src/app/api/gemini/health/route";
 import { POST as postInterpretation } from "../src/app/api/gemini/interpretation/route";
 import { POST as postExplanation } from "../src/app/api/gemini/explanation/route";
 import { POST as postVisualize } from "../src/app/api/gemini/visualize/route";
+
+// Each test suite gets a fresh quota file, isolated from parallel suites.
+const testQuotaDir = mkdtempSync(join(tmpdir(), "safespace-gateway-suite-"));
+process.env.RATE_LIMIT_STORE_DIR = testQuotaDir;
+process.env.GEMINI_DAILY_BUDGET = "200";
+process.on("exit", () => rmSync(testQuotaDir, { recursive: true, force: true }));
 
 test("Gateway Rate Limiter: Enforces per-minute limit on anonymous IP", () => {
   const testIp = `test-ip-${Date.now()}`;

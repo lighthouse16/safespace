@@ -28,7 +28,7 @@ export interface FindingsExplanationResult {
     minimumClearanceCm: number | null;
     actionableDeficitsCount: number;
     routeFeasibility: string;
-  };
+  } | null;
   clientReportedMetrics?: {
     minimumClearanceCm: number | null;
     actionableDeficitsCount: number;
@@ -139,8 +139,9 @@ STRICT INSTRUCTIONS:
         caregiverRecommendations: Array.isArray(parsed.caregiverRecommendations)
           ? parsed.caregiverRecommendations
           : [],
-        measuredFacts: metricsPayload,
-        clientReportedMetrics: metricsPayload,
+        // Never serialize unverified browser claims under the 'measuredFacts' label.
+        measuredFacts: isUnverified ? null : metricsPayload,
+        clientReportedMetrics: isUnverified ? metricsPayload : undefined,
         evidenceIntegrity: provenance,
         disclaimer: isUnverified
           ? "Unverified client-reported data. SafeSpace spatial interpretations are advisory assistance and do not constitute physical or medical safety certification. Measurements must be verified on site by a qualified assessor."

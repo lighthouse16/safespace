@@ -34,11 +34,13 @@ jobs:
       - name: Lint
         run: npm run lint
       - name: CAD, spatial, and AI gateway unit tests
-        run: npx tsx --test tests/frontend-v2-cad-recovery.test.ts tests/spatial-parity.test.ts tests/gemini-*.test.ts tests/pages-gateway-client.test.ts
+        run: npx tsx --test tests/frontend-v2-cad-recovery.test.ts tests/spatial-parity.test.ts tests/gemini-*.test.ts tests/pages-gateway-client.test.ts tests/guest-spatial-api.test.ts
       - name: Build Next.js server app
         run: npm run build
       - name: Browser guest end-to-end smoke (Chrome)
         run: npm run test:browser:guest
+      - name: Real HTTP stateless spatial engine smoke
+        run: npm run test:api:guest
 
   pages-export:
     needs: build

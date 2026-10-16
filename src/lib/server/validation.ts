@@ -148,6 +148,7 @@ export const SpatialEvaluateRequestSchema = z.object({
   boundary: Polygon2DSchema,
   furniture: z.array(SpatialFurnitureSchema),
   routeWaypoints: z.array(RouteWaypointSchema),
+  walls: z.array(SpatialWallSchema).default([]),
   calibration: CalibrationProvenanceSchema,
   profile: MobilityProfileDataSchema,
 });
@@ -156,6 +157,7 @@ export const SpatialOptimizeRequestSchema = z.object({
   boundary: Polygon2DSchema,
   furniture: z.array(SpatialFurnitureSchema),
   routeWaypoints: z.array(RouteWaypointSchema),
+  walls: z.array(SpatialWallSchema).default([]),
   calibration: CalibrationProvenanceSchema.optional(),
   profile: MobilityProfileDataSchema,
   maxCandidates: z.number().int().positive().max(10).optional().default(3),
