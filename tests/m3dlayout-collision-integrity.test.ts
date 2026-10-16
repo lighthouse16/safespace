@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { arrangeRoomFurniture } from "../src/lib/m3dlayout/arrange";
 import { resolveGeneratedFurniture } from "../src/lib/m3dlayout/collision-layout";
 import { splitRoomRequests } from "../src/lib/m3dlayout/prompt-agent";
-import { composeRoomFrames, placeOpenings } from "../src/lib/m3dlayout/room-plan";
+import { composeRoomFrames, placeOpenings, type FramedRoom } from "../src/lib/m3dlayout/room-plan";
 import { furnitureToWorldFootprint, wallToObstacleFootprint, doorToObstacleFootprint } from "../src/lib/spatial/geometry/placement";
 import { isFootprintContainedInBoundary, polygonIntersectsPolygon } from "../src/lib/spatial/geometry/intersections";
 import type { SpatialFurniture } from "../src/lib/spatial-model";
@@ -152,7 +152,7 @@ test("real Generate pipeline: demo living room and multi-room plan place ALL fur
     ];
     const all: SpatialFurniture[] = [];
     for (let i = 0; i < plan.framed.length; i++) {
-      const room = plan.framed[i];
+      const room: FramedRoom = plan.framed[i];
       const roomBoundary = plan.rooms.find((candidate) => candidate.id === room.id)?.polygon;
       const items = arrangeRoomFurniture({
         pieces: requests[i].pieces,
