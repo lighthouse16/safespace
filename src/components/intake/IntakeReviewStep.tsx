@@ -27,11 +27,8 @@ import {
   type UploadedFileInfo,
 } from "./intake-view-types";
 import { computePixelDistance } from "./intake-validation";
-import {
-  validateIntakeBoundary,
-  INTAKE_ORIGIN_POLICY,
-  type IntakeBoundaryValidationResult,
-} from "@/lib/spatial";
+import { INTAKE_ORIGIN_POLICY, validateIntakeBoundary } from "@/lib/spatial";
+import { getIntakeReviewReadiness } from "./review-readiness";
 import { loadPersistedAssessment } from "@/lib/storage/persistence";
 import { useSafeSpaceStore } from "@/store/safespace-store";
 
@@ -65,17 +62,19 @@ export function IntakeReviewStep({
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [showOverwriteModal, setShowOverwriteModal] = useState(false);
 
-  // Pre-validate for preview statistics
-  const previewValidation: IntakeBoundaryValidationResult = validateIntakeBoundary(
-    boundary.vertices,
-    boundary.isClosed,
-    calibration.pixelsPerCm
-  );
-
+  const {
+    validation: previewValidation,
+    canConfirm,
+    message: incompleteMessage,
+  } = getIntakeReviewReadiness(boundary, calibration, details.assessmentName);
   const polygonPoints = boundary.vertices.map((v) => `${v.x},${v.y}`).join(" ");
 
   const executeConfirmAndOpen = async () => {
     setValidationError(null);
+    if (!canConfirm) {
+      setValidationError(incompleteMessage);
+      return;
+    }
 
     const validation = validateIntakeBoundary(
       boundary.vertices,
@@ -167,6 +166,19 @@ export function IntakeReviewStep({
         >
           <div className="font-semibold text-sm">Cannot Confirm Assessment</div>
           <p>{validationError}</p>
+        </div>
+      )}
+
+      {/* Explain incomplete geometry rather than silently disabling the primary action. */}
+      {!canConfirm && (
+        <div role="alert" className="flex flex-col gap-3 rounded-xl border border-amber-300 bg-amber-50 p-4 text-sm text-amber-950 sm:flex-row sm:items-center sm:justify-between">
+          <div id="missing-boundary-help">
+            <p className="font-semibold">Finish the room outline before continuing</p>
+            <p className="mt-1 text-xs leading-relaxed">{incompleteMessage}</p>
+          </div>
+          <Button type="button" variant="secondary" onClick={onBackToDraft} className="shrink-0">
+            Back to draw boundary
+          </Button>
         </div>
       )}
 
@@ -280,7 +292,7 @@ export function IntakeReviewStep({
                 <span>Created</span>
               </div>
               <span className="font-medium text-[#17252B]">
-                1 Apr 2025, 10:24 AM
+                On confirmation
               </span>
             </div>
 
@@ -298,8 +310,7 @@ export function IntakeReviewStep({
                 <span>Notes</span>
               </div>
               <span className="font-medium text-[#17252B] text-right text-xs max-w-[280px] leading-relaxed">
-                {details.notes ||
-                  "Review accessibility within the living room and main corridor, with focus on mobility routes and clearances."}
+                {details.notes?.trim() || "Not provided"}
               </span>
             </div>
           </div>
@@ -319,9 +330,9 @@ export function IntakeReviewStep({
             {/* Geometry Preview Container */}
             {(() => {
               const previewFloorplanUrl =
-                source === "upload" && uploadedFile && uploadedFile.previewAvailable && uploadedFile.objectUrl
+                source === "upload" && uploadedFile?.previewAvailable
                   ? uploadedFile.objectUrl
-                  : "/landing/hero-floorplan-preview.png";
+                  : null;
 
               return (
                 <div className="relative mt-4 aspect-4/3 w-full overflow-hidden rounded-xl border border-[#E2E6E8] bg-[#F7F8F8] flex items-center justify-center">
@@ -339,15 +350,17 @@ export function IntakeReviewStep({
                       <rect width="800" height="600" fill="url(#preview-grid)" />
 
                       {/* Floorplan image preview */}
-                      <image
-                        href={previewFloorplanUrl}
-                        x="0"
-                        y="0"
-                        width="800"
-                        height="600"
-                        preserveAspectRatio="xMidYMid meet"
-                        opacity="0.92"
-                      />
+                      {previewFloorplanUrl && (
+                        <image
+                          href={previewFloorplanUrl}
+                          x="0"
+                          y="0"
+                          width="800"
+                          height="600"
+                          preserveAspectRatio="xMidYMid meet"
+                          opacity="0.92"
+                        />
+                      )}
 
 
                       {/* Boundary Polygon */}
@@ -383,14 +396,12 @@ export function IntakeReviewStep({
                     </svg>
 
                     {/* Mini overview thumbnail matching 05-intake-review.png */}
-                    <div className="absolute top-3 right-3 w-16 h-12 rounded border border-[#CBD5E1] bg-white p-0.5 shadow-2xs overflow-hidden hidden sm:block pointer-events-none">
-                      {/* eslint-disable-next-line @next/next/no-img-element */}
-                      <img
-                        src={previewFloorplanUrl}
-                        alt="Overview thumbnail"
-                        className="w-full h-full object-contain"
-                      />
-                    </div>
+                    {previewFloorplanUrl && (
+                      <div className="absolute top-3 right-3 w-16 h-12 rounded border border-[#CBD5E1] bg-white p-0.5 shadow-2xs overflow-hidden hidden sm:block pointer-events-none">
+                        {/* eslint-disable-next-line @next/next/no-img-element */}
+                        <img src={previewFloorplanUrl} alt="Overview thumbnail" className="w-full h-full object-contain" />
+                      </div>
+                    )}
 
                     </div>
                   );
@@ -454,6 +465,7 @@ export function IntakeReviewStep({
         </div>
 
       {/* Confirmation Teal Banner matching 05-intake-review.png */}
+      {canConfirm && (
       <div className="rounded-2xl border border-[#0B514B]/20 bg-[#E8F3F1] p-4 text-xs text-[#0B514B] flex items-start gap-3">
         <span className="flex size-6 shrink-0 items-center justify-center rounded-full bg-[#0B514B] text-white font-bold text-xs">
           ✓
@@ -467,6 +479,8 @@ export function IntakeReviewStep({
           </p>
         </div>
       </div>
+
+      )}
 
       {/* Overwrite Confirmation Modal */}
       {showOverwriteModal && (
@@ -535,7 +549,8 @@ export function IntakeReviewStep({
           <button
             type="button"
             onClick={handleConfirmAndOpen}
-            disabled={isSubmitting || !previewValidation.isValid}
+            disabled={isSubmitting || !canConfirm}
+            aria-describedby={!canConfirm ? "missing-boundary-help" : undefined}
             className="inline-flex items-center gap-2 rounded-xl bg-[#0B514B] px-5 py-2.5 text-xs font-semibold text-white shadow-xs hover:bg-[#073D38] transition cursor-pointer disabled:opacity-50"
           >
             <span>{isSubmitting ? "Opening Workspace..." : "Confirm & open in workspace"}</span>
