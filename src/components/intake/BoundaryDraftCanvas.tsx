@@ -64,13 +64,14 @@ export function BoundaryDraftCanvas({
   onBack,
   onContinue,
 }: BoundaryDraftCanvasProps) {
-  // The first tab instructs users to select two calibration points; make the
-  // initial canvas tool match that instruction rather than silently selecting.
+  // Resuming the drafting step after calibration must open the boundary
+  // tool. Otherwise a user returning from Review sees scale mode and can
+  // mistake a calibrated image for a completed, traced room.
   const [activeTool, setActiveTool] = useState<"calibrate" | "boundary" | "select" | "pan" | "zoom">(
-    "calibrate"
+    () => !calibration.isCalibrated ? "calibrate" : boundary.isClosed ? "select" : "boundary"
   );
   const [activeSubTab, setActiveSubTab] = useState<"scale" | "boundary" | "review">(
-    "scale"
+    () => !calibration.isCalibrated ? "scale" : boundary.isClosed ? "review" : "boundary"
   );
   const [zoomLevel, setZoomLevel] = useState(100);
   const [showGrid, setShowGrid] = useState(true);

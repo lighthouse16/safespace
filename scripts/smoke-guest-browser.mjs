@@ -76,6 +76,15 @@ async function check() {
   await page.getByRole("button", { name: "Close Boundary" }).click();
   assert.equal(await page.getByText("Boundary polygon closed").count(), 1);
   await page.getByRole("button", { name: "Continue to review" }).last().click();
+  // No fabricated date/notes and no warning when a real boundary is complete.
+  assert.equal(await page.getByText("1 Apr 2025, 10:24 AM").count(), 0);
+  assert.equal(await page.getByText("On confirmation").count(), 1);
+  assert.equal(await page.getByText("Finish the room outline before continuing").count(), 0);
+  const confirm = page.getByRole("button", { name: "Confirm & open in workspace" });
+  assert.equal(await confirm.isEnabled(), true);
+  // Going back to drafting must preserve the valid boundary and calibration.
+  await page.getByRole("button", { name: "Back to drafting" }).click();
+  await page.getByRole("button", { name: /Continue to review step/ }).click();
   await page.getByRole("button", { name: "Confirm & open in workspace" }).click();
   await page.waitForURL("**/workspace");
   const stages = page.locator('nav[aria-label="Assessment stages"] button');
