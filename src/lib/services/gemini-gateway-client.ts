@@ -71,11 +71,22 @@ export interface ExplanationResponsePayload {
 export interface VisualizationRequestPayload {
   userConsent: true;
   roomType?: string;
+  roomDimensions?: { widthCm: number; depthCm: number };
   furnitureList: Array<{
     name: string;
     category?: FurnitureCategory;
     widthCm?: number;
     depthCm?: number;
+    x?: number;
+    y?: number;
+    rotation?: number;
+  }>;
+  obstacles?: Array<{
+    name: string;
+    x: number;
+    y: number;
+    width: number;
+    depth: number;
   }>;
   layoutTitle?: string;
   isAlternative?: boolean;
@@ -120,7 +131,10 @@ export async function requestFloorplanInterpretation(
 
   const res = await fetch(url, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: {
+      "Content-Type": "application/json",
+      "X-SafeSpace-Client": "web-guest",
+    },
     body: JSON.stringify(payload),
     signal: AbortSignal.timeout(35_000),
   });
@@ -136,7 +150,10 @@ export async function requestFindingsExplanation(
 
   const res = await fetch(url, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: {
+      "Content-Type": "application/json",
+      "X-SafeSpace-Client": "web-guest",
+    },
     body: JSON.stringify(payload),
     signal: AbortSignal.timeout(30_000),
   });
@@ -152,7 +169,10 @@ export async function requestInteriorVisualization(
 
   const res = await fetch(url, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: {
+      "Content-Type": "application/json",
+      "X-SafeSpace-Client": "web-guest",
+    },
     body: JSON.stringify(payload),
     signal: AbortSignal.timeout(50_000),
   });

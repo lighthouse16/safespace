@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 
-const ALLOWED_ORIGINS = [
+const DEFAULT_ALLOWED_ORIGINS = [
   "https://lighthouse16.github.io",
   "http://localhost:3000",
   "http://127.0.0.1:3000",
@@ -8,27 +8,54 @@ const ALLOWED_ORIGINS = [
   "http://127.0.0.1:3006",
 ];
 
-function isOriginAllowed(origin: string | null): boolean {
-  if (!origin) return true; // same-origin or curl/test
-  if (ALLOWED_ORIGINS.includes(origin)) return true;
-  if (origin.endsWith(".github.io") || origin.endsWith(".vercel.app")) return true;
-  return false;
+export function getAllowedOrigins(): string[] {
+  const envOrigins = process.env.ALLOWED_ORIGINS?.split(",").map((o) => o.trim()).filter(Boolean) || [];
+  return Array.from(new Set([...DEFAULT_ALLOWED_ORIGINS, ...envOrigins]));
+}
+
+export function isOriginAllowed(origin: string | null): boolean {
+  if (!origin) return true; // non-browser or same-origin
+  const allowed = getAllowedOrigins();
+  return allowed.includes(origin);
+}
+
+export function validateOrigin(request: Request): { allowed: boolean; origin: string | null } {
+  const origin = request.headers.get("origin");
+  if (!origin) {
+    // Non-browser caller (curl, server-to-server, unit test)
+    return { allowed: true, origin: null };
+  }
+  if (isOriginAllowed(origin)) {
+    return { allowed: true, origin };
+  }
+  return { allowed: false, origin };
 }
 
 export function getCorsHeaders(request: Request): Record<string, string> {
   const origin = request.headers.get("origin");
-  const allowed = isOriginAllowed(origin);
-  const allowOrigin = allowed ? (origin || "*") : "https://lighthouse16.github.io";
-
-  return {
-    "Access-Control-Allow-Origin": allowOrigin,
+  const headers: Record<string, string> = {
     "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
-    "Access-Control-Allow-Headers": "Content-Type, Authorization, X-Requested-With",
+    "Access-Control-Allow-Headers": "Content-Type, Authorization, X-Requested-With, X-SafeSpace-Client",
     "Access-Control-Max-Age": "86400",
   };
+
+  if (origin && isOriginAllowed(origin)) {
+    headers["Access-Control-Allow-Origin"] = origin;
+    headers["Vary"] = "Origin";
+  }
+
+  return headers;
 }
 
 export function handleCorsPreflight(request: Request): NextResponse {
+  const originValidation = validateOrigin(request);
+  if (!originValidation.allowed) {
+    return NextResponse.json(
+      { error: "Forbidden: Origin not allowed by SafeSpace CORS policy." },
+      { status: 403 }
+    );
+  }
+
   return new NextResponse(null, {
     status: 204,
     headers: getCorsHeaders(request),

@@ -14,7 +14,7 @@ interface AIConceptPreviewModalProps {
   isAlternative?: boolean;
 }
 
-// Scene fingerprint cache to avoid duplicate expensive model calls
+// Scene fingerprint cache keyed comprehensively by model tier, layout, room, and furniture geometry
 const imageCacheByFingerprint = new Map<string, {
   base64: string;
   mimeType: string;
@@ -32,15 +32,22 @@ export function AIConceptPreviewModal({
   isAlternative = false,
 }: AIConceptPreviewModalProps) {
   const [modelTier, setModelTier] = useState<"standard" | "premium">("standard");
-  const [userConsent, setUserConsent] = useState(true);
+  // Consent is strictly opt-in by default
+  const [userConsent, setUserConsent] = useState(false);
   const [isGenerating, setIsGenerating] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  // Compute layout fingerprint based on furniture IDs, positions, and categories
+  // Compute comprehensive layout fingerprint including model tier, room dimensions, furniture coordinates, and rotation
   const fingerprint = useMemo(() => {
     const sorted = [...furniture].sort((a, b) => a.id.localeCompare(b.id));
-    return sorted.map((f) => `${f.id}:${f.category}:${Math.round(f.x)}:${Math.round(f.y)}:${f.width}:${f.depth}`).join("|");
-  }, [furniture]);
+    const furnStr = sorted
+      .map((f) => `${f.id}:${f.category}:${Math.round(f.x)}:${Math.round(f.y)}:${f.width}:${f.depth}:${f.rotation || 0}`)
+      .join("|");
+    const roomStr = rooms
+      .map((r) => `${r.id}:${r.name || r.category || "room"}:${r.width || 0}:${r.depth || 0}`)
+      .join(";");
+    return `${modelTier}:${isAlternative ? "alt" : "base"}:${layoutTitle}:${roomStr}:${furnStr}`;
+  }, [furniture, rooms, modelTier, layoutTitle, isAlternative]);
 
   const cachedResult = imageCacheByFingerprint.get(fingerprint);
   const [prevFingerprint, setPrevFingerprint] = useState(fingerprint);
@@ -56,7 +63,7 @@ export function AIConceptPreviewModal({
 
   const handleGenerate = async () => {
     if (!userConsent) {
-      setError("Please confirm user consent to send room layout description to Google Gemini.");
+      setError("Please review and confirm user consent before sending spatial layout data to Google Gemini.");
       return;
     }
     setError(null);
@@ -64,16 +71,21 @@ export function AIConceptPreviewModal({
 
     try {
       const roomType = rooms[0]?.name || rooms[0]?.category || "Clinic & Care Space";
+      const roomDimensions = rooms[0] ? { widthCm: rooms[0].width, depthCm: rooms[0].depth } : undefined;
       const furnitureList = furniture.map((f) => ({
         name: f.name,
         category: f.category,
         widthCm: f.width,
         depthCm: f.depth,
+        x: f.x,
+        y: f.y,
+        rotation: f.rotation,
       }));
 
       const res = await requestInteriorVisualization({
         userConsent: true,
         roomType,
+        roomDimensions,
         furnitureList,
         layoutTitle,
         isAlternative,
@@ -117,7 +129,7 @@ export function AIConceptPreviewModal({
                 AI Conceptual Interior Visualization
               </h2>
               <p className="text-xs text-[#647078]">
-                Perspective preview for: <strong className="text-[#17252B]">{layoutTitle}</strong>
+                Generic spatial inspiration for: <strong className="text-[#17252B]">{layoutTitle}</strong>
               </p>
             </div>
           </div>
@@ -137,7 +149,7 @@ export function AIConceptPreviewModal({
           <div className="flex items-start gap-2.5 rounded-xl border border-amber-200 bg-amber-50/80 p-3 text-xs text-amber-950">
             <ShieldAlert size={16} className="shrink-0 mt-0.5 text-amber-700" />
             <div className="space-y-0.5 leading-relaxed">
-              <span className="font-bold text-amber-900 block">AI concept visualization — not to scale</span>
+              <span className="font-bold text-amber-900 block">AI concept visualization — generic inspiration, not layout-accurate</span>
               <span>
                 Conceptual artistic depiction only. Never use generated imagery to judge clearances, wheelchair turning radiuses, or regulatory compliance. All safety evaluations are computed strictly by SafeSpace&apos;s 2D deterministic spatial engine.
               </span>
@@ -186,7 +198,7 @@ export function AIConceptPreviewModal({
                   Visualize Accessible Room Concept
                 </h3>
                 <p className="text-xs text-[#647078] leading-relaxed">
-                  Sends current spatial layout metadata ({furniture.length} fixtures, room boundary) to Gemini to produce an architectural interior visualization (target 1K resolution).
+                  Sends current spatial layout metadata ({furniture.length} fixtures, room boundary coordinates) to Gemini to produce an architectural interior visualization (target 1K resolution).
                 </p>
               </div>
 
@@ -212,7 +224,7 @@ export function AIConceptPreviewModal({
                     className="mt-0.5 rounded border-slate-300 text-[#0B514B] focus:ring-[#0B514B]"
                   />
                   <span>
-                    I consent to processing layout furniture descriptions through Google Gemini.
+                    I consent to processing room dimensions, spatial fixture coordinates, and furniture descriptions through Google Gemini. No personal identifiers are transmitted.
                   </span>
                 </label>
               </div>

@@ -18,8 +18,15 @@ export const SUPPORTED_IMAGE_MODELS = [
   "gemini-3.1-flash-lite-image",
   "gemini-3.1-flash-image",
   "gemini-nano-banana-2.1",
+] as const;
+
+export const RETIRED_MODELS = [
   "gemini-2.5-flash-image",
 ] as const;
+
+export function isModelRetired(model: string): boolean {
+  return (RETIRED_MODELS as readonly string[]).includes(model);
+}
 
 export type SupportedImageModel = (typeof SUPPORTED_IMAGE_MODELS)[number];
 

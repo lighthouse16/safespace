@@ -11,6 +11,7 @@ import {
   Sparkles,
   ChevronDown,
   ChevronUp,
+  X,
 } from "lucide-react";
 import type { SpatialFindingClassification } from "@/lib/spatial";
 import { requestFindingsExplanation } from "@/lib/services/gemini-gateway-client";
@@ -38,6 +39,8 @@ export function Stage4Analysis() {
   >("all");
   const [mobileTab, setMobileTab] = useState<"canvas" | "findings">("canvas");
   const [aiExplaining, setAiExplaining] = useState(false);
+  const [aiConsentModalOpen, setAiConsentModalOpen] = useState(false);
+  const [aiConsentGiven, setAiConsentGiven] = useState(false);
   const [aiExplanation, setAiExplanation] = useState<{
     executiveSummary: string;
     clinicalRiskNarrative: string;
@@ -451,7 +454,7 @@ export function Stage4Analysis() {
                   </button>
                   <button
                     type="button"
-                    onClick={handleGenerateAIExplanation}
+                    onClick={() => setAiConsentModalOpen(true)}
                     disabled={aiExplaining}
                     className="rounded-lg bg-teal-50 px-2.5 py-1 text-[11px] font-semibold text-[#0B514B] hover:bg-teal-100 transition disabled:opacity-50 cursor-pointer"
                   >
@@ -539,6 +542,78 @@ export function Stage4Analysis() {
           </div>
         </aside>
       </div>
+
+      {aiConsentModalOpen && (
+        <div
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="ai-explain-consent-title"
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4 backdrop-blur-xs"
+        >
+          <div className="w-full max-w-md rounded-2xl bg-white p-6 shadow-2xl border border-[#E2E6E8] space-y-4">
+            <div className="flex items-start justify-between pb-3 border-b border-[#E2E6E8]">
+              <div className="flex items-center gap-2 text-[#0B514B]">
+                <Sparkles size={20} />
+                <h3 id="ai-explain-consent-title" className="text-sm font-bold text-[#17252B]">
+                  AI Evidence Explanation (Google Gemini)
+                </h3>
+              </div>
+              <button
+                type="button"
+                onClick={() => setAiConsentModalOpen(false)}
+                className="text-[#647078] hover:text-[#17252B] cursor-pointer"
+                aria-label="Close dialog"
+              >
+                <X size={18} />
+              </button>
+            </div>
+
+            <div className="text-xs text-[#647078] space-y-2 leading-relaxed">
+              <p>
+                SafeSpace will transmit the computed spatial findings, route clearance metrics, and mobility profile to Google Gemini (<code className="text-[11px] bg-slate-100 px-1 py-0.5 rounded">gemini-3.1-flash-lite</code>) to generate an empathetic clinical explanation.
+              </p>
+              <ul className="list-disc pl-4 space-y-1 text-slate-700">
+                <li>No account or personal health information is transmitted.</li>
+                <li>AI explanations are advisory translations and do not replace professional on-site occupational therapy audits.</li>
+              </ul>
+            </div>
+
+            <label className="flex items-start gap-2.5 text-xs text-[#17252B] cursor-pointer pt-2 border-t border-slate-100">
+              <input
+                type="checkbox"
+                checked={aiConsentGiven}
+                onChange={(e) => setAiConsentGiven(e.target.checked)}
+                className="mt-0.5 rounded border-slate-300 text-[#0B514B] focus:ring-[#0B514B]"
+              />
+              <span>
+                I consent to sending spatial findings and clearance metrics to Google Gemini for AI explanation.
+              </span>
+            </label>
+
+            <div className="flex items-center justify-end gap-2 pt-2">
+              <button
+                type="button"
+                onClick={() => setAiConsentModalOpen(false)}
+                className="px-3.5 py-1.5 rounded-xl border border-[#CBD5E1] text-xs font-semibold text-[#17252B] hover:bg-slate-50 transition cursor-pointer"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                disabled={!aiConsentGiven || aiExplaining}
+                onClick={async () => {
+                  setAiConsentModalOpen(false);
+                  await handleGenerateAIExplanation();
+                }}
+                className="px-4 py-1.5 rounded-xl bg-[#0B514B] text-white text-xs font-semibold hover:bg-[#073D38] transition disabled:opacity-50 cursor-pointer flex items-center gap-1.5"
+              >
+                <Sparkles size={14} />
+                <span>Consent & Generate Insights</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

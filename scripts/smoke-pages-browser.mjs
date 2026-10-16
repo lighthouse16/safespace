@@ -1,5 +1,5 @@
 import { createServer } from "node:http";
-import { readFile, stat } from "node:fs/promises";
+import { readFile } from "node:fs/promises";
 import { resolve, extname, sep } from "node:path";
 import assert from "node:assert/strict";
 import { chromium } from "playwright-core";
@@ -47,6 +47,7 @@ try {
   assert.equal(await page.getByRole("button", { name: "Sign in" }).count(), 0);
   assert.ok(await page.getByText(/No account is needed/).count() > 0);
   await page.getByRole("link", { name: /New assessment/ }).first().click();
+  await page.waitForURL(/\/safespace\/assessments\/new/);
   assert.match(page.url(), /\/safespace\/assessments\/new/);
   await page.getByLabel("Assessment name").fill("GitHub Pages guest");
   await page.getByLabel("Facility or residence name").fill("Testing");

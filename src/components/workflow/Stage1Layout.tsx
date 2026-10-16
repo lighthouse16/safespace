@@ -111,6 +111,8 @@ export function Stage1Layout() {
   };
   const [mobileTab, setMobileTab] = useState<"canvas" | "drawer">("canvas");
   const [isInterpretingAI, setIsInterpretingAI] = useState(false);
+  const [aiConsentModalOpen, setAiConsentModalOpen] = useState(false);
+  const [aiConsentGiven, setAiConsentGiven] = useState(false);
   const [aiModalOpen, setAiModalOpen] = useState(false);
   const [aiCandidates, setAiCandidates] = useState<InterpretedElementCandidate[]>([]);
   const [aiError, setAiError] = useState<string | null>(null);
@@ -340,7 +342,7 @@ export function Stage1Layout() {
               {hasFloorplanImage ? (
                 <button
                   type="button"
-                  onClick={handleTriggerAIInterpretation}
+                  onClick={() => setAiConsentModalOpen(true)}
                   disabled={isInterpretingAI}
                   title="Detect furniture and fixtures from floorplan using Gemini AI"
                   className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-[#0B514B] bg-[#F0F5F4] text-xs font-semibold text-[#0B514B] hover:bg-teal-100 transition cursor-pointer disabled:opacity-50"
@@ -890,6 +892,82 @@ export function Stage1Layout() {
           >
             Dismiss
           </button>
+        </div>
+      )}
+
+      {aiConsentModalOpen && (
+        <div
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="ai-consent-title"
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4 backdrop-blur-xs"
+        >
+          <div className="w-full max-w-md rounded-2xl bg-white p-6 shadow-2xl border border-[#E2E6E8] space-y-4">
+            <div className="flex items-start justify-between pb-3 border-b border-[#E2E6E8]">
+              <div className="flex items-center gap-2 text-[#0B514B]">
+                <Sparkles size={20} />
+                <h3 id="ai-consent-title" className="text-sm font-bold text-[#17252B]">
+                  AI Floorplan Detection (Google Gemini)
+                </h3>
+              </div>
+              <button
+                type="button"
+                onClick={() => setAiConsentModalOpen(false)}
+                className="text-[#647078] hover:text-[#17252B] cursor-pointer"
+                aria-label="Close dialog"
+              >
+                <X size={18} />
+              </button>
+            </div>
+
+            <div className="text-xs text-[#647078] space-y-2 leading-relaxed">
+              <p>
+                SafeSpace will transmit your uploaded floorplan image and calibration scale (
+                <strong className="text-[#17252B]">
+                  {calibrationProvenance?.pixelsPerCm?.toFixed(2) ?? "1.00"} px/cm
+                </strong>
+                ) to Google Gemini (<code className="text-[11px] bg-slate-100 px-1 py-0.5 rounded">gemini-3.1-flash-lite</code>) to detect architectural fixtures.
+              </p>
+              <ul className="list-disc pl-4 space-y-1 text-slate-700">
+                <li>No account or personal identity data is transmitted.</li>
+                <li>All detections are proposals requiring human assessor review and acceptance.</li>
+              </ul>
+            </div>
+
+            <label className="flex items-start gap-2.5 text-xs text-[#17252B] cursor-pointer pt-2 border-t border-slate-100">
+              <input
+                type="checkbox"
+                checked={aiConsentGiven}
+                onChange={(e) => setAiConsentGiven(e.target.checked)}
+                className="mt-0.5 rounded border-slate-300 text-[#0B514B] focus:ring-[#0B514B]"
+              />
+              <span>
+                I consent to sending this floorplan image to Google Gemini for AI analysis.
+              </span>
+            </label>
+
+            <div className="flex items-center justify-end gap-2 pt-2">
+              <button
+                type="button"
+                onClick={() => setAiConsentModalOpen(false)}
+                className="px-3.5 py-1.5 rounded-xl border border-[#CBD5E1] text-xs font-semibold text-[#17252B] hover:bg-slate-50 transition cursor-pointer"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                disabled={!aiConsentGiven || isInterpretingAI}
+                onClick={async () => {
+                  setAiConsentModalOpen(false);
+                  await handleTriggerAIInterpretation();
+                }}
+                className="px-4 py-1.5 rounded-xl bg-[#0B514B] text-white text-xs font-semibold hover:bg-[#073D38] transition disabled:opacity-50 cursor-pointer flex items-center gap-1.5"
+              >
+                <Sparkles size={14} />
+                <span>Consent & Run Detection</span>
+              </button>
+            </div>
+          </div>
         </div>
       )}
 

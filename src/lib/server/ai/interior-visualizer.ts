@@ -1,13 +1,25 @@
 import { getGeminiClient } from "./gemini-client";
-import { getActiveImageModel, parseGeminiError } from "./model-config";
+import { getActiveImageModel, parseGeminiError, isModelRetired } from "./model-config";
 
 export interface InteriorVisualizerInput {
   roomType?: string;
+  roomDimensions?: { widthCm: number; depthCm: number };
+  roomBoundary?: Array<{ x: number; y: number }>;
   furnitureList: Array<{
     name: string;
     category?: string;
     widthCm?: number;
     depthCm?: number;
+    x?: number;
+    y?: number;
+    rotation?: number;
+  }>;
+  obstacles?: Array<{
+    name: string;
+    x: number;
+    y: number;
+    width: number;
+    depth: number;
   }>;
   layoutTitle?: string;
   isAlternative?: boolean;
@@ -35,6 +47,14 @@ export async function visualizeInteriorWithGemini(
     };
   }
 
+  if (input.requestedModel && isModelRetired(input.requestedModel)) {
+    return {
+      success: false,
+      error: `Requested image model '${input.requestedModel}' is retired. Please use a supported production model.`,
+      statusCode: 400,
+    };
+  }
+
   const ai = getGeminiClient();
   if (!ai) {
     return {
@@ -47,14 +67,33 @@ export async function visualizeInteriorWithGemini(
   const model = getActiveImageModel(input.requestedModel, input.isPremium);
 
   const roomName = input.roomType || "Living & Clinic Care Room";
-  const furnitureSummary = input.furnitureList.length > 0
-    ? input.furnitureList.slice(0, 15).map((f) => f.name).join(", ")
-    : "accessible seating, low table, clear transit zone";
+  const dimensionsSummary = input.roomDimensions
+    ? `Room footprint: ${Math.round(input.roomDimensions.widthCm)} cm width by ${Math.round(input.roomDimensions.depthCm)} cm depth.`
+    : "Standard barrier-free residential care room.";
+
+  const spatialFurnitureSummary = input.furnitureList.length > 0
+    ? input.furnitureList
+        .slice(0, 15)
+        .map((f) => {
+          const coords = (f.x !== undefined && f.y !== undefined)
+            ? `placed at (${Math.round(f.x)}, ${Math.round(f.y)}) cm, rotation ${f.rotation || 0}°`
+            : "";
+          const size = (f.widthCm && f.depthCm) ? `(${Math.round(f.widthCm)}x${Math.round(f.depthCm)} cm)` : "";
+          return `${f.name} ${size} ${coords}`.trim();
+        })
+        .join("; ")
+    : "accessible seating, low bedside table, wide barrier-free transit zone";
+
+  const obstaclesSummary = input.obstacles && input.obstacles.length > 0
+    ? `Keep clear of architectural obstacles: ${input.obstacles.map((o) => o.name).join(", ")}.`
+    : "Ensure clear transit zones along primary corridors.";
 
   const prompt = [
     `Architectural interior perspective photo of a well-lit, barrier-free ${roomName}.`,
-    `Furnished with: ${furnitureSummary}.`,
-    `Key design elements: wide open pathway, level matte flooring without trip hazards, sturdy furniture with supportive armrests, abundant warm daylight, clean modern aesthetics.`,
+    dimensionsSummary,
+    `Grounded spatial arrangement: ${spatialFurnitureSummary}.`,
+    obstaclesSummary,
+    `Key design elements: wide open pathway, level matte flooring without trip hazards, sturdy supportive furniture, abundant warm daylight, clean modern aesthetics.`,
     `High quality architectural concept rendering, wide eye-level camera angle.`,
   ].join(" ");
 
@@ -98,7 +137,7 @@ export async function visualizeInteriorWithGemini(
         imageBase64,
         imageMimeType,
         model,
-        disclaimer: "AI concept visualization — not to scale. Conceptual depiction only, not an engineering drawing.",
+        disclaimer: "AI concept visualization — generic spatial inspiration only. Not to scale and not an engineering or layout-accurate drawing. All clearances must be verified via the deterministic 2D spatial evaluator.",
         timestamp: new Date().toISOString(),
       },
     };
