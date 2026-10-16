@@ -344,8 +344,8 @@ test("Security P0: Multi-Instance - Shared limiter holds across separate OS proc
 
   // Spawn two separate OS processes concurrently requesting 'visualize' route (max 4 per min)
   const [proc1, proc2] = await Promise.all([
-    pExecFile(process.execPath, ["--import", "tsx", "-e", script], { cwd: process.cwd() }),
-    pExecFile(process.execPath, ["--import", "tsx", "-e", script], { cwd: process.cwd() }),
+    pExecFile(process.execPath, ["--import", "tsx", "-e", script], { cwd: process.cwd(), env: process.env }),
+    pExecFile(process.execPath, ["--import", "tsx", "-e", script], { cwd: process.cwd(), env: process.env }),
   ]);
 
   const res1 = JSON.parse(proc1.stdout.trim()) as boolean[];

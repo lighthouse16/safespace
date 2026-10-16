@@ -117,7 +117,14 @@ function getLockFilePath(): string {
   return join(getStorageDir(), "state.lock");
 }
 
-function acquireLock(lockPath: string, maxWaitMs = 500): boolean {
+function acquireLock(lockPath: string, maxWaitMs = 1500): boolean {
+  const dir = getStorageDir();
+  try {
+    if (!existsSync(dir)) {
+      mkdirSync(dir, { recursive: true });
+    }
+  } catch {}
+
   const start = Date.now();
   while (Date.now() - start < maxWaitMs) {
     try {
