@@ -26,6 +26,7 @@ import {
   type UploadedFileInfo,
 } from "@/components/intake";
 import { Button } from "@/components/ui/button";
+import { validateIntakeBoundary } from "@/lib/spatial";
 
 const STEPS: { id: IntakeStep; label: string }[] = [
   { id: "details", label: "1. Assessment details" },
@@ -295,6 +296,7 @@ export default function NewAssessmentPage({
   };
 
   const stepIndex = STEPS.findIndex((s) => s.id === currentStep);
+  const isDraftComplete = validateIntakeBoundary(boundary.vertices, boundary.isClosed, calibration.pixelsPerCm).isValid;
 
   return (
     <div onClickCapture={handleExitNavigation}>
@@ -331,12 +333,12 @@ export default function NewAssessmentPage({
           <nav aria-label="Intake progress" className="py-2">
             <ol className="flex items-center justify-between gap-3 max-w-4xl">
               {STEPS.map((s, idx) => {
-                const isCompleted = idx < stepIndex;
+                const isCompleted = idx < stepIndex && (s.id !== "draft" || isDraftComplete);
                 const isCurrent = idx === stepIndex;
                 const subtitles = [
                   details.assessmentName || undefined,
                   source === "upload" ? "Uploaded floorplan" : "Manual drawing",
-                  calibration.isCalibrated ? "Calibrated scale" : "Set scale and draw boundary",
+                  isDraftComplete ? "Scale and boundary complete" : calibration.isCalibrated ? "Boundary still required" : "Set scale and draw boundary",
                   "Session review",
                 ];
                 return (
