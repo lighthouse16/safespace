@@ -102,7 +102,6 @@ test("actual three-room user prompt generates safe placements or an explicit fai
 test("reproducible property sweep: 60 varied room/object densities never return overlapping furniture", () => {
   let seed = 13819;
   const random = () => ((seed = (Math.imul(seed, 1664525) + 1013904223) >>> 0) / 4294967296);
-  const names = ["chair", "table", "sofa", "cabinet", "floor_lamp", "dining_chair"];
   let successes = 0;
   let rejects = 0;
   for (let iteration = 0; iteration < 60; iteration++) {
