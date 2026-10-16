@@ -165,6 +165,8 @@ export function Stage1Layout() {
         pixelsPerCm: calibrationProvenance.pixelsPerCm,
         imageWidth,
         imageHeight,
+        canvasWidth: 800,
+        canvasHeight: 600,
         canonicalBoundary: canonicalBoundary && canonicalBoundary.length >= 3 ? canonicalBoundary : undefined,
       });
 
@@ -179,11 +181,13 @@ export function Stage1Layout() {
 
   const handleAcceptAICandidates = (accepted: InterpretedElementCandidate[]) => {
     if (!accepted.length) return;
+    const { rooms } = useSafeSpaceStore.getState();
+    const targetRoomId = canonicalBoundary && canonicalBoundary.length >= 3 ? "user-space" : (rooms[0]?.id || "user-space");
     const items = accepted.map((c) => ({
       id: c.id,
       name: c.name,
       category: c.category,
-      roomId: "user-space",
+      roomId: targetRoomId,
       x: c.x,
       y: c.y,
       width: c.width,

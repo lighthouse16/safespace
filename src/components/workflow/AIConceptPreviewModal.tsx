@@ -43,7 +43,14 @@ export function AIConceptPreviewModal({
   }, [furniture]);
 
   const cachedResult = imageCacheByFingerprint.get(fingerprint);
+  const [prevFingerprint, setPrevFingerprint] = useState(fingerprint);
   const [activeImage, setActiveImage] = useState(cachedResult || null);
+
+  if (prevFingerprint !== fingerprint) {
+    setPrevFingerprint(fingerprint);
+    setActiveImage(cachedResult || null);
+    setError(null);
+  }
 
   if (!isOpen) return null;
 

@@ -1,5 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
+import { readFile } from "node:fs/promises";
+import { join } from "node:path";
 import { isGeminiConfigured } from "@/lib/server/ai/gemini-client";
 import { interpretFloorplanWithGemini } from "@/lib/server/ai/floorplan-interpreter";
 import { explainFindingsWithGemini } from "@/lib/server/ai/findings-explainer";
@@ -15,6 +17,39 @@ test("Gemini AI: Calibration scale is mandatory for floorplan interpretation", a
 
   assert.equal(invalidScaleResult.success, false);
   assert.match(invalidScaleResult.error || "", /calibration scale/i);
+});
+
+test("Gemini AI: Live API smoke test (Controlled Floorplan Interpretation)", async (t) => {
+  const apiKeyConfigured = isGeminiConfigured();
+  if (!apiKeyConfigured) {
+    t.skip("SKIPPED: GEMINI_API_KEY environment variable not configured.");
+    return;
+  }
+
+  const demoPath = join(process.cwd(), "public", "demo-floorplan.png");
+  const imgBuffer = await readFile(demoPath);
+  const base64 = imgBuffer.toString("base64");
+
+  const res = await interpretFloorplanWithGemini({
+    imageBase64: base64,
+    imageMimeType: "image/png",
+    pixelsPerCm: 1.5,
+    imageWidth: 800,
+    imageHeight: 600,
+    userConsent: true,
+  });
+
+  assert.equal(res.success, true);
+  assert.ok(res.data);
+  assert.equal(res.data.model, "gemini-3.1-flash-lite");
+  assert.equal(res.data.scaleUsed, 1.5);
+  assert.equal(res.data.humanReviewRequired, true);
+  assert.ok(res.data.elements.length > 0, "Should detect at least 1 fixture");
+  for (const el of res.data.elements) {
+    assert.ok(el.width >= 15 && el.width <= 600, `Width ${el.width} must be in bounds`);
+    assert.ok(el.depth >= 15 && el.depth <= 600, `Depth ${el.depth} must be in bounds`);
+    assert.ok(Number.isFinite(el.x) && Number.isFinite(el.y));
+  }
 });
 
 test("Gemini AI: Live API smoke test (Controlled Explanation)", async (t) => {

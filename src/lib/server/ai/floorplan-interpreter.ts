@@ -81,6 +81,64 @@ const VALID_CATEGORIES = new Set<FurnitureCategory>([
   "medical-fixture",
 ]);
 
+export interface NormalizedBoxTransformInput {
+  xmin: number;
+  ymin: number;
+  xmax: number;
+  ymax: number;
+  imageWidth?: number;
+  imageHeight?: number;
+  canvasWidth?: number;
+  canvasHeight?: number;
+  pixelsPerCm: number;
+}
+
+export interface PhysicalBoxResult {
+  xCm: number;
+  yCm: number;
+  widthCm: number;
+  depthCm: number;
+}
+
+/**
+ * Transforms Gemini 0-1000 normalized image coordinates to canonical SafeSpace physical centimeters.
+ * Accurately models SVG viewBox (800x600 default) with preserveAspectRatio="xMidYMid meet" letterboxing
+ * and divides canvas pixels by calibration pixelsPerCm.
+ */
+export function transformNormalizedBoxToPhysicalCm(
+  input: NormalizedBoxTransformInput
+): PhysicalBoxResult {
+  const boxW = input.canvasWidth && input.canvasWidth > 0 ? input.canvasWidth : 800;
+  const boxH = input.canvasHeight && input.canvasHeight > 0 ? input.canvasHeight : 600;
+  const imgW = input.imageWidth && input.imageWidth > 0 ? input.imageWidth : boxW;
+  const imgH = input.imageHeight && input.imageHeight > 0 ? input.imageHeight : boxH;
+  const ppm = input.pixelsPerCm;
+
+  // SVG preserveAspectRatio="xMidYMid meet" transform
+  const scale = Math.min(boxW / imgW, boxH / imgH);
+  const renderedW = imgW * scale;
+  const renderedH = imgH * scale;
+  const offsetX = (boxW - renderedW) / 2;
+  const offsetY = (boxH - renderedH) / 2;
+
+  const normXmin = Math.max(0, Math.min(1000, input.xmin)) / 1000;
+  const normXmax = Math.max(0, Math.min(1000, input.xmax)) / 1000;
+  const normYmin = Math.max(0, Math.min(1000, input.ymin)) / 1000;
+  const normYmax = Math.max(0, Math.min(1000, input.ymax)) / 1000;
+
+  const canvasPxLeft = offsetX + normXmin * renderedW;
+  const canvasPxTop = offsetY + normYmin * renderedH;
+  const canvasPxWidth = (normXmax - normXmin) * renderedW;
+  const canvasPxHeight = (normYmax - normYmin) * renderedH;
+
+  return {
+    xCm: Math.round(canvasPxLeft / ppm),
+    yCm: Math.round(canvasPxTop / ppm),
+    widthCm: Math.round(canvasPxWidth / ppm),
+    depthCm: Math.round(canvasPxHeight / ppm),
+  };
+}
+
 export async function interpretFloorplanWithGemini(params: {
   imageBase64: string;
   imageMimeType: string;
@@ -91,7 +149,16 @@ export async function interpretFloorplanWithGemini(params: {
   pixelsPerCm?: number;
   canonicalBoundary?: readonly Point2D[] | Point2D[];
   requestedModel?: string;
+  userConsent?: boolean;
 }): Promise<{ success: boolean; data?: FloorplanInterpretationResult; error?: string; statusCode?: number }> {
+  if (params.userConsent === false) {
+    return {
+      success: false,
+      error: "User consent required before analyzing floorplan with external AI.",
+      statusCode: 400,
+    };
+  }
+
   if (!params.pixelsPerCm || params.pixelsPerCm <= 0 || !Number.isFinite(params.pixelsPerCm)) {
     return {
       success: false,
@@ -111,10 +178,6 @@ export async function interpretFloorplanWithGemini(params: {
 
   const model = getActiveTextModel(params.requestedModel);
   const ppm = params.pixelsPerCm;
-
-  // Use actual image dimensions or intake canvas viewBox default (800x600 px)
-  const imageW = params.imageWidth || params.canvasWidth || 800;
-  const imageH = params.imageHeight || params.canvasHeight || 600;
 
   try {
     const prompt = `You are a clinical accessibility and spatial floorplan perception assistant.
@@ -183,7 +246,6 @@ Do NOT invent objects that are not clearly visible. Be precise.`;
         continue;
       }
 
-      // Clamp normalized values to [0, 1000]
       const xmin = Math.max(0, Math.min(1000, xminRaw));
       const xmax = Math.max(0, Math.min(1000, xmaxRaw));
       const ymin = Math.max(0, Math.min(1000, yminRaw));
@@ -191,17 +253,19 @@ Do NOT invent objects that are not clearly visible. Be precise.`;
 
       if (xmax <= xmin || ymax <= ymin) continue;
 
-      // Un-normalize (0-1000) using actual image/canvas dimensions
-      const leftPx = (xmin / 1000) * imageW;
-      const topPx = (ymin / 1000) * imageH;
-      const widthPx = ((xmax - xmin) / 1000) * imageW;
-      const heightPx = ((ymax - ymin) / 1000) * imageH;
+      const physical = transformNormalizedBoxToPhysicalCm({
+        xmin,
+        ymin,
+        xmax,
+        ymax,
+        imageWidth: params.imageWidth,
+        imageHeight: params.imageHeight,
+        canvasWidth: params.canvasWidth,
+        canvasHeight: params.canvasHeight,
+        pixelsPerCm: ppm,
+      });
 
-      // Convert to canonical physical centimeters (top-left origin per SafeSpace convention)
-      const xCm = Math.round(leftPx / ppm);
-      const yCm = Math.round(topPx / ppm);
-      const widthCm = Math.round(widthPx / ppm);
-      const depthCm = Math.round(heightPx / ppm);
+      const { xCm, yCm, widthCm, depthCm } = physical;
 
       // Validate realistic furniture dimensions in cm (reject noise or massive boxes)
       if (widthCm < 15 || depthCm < 15 || widthCm > 600 || depthCm > 600) {
@@ -211,10 +275,18 @@ Do NOT invent objects that are not clearly visible. Be precise.`;
       // If boundary is supplied, verify center is inside boundary or near it
       if (params.canonicalBoundary && params.canonicalBoundary.length >= 3) {
         const centerCm = { x: xCm + widthCm / 2, y: yCm + depthCm / 2 };
-        const inside = isPointInPolygon(centerCm, params.canonicalBoundary);
-        // If outside boundary completely, skip candidate
-        if (!inside) {
-          continue;
+        const insideCenter = isPointInPolygon(centerCm, params.canonicalBoundary);
+        if (!insideCenter) {
+          const corners = [
+            { x: xCm, y: yCm },
+            { x: xCm + widthCm, y: yCm },
+            { x: xCm + widthCm, y: yCm + depthCm },
+            { x: xCm, y: yCm + depthCm },
+          ];
+          const anyCornerInside = corners.some((c) => isPointInPolygon(c, params.canonicalBoundary!));
+          if (!anyCornerInside) {
+            continue;
+          }
         }
       }
 

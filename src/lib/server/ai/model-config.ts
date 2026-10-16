@@ -70,10 +70,41 @@ export interface GeminiApiError {
  * Parses upstream Gemini / GoogleGenAI errors into structured, safe errors.
  */
 export function parseGeminiError(err: unknown): GeminiApiError {
-  const message = err instanceof Error ? err.message : String(err);
+  let message = err instanceof Error ? err.message : String(err);
+  let parsedJsonCode: number | undefined;
+  let parsedJsonStatus: string | undefined;
+
+  try {
+    const json = JSON.parse(message);
+    if (json?.error?.message) {
+      parsedJsonCode = json.error.code;
+      parsedJsonStatus = json.error.status;
+      message = json.error.message;
+    }
+  } catch {}
+
+  // 400 Invalid argument / bad request
+  if (
+    parsedJsonCode === 400 ||
+    parsedJsonStatus === "INVALID_ARGUMENT" ||
+    message.includes("INVALID_ARGUMENT") ||
+    message.includes("Unable to process input image")
+  ) {
+    return {
+      code: "INVALID_REQUEST",
+      message: message.slice(0, 300),
+      statusCode: 400,
+    };
+  }
 
   // 429 Quota exhaustion
-  if (message.includes("429") || message.includes("RESOURCE_EXHAUSTED") || message.includes("quota")) {
+  if (
+    parsedJsonCode === 429 ||
+    parsedJsonStatus === "RESOURCE_EXHAUSTED" ||
+    message.includes("429") ||
+    message.includes("RESOURCE_EXHAUSTED") ||
+    message.includes("quota")
+  ) {
     let retryAfterSeconds: number | undefined;
     const retryMatch = message.match(/retry in\s+(\d+(?:\.\d+)?)(?:h|m|s)?/i);
     if (retryMatch) {
@@ -88,7 +119,14 @@ export function parseGeminiError(err: unknown): GeminiApiError {
   }
 
   // 404 Model Not Found
-  if (message.includes("404") || message.includes("NOT_FOUND") || message.includes("not found")) {
+  if (
+    parsedJsonCode === 404 ||
+    parsedJsonStatus === "NOT_FOUND" ||
+    message.includes("404") ||
+    message.includes("NOT_FOUND") ||
+    message.includes("not found") ||
+    message.includes("no longer available")
+  ) {
     return {
       code: "MODEL_NOT_FOUND",
       message: "The requested Gemini model is not available or has been deprecated.",
@@ -97,7 +135,16 @@ export function parseGeminiError(err: unknown): GeminiApiError {
   }
 
   // 401 / 403 Auth
-  if (message.includes("401") || message.includes("403") || message.includes("API key not valid") || message.includes("UNAUTHENTICATED")) {
+  if (
+    parsedJsonCode === 401 ||
+    parsedJsonCode === 403 ||
+    parsedJsonStatus === "UNAUTHENTICATED" ||
+    parsedJsonStatus === "PERMISSION_DENIED" ||
+    message.includes("401") ||
+    message.includes("403") ||
+    message.includes("API key not valid") ||
+    message.includes("UNAUTHENTICATED")
+  ) {
     return {
       code: "AUTH_ERROR",
       message: "Gemini API key is invalid or lacks required permissions.",

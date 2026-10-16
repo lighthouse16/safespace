@@ -20,9 +20,15 @@ export function AIInterpretationReviewModal({
   onAccept,
   isLoading = false,
 }: AIInterpretationReviewModalProps) {
+  const [prevCandidates, setPrevCandidates] = useState(candidates);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(
     () => new Set(candidates.map((c) => c.id))
   );
+
+  if (prevCandidates !== candidates) {
+    setPrevCandidates(candidates);
+    setSelectedIds(new Set(candidates.map((c) => c.id)));
+  }
 
   if (!isOpen) return null;
 

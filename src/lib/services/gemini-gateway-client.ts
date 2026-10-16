@@ -91,6 +91,27 @@ export interface VisualizationResponsePayload {
   timestamp: string;
 }
 
+async function parseResponseOrThrow<T>(res: Response, operationName: string): Promise<T> {
+  const text = await res.text();
+  let data: Record<string, unknown> | null = null;
+  try {
+    data = JSON.parse(text) as Record<string, unknown>;
+  } catch {
+    throw new Error(
+      `${operationName} gateway returned non-JSON response (${res.status}): ${
+        text.slice(0, 100) || "Empty response"
+      }. If using static GitHub Pages, verify NEXT_PUBLIC_GEMINI_GATEWAY_URL points to an active backend.`
+    );
+  }
+
+  if (!res.ok) {
+    const errorMsg = typeof data?.error === "string" ? data.error : `${operationName} request failed with status ${res.status}`;
+    throw new Error(errorMsg);
+  }
+
+  return data as T;
+}
+
 export async function requestFloorplanInterpretation(
   payload: InterpretationRequestPayload
 ): Promise<InterpretationResponsePayload> {
@@ -104,11 +125,7 @@ export async function requestFloorplanInterpretation(
     signal: AbortSignal.timeout(35_000),
   });
 
-  const data = await res.json();
-  if (!res.ok) {
-    throw new Error(data.error || `Interpretation request failed with status ${res.status}`);
-  }
-  return data as InterpretationResponsePayload;
+  return parseResponseOrThrow<InterpretationResponsePayload>(res, "Floorplan interpretation");
 }
 
 export async function requestFindingsExplanation(
@@ -124,11 +141,7 @@ export async function requestFindingsExplanation(
     signal: AbortSignal.timeout(30_000),
   });
 
-  const data = await res.json();
-  if (!res.ok) {
-    throw new Error(data.error || `Explanation request failed with status ${res.status}`);
-  }
-  return data as ExplanationResponsePayload;
+  return parseResponseOrThrow<ExplanationResponsePayload>(res, "Findings explanation");
 }
 
 export async function requestInteriorVisualization(
@@ -144,11 +157,7 @@ export async function requestInteriorVisualization(
     signal: AbortSignal.timeout(50_000),
   });
 
-  const data = await res.json();
-  if (!res.ok) {
-    throw new Error(data.error || `Visualization request failed with status ${res.status}`);
-  }
-  return data as VisualizationResponsePayload;
+  return parseResponseOrThrow<VisualizationResponsePayload>(res, "Interior visualization");
 }
 
 export async function checkGatewayHealth(): Promise<{
