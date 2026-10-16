@@ -1,13 +1,13 @@
 import Image from "next/image";
+import Link from "next/link";
+import floorplanPreview from "../../../public/landing/hero-floorplan-preview.png";
 import { BrandMark } from "@/components/brand/brand-mark";
 import {
   AlertTriangle,
-  Check,
+  ArrowRight,
   MoreHorizontal,
   Route as RouteIcon,
   Ruler,
-  X,
-  Accessibility,
 } from "lucide-react";
 
 export function HeroPreviewCard() {
@@ -29,7 +29,6 @@ export function HeroPreviewCard() {
               <span>Floorplan</span>
               <span className="absolute bottom-0 left-0 right-0 h-[2.5px] rounded-full bg-[#0B514B]" />
             </div>
-            <span className="text-[#8C9BA5] cursor-default hidden sm:inline">Assessment</span>
             <span className="text-[#8C9BA5] cursor-default hidden sm:inline">Issues</span>
             <span className="text-[#8C9BA5] cursor-default hidden sm:inline">Report</span>
           </nav>
@@ -86,8 +85,8 @@ export function HeroPreviewCard() {
         <div className="flex-1 p-2.5 sm:p-3 flex items-center justify-center overflow-hidden">
           <div className="relative w-full max-w-[460px] aspect-[450/366] rounded-xl sm:rounded-2xl border border-[#E2E8F0] bg-white shadow-xs overflow-hidden">
             <Image
-              src="/landing/hero-floorplan-preview.png"
-              alt="SafeSpace Floorplan Accessibility Evaluation and Movement Route Map"
+              src={floorplanPreview}
+              alt="Illustrative floorplan with an example route overlay; not a completed assessment"
               width={450}
               height={366}
               priority
@@ -96,67 +95,49 @@ export function HeroPreviewCard() {
           </div>
         </div>
 
-        {/* Right Inspection Sidebar */}
-        <div className="w-full md:w-[260px] lg:w-[275px] shrink-0 border-t md:border-t-0 md:border-l border-[#EEF2F5] bg-white p-4 sm:p-5 flex flex-col justify-between">
-          <div className="space-y-3.5">
-            {/* Header */}
-            <div className="flex items-center justify-between pb-1">
-              <span className="font-bold text-[#111827] text-sm tracking-tight">Movement route</span>
-              <X size={15} className="text-[#9CA3AF] cursor-default" />
-            </div>
-
-            {/* Route 1 Card */}
-            <div className="rounded-xl border border-[#E5E9EB] bg-white p-3 flex items-center gap-3 shadow-2xs">
-              <div className="size-9 shrink-0 rounded-xl bg-[#E6F0EE] flex items-center justify-center text-[#0B514B]">
-                <Accessibility size={18} strokeWidth={2.2} />
-              </div>
-              <div className="min-w-0">
-                <p className="font-bold text-xs text-[#111827] leading-tight">Route 1</p>
-                <p className="text-[11px] text-[#6B7280] leading-tight mt-0.5">Accessible route</p>
-              </div>
-            </div>
-
-            {/* Metrics Dual Card */}
-            <div className="grid grid-cols-2 rounded-xl border border-[#E5E9EB] bg-white divide-x divide-[#E5E9EB] p-2.5 sm:p-3 text-left shadow-2xs">
-              <div className="pr-2">
-                <p className="text-sm sm:text-base font-bold text-[#111827] leading-none">32 m</p>
-                <p className="text-[10px] text-[#6B7280] mt-1 leading-tight">Route length</p>
-              </div>
-              <div className="pl-3">
-                <p className="text-sm sm:text-base font-bold text-[#111827] leading-none">1.2 m</p>
-                <p className="text-[10px] text-[#6B7280] mt-1 leading-tight">Min. width</p>
-              </div>
-            </div>
-
-            {/* Compliance Checklist */}
-            <div className="space-y-2.5 pt-1 text-xs">
-              <div className="flex items-center gap-2.5 text-[#374151]">
-                <div className="flex size-4.5 shrink-0 items-center justify-center rounded-full bg-[#3B8A61] text-white">
-                  <Check size={11} strokeWidth={3} />
-                </div>
-                <span className="font-medium text-[12px]">Step free</span>
-              </div>
-              <div className="flex items-center gap-2.5 text-[#374151]">
-                <div className="flex size-4.5 shrink-0 items-center justify-center rounded-full bg-[#3B8A61] text-white">
-                  <Check size={11} strokeWidth={3} />
-                </div>
-                <span className="font-medium text-[12px]">Compliant width</span>
-              </div>
-              <div className="flex items-center gap-2.5 text-[#374151]">
-                <div className="flex size-4.5 shrink-0 items-center justify-center rounded-full bg-[#3B8A61] text-white">
-                  <Check size={11} strokeWidth={3} />
-                </div>
-                <span className="font-medium text-[12px]">Clear turning space</span>
-              </div>
-              <div className="flex items-center gap-2.5 text-[#374151]">
-                <div className="flex size-4.5 shrink-0 items-center justify-center rounded-full bg-[#3B8A61] text-white">
-                  <Check size={11} strokeWidth={3} />
-                </div>
-                <span className="font-medium text-[12px]">No major obstructions</span>
-              </div>
-            </div>
+        {/* The landing example must not imply a completed, measured safety review. */}
+        <aside className="w-full shrink-0 border-t border-[#EEF2F5] bg-white p-4 sm:p-5 md:w-[260px] md:border-l md:border-t-0 lg:w-[275px]"
+          aria-label="Illustrative route insights">
+          <div className="flex items-center justify-between gap-2">
+            <h3 className="text-sm font-bold tracking-tight text-[#17252B]">Route insights</h3>
+            <span className="rounded-full bg-[#F0F3F4] px-2 py-1 text-[10px] font-semibold text-[#52636B]">
+              Sample only
+            </span>
           </div>
-        </div>
+          <div className="mt-4 rounded-xl border border-[#DCE7E5] bg-[#F5FAF8] p-4">
+            <p className="text-sm font-semibold text-[#0B514B]">Not evaluated</p>
+            <p className="mt-1.5 text-xs leading-relaxed text-[#52636B]">
+              Measurements appear after you calibrate a floorplan, set a mobility profile,
+              and evaluate a route.
+            </p>
+          </div>
+          <p className="mt-5 text-xs font-semibold text-[#17252B]">
+            A real assessment can show
+          </p>
+          <ul className="mt-2.5 space-y-2.5 text-xs leading-relaxed text-[#52636B]">
+            <li className="flex items-start gap-2">
+              <RouteIcon size={15} className="mt-0.5 shrink-0 text-[#0B514B]" aria-hidden="true" />
+              Computed path and feasibility
+            </li>
+            <li className="flex items-start gap-2">
+              <Ruler size={15} className="mt-0.5 shrink-0 text-[#0B514B]" aria-hidden="true" />
+              Modeled route clearance
+            </li>
+            <li className="flex items-start gap-2">
+              <AlertTriangle size={15} className="mt-0.5 shrink-0 text-[#0B514B]" aria-hidden="true" />
+              Identified obstacles and unassessed scope
+            </li>
+          </ul>
+          <p className="mt-5 border-t border-[#EEF2F5] pt-3 text-[11px] leading-relaxed text-[#7B8990]">
+            No clinical safety or turning-maneuver compliance is verified by this preview.
+          </p>
+          <Link
+            href="/assessments/new"
+            className="mt-4 inline-flex items-center gap-1.5 text-xs font-semibold text-[#0B514B] hover:underline"
+          >
+            Create an assessment <ArrowRight size={14} aria-hidden="true" />
+          </Link>
+        </aside>
       </div>
     </div>
   );

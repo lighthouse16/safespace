@@ -42,6 +42,21 @@ try {
   page.on("request", (r) => { if (r.url().includes("/api/v1/")) requests.push(r.url()); });
   await page.goto(url, { waitUntil: "networkidle" });
   assert.ok(await page.locator("body").innerText().then((s) => s.includes("SafeSpace")));
+  // Regression: public Pages uses /safespace/ basePath, not root-relative
+  // image URLs; verify the IMAGE ITSELF loaded, not merely its <img> tag.
+  const preview = page.getByRole("img", {
+    name: "Illustrative floorplan with an example route overlay; not a completed assessment"
+  });
+  await preview.waitFor({ state: "visible" });
+  assert.ok(await preview.evaluate((el) => el instanceof HTMLImageElement &&
+    el.complete && el.naturalWidth > 0), "Hero preview image must load on GitHub Pages");
+  assert.ok((await preview.getAttribute("src")).startsWith("/safespace/"),
+    "Hero image URL must include the GitHub Pages base path");
+  const previewRegion = page.getByRole("region", { name: "SafeSpace Workspace Preview" });
+  assert.equal(await previewRegion.getByText("Assessment", { exact: true }).count(), 0);
+  assert.equal(await previewRegion.getByText("Compliant width", { exact: true }).count(), 0);
+  assert.equal(await previewRegion.getByText("32 m", { exact: true }).count(), 0);
+  assert.equal(await previewRegion.getByText("Not evaluated", { exact: true }).count(), 1);
   await page.goto(url + "assessments/", { waitUntil: "networkidle" });
   assert.equal(await page.getByText("On this device").count(), 1);
   assert.equal(await page.getByRole("button", { name: "Sign in" }).count(), 0);

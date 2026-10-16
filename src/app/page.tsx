@@ -20,10 +20,6 @@ export default function HomePage() {
             <BrandMark />
           </Link>
 
-          <nav aria-label="Public navigation" className="hidden items-center gap-8 text-sm font-medium text-[#647078] md:flex">
-            <Link href="/assessments" className="hover:text-[#17252B]">Assessments</Link>
-          </nav>
-
           {/* Right Header Actions */}
           <div className="flex items-center gap-3">
             <Link
