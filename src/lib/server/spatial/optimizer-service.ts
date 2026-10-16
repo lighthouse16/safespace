@@ -4,7 +4,7 @@ import {
   type OptimizationResult,
   type Polygon2D,
 } from "@/lib/spatial";
-import type { MobilityProfileData, RouteWaypoint, SpatialFurniture } from "@/lib/spatial-model";
+import type { MobilityProfileData, RouteWaypoint, SpatialFurniture, SpatialWall, SpatialDoor } from "@/lib/spatial-model";
 import { validateSceneGeometry } from "./geometry-validator";
 import { createRouteHandlerClient } from "../supabase";
 
@@ -13,6 +13,10 @@ export interface ServerOptimizeParams {
   boundary?: Polygon2D | null;
   furniture: SpatialFurniture[];
   waypoints: RouteWaypoint[];
+  walls?: SpatialWall[];
+  doors?: SpatialDoor[];
+  maxCandidates?: number;
+  maxEvaluations?: number;
   profile: MobilityProfileData;
   persistResult?: boolean;
   request?: Request;
@@ -31,6 +35,7 @@ export async function runServerOptimization(
     boundary: params.boundary,
     furniture: params.furniture,
     waypoints: params.waypoints,
+    walls: params.walls,
   });
 
   if (!validation.isValid) {
@@ -43,6 +48,8 @@ export async function runServerOptimization(
     waypoints: params.waypoints,
     boundary: params.boundary ?? null,
     profile: params.profile,
+    walls: params.walls,
+    doors: params.doors,
   });
 
   // 3. Execute deterministic layout optimizer
@@ -51,21 +58,27 @@ export async function runServerOptimization(
     waypoints: params.waypoints,
     boundary: params.boundary,
     profile: params.profile,
+    walls: params.walls,
+    doors: params.doors,
+    maxCandidates: params.maxCandidates,
+    maxEvaluations: params.maxEvaluations,
+    assessmentType: "user",
   });
 
   // 4. Optionally persist candidates to optimizations table
   if (params.persistResult && params.assessmentId) {
     try {
       const supabase = await createRouteHandlerClient(params.request);
-      await supabase.from("optimizations").insert({
+      const { error: persistError } = await supabase.from("optimizations").insert({
         assessment_id: params.assessmentId,
         status: result.status,
         scene_fingerprint: fingerprint,
         candidates: result.candidates,
         snapshot_before_apply: params.furniture,
       });
+      if (persistError) return { success: false, errors: ["Optimization computed but persistence failed."] };
     } catch {
-      // Non-blocking persistence
+      return { success: false, errors: ["Optimization computed but persistence failed."] };
     }
   }
 

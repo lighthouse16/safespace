@@ -24,12 +24,13 @@ export async function POST(request: Request, context: RouteContext) {
       );
     }
 
-    const { boundary, furniture, routeWaypoints, profile } = result.data;
+    const { boundary, furniture, routeWaypoints, profile, walls } = result.data;
     const optRes = await runServerOptimization({
       assessmentId: id,
       boundary,
       furniture,
       waypoints: routeWaypoints,
+      walls,
       profile,
       persistResult: true,
       request,

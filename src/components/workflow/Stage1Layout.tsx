@@ -28,6 +28,7 @@ import {
   AIInterpretationReviewModal,
   type InterpretedElementCandidate,
 } from "@/components/ai/AIInterpretationReviewModal";
+import { requestFloorplanInterpretation } from "@/lib/services/gemini-gateway-client";
 import { GenerateLayoutPanel } from "./GenerateLayoutPanel";
 
 type CatalogItem = { group: string; category: FurnitureCategory; name: string; dim: string };
@@ -75,10 +76,10 @@ export function Stage1Layout() {
     setSnapToGrid,
     zoom,
     setZoom,
-    assessmentId,
     hasFloorplanImage,
     floorplanImageBlobUrl,
     calibrationProvenance,
+    canonicalBoundary,
     addCustomFurnitureBatch,
   } = useSafeSpaceStore();
 
@@ -110,6 +111,8 @@ export function Stage1Layout() {
   };
   const [mobileTab, setMobileTab] = useState<"canvas" | "drawer">("canvas");
   const [isInterpretingAI, setIsInterpretingAI] = useState(false);
+  const [aiConsentModalOpen, setAiConsentModalOpen] = useState(false);
+  const [aiConsentGiven, setAiConsentGiven] = useState(false);
   const [aiModalOpen, setAiModalOpen] = useState(false);
   const [aiCandidates, setAiCandidates] = useState<InterpretedElementCandidate[]>([]);
   const [aiError, setAiError] = useState<string | null>(null);
@@ -117,6 +120,13 @@ export function Stage1Layout() {
   const handleTriggerAIInterpretation = async () => {
     if (!floorplanImageBlobUrl) return;
     setAiError(null);
+
+    // Validate calibration scale before sending to AI
+    if (!calibrationProvenance?.pixelsPerCm || calibrationProvenance.pixelsPerCm <= 0) {
+      setAiError("Calibration scale required. Calibrate reference dimension before AI detection.");
+      return;
+    }
+
     setIsInterpretingAI(true);
     try {
       const blob = await fetch(floorplanImageBlobUrl).then((r) => r.blob());
@@ -131,23 +141,36 @@ export function Stage1Layout() {
         reader.readAsDataURL(blob);
       });
 
-      const res = await fetch(`/api/v1/assessments/${assessmentId || "active"}/ai/interpretation`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          userConsent: true,
-          imageMimeType: blob.type.startsWith("image/") ? blob.type : "image/png",
-          imageBase64: base64,
-          scaleInfo: {
-            pixelsPerCm: calibrationProvenance?.pixelsPerCm || 1,
-          },
-        }),
-      });
+      // Get natural image dimensions if possible
+      let imageWidth = 800;
+      let imageHeight = 600;
+      try {
+        const img = new Image();
+        img.src = floorplanImageBlobUrl;
+        await new Promise((resolve) => {
+          if (img.complete) resolve(true);
+          else {
+            img.onload = () => resolve(true);
+            img.onerror = () => resolve(false);
+          }
+        });
+        if (img.naturalWidth > 0 && img.naturalHeight > 0) {
+          imageWidth = img.naturalWidth;
+          imageHeight = img.naturalHeight;
+        }
+      } catch {}
 
-      const data = await res.json();
-      if (!res.ok) {
-        throw new Error(data.error || "Interpretation failed");
-      }
+      const data = await requestFloorplanInterpretation({
+        userConsent: true,
+        imageMimeType: blob.type.startsWith("image/") ? blob.type : "image/png",
+        imageBase64: base64,
+        pixelsPerCm: calibrationProvenance.pixelsPerCm,
+        imageWidth,
+        imageHeight,
+        canvasWidth: 800,
+        canvasHeight: 600,
+        canonicalBoundary: canonicalBoundary && canonicalBoundary.length >= 3 ? canonicalBoundary : undefined,
+      });
 
       setAiCandidates(data.elements || []);
       setAiModalOpen(true);
@@ -160,11 +183,13 @@ export function Stage1Layout() {
 
   const handleAcceptAICandidates = (accepted: InterpretedElementCandidate[]) => {
     if (!accepted.length) return;
+    const { rooms } = useSafeSpaceStore.getState();
+    const targetRoomId = canonicalBoundary && canonicalBoundary.length >= 3 ? "user-space" : (rooms[0]?.id || "user-space");
     const items = accepted.map((c) => ({
       id: c.id,
       name: c.name,
       category: c.category,
-      roomId: "user-space",
+      roomId: targetRoomId,
       x: c.x,
       y: c.y,
       width: c.width,
@@ -317,7 +342,7 @@ export function Stage1Layout() {
               {hasFloorplanImage ? (
                 <button
                   type="button"
-                  onClick={handleTriggerAIInterpretation}
+                  onClick={() => setAiConsentModalOpen(true)}
                   disabled={isInterpretingAI}
                   title="Detect furniture and fixtures from floorplan using Gemini AI"
                   className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-[#0B514B] bg-[#F0F5F4] text-xs font-semibold text-[#0B514B] hover:bg-teal-100 transition cursor-pointer disabled:opacity-50"
@@ -392,6 +417,26 @@ export function Stage1Layout() {
                 onClick={clearPlacementError}
                 className="text-amber-700 hover:text-amber-900 font-bold ml-2 text-xs cursor-pointer"
                 aria-label="Dismiss error"
+              >
+                ✕
+              </button>
+            </div>
+          )}
+
+          {aiError && (
+            <div
+              role="alert"
+              className="mb-2 px-3 py-1.5 rounded-lg bg-rose-50 border border-rose-200 text-xs text-rose-900 flex items-center justify-between shrink-0 shadow-2xs z-20"
+            >
+              <div className="flex items-center gap-1.5">
+                <AlertTriangle className="w-3.5 h-3.5 text-rose-600 shrink-0" />
+                <span>{aiError}</span>
+              </div>
+              <button
+                type="button"
+                onClick={() => setAiError(null)}
+                className="text-rose-700 hover:text-rose-900 font-bold ml-2 text-xs cursor-pointer"
+                aria-label="Dismiss AI error"
               >
                 ✕
               </button>
@@ -847,6 +892,82 @@ export function Stage1Layout() {
           >
             Dismiss
           </button>
+        </div>
+      )}
+
+      {aiConsentModalOpen && (
+        <div
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="ai-consent-title"
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4 backdrop-blur-xs"
+        >
+          <div className="w-full max-w-md rounded-2xl bg-white p-6 shadow-2xl border border-[#E2E6E8] space-y-4">
+            <div className="flex items-start justify-between pb-3 border-b border-[#E2E6E8]">
+              <div className="flex items-center gap-2 text-[#0B514B]">
+                <Sparkles size={20} />
+                <h3 id="ai-consent-title" className="text-sm font-bold text-[#17252B]">
+                  AI Floorplan Detection (Google Gemini)
+                </h3>
+              </div>
+              <button
+                type="button"
+                onClick={() => setAiConsentModalOpen(false)}
+                className="text-[#647078] hover:text-[#17252B] cursor-pointer"
+                aria-label="Close dialog"
+              >
+                <X size={18} />
+              </button>
+            </div>
+
+            <div className="text-xs text-[#647078] space-y-2 leading-relaxed">
+              <p>
+                SafeSpace will transmit your uploaded floorplan image and calibration scale (
+                <strong className="text-[#17252B]">
+                  {calibrationProvenance?.pixelsPerCm?.toFixed(2) ?? "1.00"} px/cm
+                </strong>
+                ) to Google Gemini (<code className="text-[11px] bg-slate-100 px-1 py-0.5 rounded">gemini-3.1-flash-lite</code>) to detect architectural fixtures.
+              </p>
+              <ul className="list-disc pl-4 space-y-1 text-slate-700">
+                <li>No account or personal identity data is transmitted.</li>
+                <li>All detections are proposals requiring human assessor review and acceptance.</li>
+              </ul>
+            </div>
+
+            <label className="flex items-start gap-2.5 text-xs text-[#17252B] cursor-pointer pt-2 border-t border-slate-100">
+              <input
+                type="checkbox"
+                checked={aiConsentGiven}
+                onChange={(e) => setAiConsentGiven(e.target.checked)}
+                className="mt-0.5 rounded border-slate-300 text-[#0B514B] focus:ring-[#0B514B]"
+              />
+              <span>
+                I consent to sending this floorplan image to Google Gemini for AI analysis.
+              </span>
+            </label>
+
+            <div className="flex items-center justify-end gap-2 pt-2">
+              <button
+                type="button"
+                onClick={() => setAiConsentModalOpen(false)}
+                className="px-3.5 py-1.5 rounded-xl border border-[#CBD5E1] text-xs font-semibold text-[#17252B] hover:bg-slate-50 transition cursor-pointer"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                disabled={!aiConsentGiven || isInterpretingAI}
+                onClick={async () => {
+                  setAiConsentModalOpen(false);
+                  await handleTriggerAIInterpretation();
+                }}
+                className="px-4 py-1.5 rounded-xl bg-[#0B514B] text-white text-xs font-semibold hover:bg-[#073D38] transition disabled:opacity-50 cursor-pointer flex items-center gap-1.5"
+              >
+                <Sparkles size={14} />
+                <span>Consent & Run Detection</span>
+              </button>
+            </div>
+          </div>
         </div>
       )}
 

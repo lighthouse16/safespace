@@ -3,7 +3,7 @@ import {
   type SpatialEvaluationResult,
   type Polygon2D,
 } from "@/lib/spatial";
-import type { MobilityProfileData, RouteWaypoint, SpatialFurniture } from "@/lib/spatial-model";
+import type { MobilityProfileData, RouteWaypoint, SpatialFurniture, SpatialWall, SpatialDoor } from "@/lib/spatial-model";
 import { validateSceneGeometry } from "./geometry-validator";
 import { createRouteHandlerClient } from "../supabase";
 
@@ -13,6 +13,8 @@ export interface ServerEvaluateParams {
   boundary?: Polygon2D | null;
   furniture: SpatialFurniture[];
   waypoints: RouteWaypoint[];
+  walls?: SpatialWall[];
+  doors?: SpatialDoor[];
   profile: MobilityProfileData;
   persistResult?: boolean;
   request?: Request;
@@ -26,6 +28,7 @@ export async function runServerEvaluation(
     boundary: params.boundary,
     furniture: params.furniture,
     waypoints: params.waypoints,
+    walls: params.walls,
   });
 
   if (!validation.isValid) {
@@ -39,28 +42,33 @@ export async function runServerEvaluation(
     furniture: params.furniture,
     profile: params.profile,
     routeWaypoints: params.waypoints,
+    walls: params.walls,
+    doors: params.doors,
   });
 
   // 3. Optionally persist to public.evaluations if assessmentId provided
   if (params.persistResult && params.assessmentId) {
     try {
       const supabase = await createRouteHandlerClient(params.request);
-      const score = Math.max(0, 100 - result.summary.actionableDeficitsCount * 15);
-      await supabase.from("evaluations").upsert(
+      // No clinically validated 0–100 risk score exists for this geometry-only engine.
+      // Migration 003 makes this legacy DB column nullable instead of fabricating one.
+      const { error: persistError } = await supabase.from("evaluations").upsert(
         {
           assessment_id: params.assessmentId,
-          score,
+          score: null,
           status: result.summary.routeFeasibility,
           route_accessibility: result.summary.routeFeasibility,
           clearance_status: result.summary.overallStatusLabel,
-          turning_space_compliance: "verified",
+          // 2D grid routing does not model actual turning kinematics.
+          turning_space_compliance: "not-assessed",
           critical_issues_count: result.summary.actionableDeficitsCount,
           findings: result.findings,
         },
         { onConflict: "assessment_id" }
       );
+      if (persistError) return { success: false, errors: ["Evaluation computed but could not be persisted. Check DB migration 003 and permissions."] };
     } catch {
-      // Persistence failure in background does not block returning calculated spatial result
+      return { success: false, errors: ["Evaluation computed but persistence failed."] };
     }
   }
 

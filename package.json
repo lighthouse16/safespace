@@ -10,7 +10,8 @@
     "lint": "eslint .",
     "typecheck": "tsc --noEmit",
     "test": "tsx --test tests/**/*.test.ts",
-    "test:browser:guest": "node scripts/smoke-guest-browser.mjs"
+    "test:browser:guest": "node scripts/smoke-guest-browser.mjs",
+    "test:api:guest": "node scripts/smoke-guest-spatial-api.mjs"
   },
   "keywords": [],
   "author": "",

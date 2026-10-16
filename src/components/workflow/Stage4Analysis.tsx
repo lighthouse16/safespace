@@ -11,9 +11,10 @@ import {
   Sparkles,
   ChevronDown,
   ChevronUp,
+  X,
 } from "lucide-react";
 import type { SpatialFindingClassification } from "@/lib/spatial";
-import { isCloudAccountsEnabled } from "@/lib/cloud-mode";
+import { requestFindingsExplanation } from "@/lib/services/gemini-gateway-client";
 
 export function Stage4Analysis() {
   const {
@@ -26,9 +27,12 @@ export function Stage4Analysis() {
     setZoom,
     layerToggles,
     toggleLayer,
-    assessmentId,
     assessmentMetadata,
     activeProfile,
+    canonicalBoundary,
+    furniture,
+    walls,
+    routeWaypoints,
   } = useSafeSpaceStore();
 
   const evaluation = getSpatialFindings();
@@ -39,73 +43,86 @@ export function Stage4Analysis() {
   >("all");
   const [mobileTab, setMobileTab] = useState<"canvas" | "findings">("canvas");
   const [aiExplaining, setAiExplaining] = useState(false);
+  const [aiConsentModalOpen, setAiConsentModalOpen] = useState(false);
+  const [aiConsentGiven, setAiConsentGiven] = useState(false);
   const [aiExplanation, setAiExplanation] = useState<{
     executiveSummary: string;
     clinicalRiskNarrative: string;
     caregiverRecommendations: string[];
     disclaimer: string;
+    source: "gemini" | "local-evaluator";
+    model?: string;
   } | null>(null);
   const [aiExplanationOpen, setAiExplanationOpen] = useState(false);
   const [aiExplainError, setAiExplainError] = useState<string | null>(null);
+
+  const handleGenerateLocalSummary = () => {
+    setAiExplainError(null);
+    const clearance = summary.minimumClearanceCm;
+    setAiExplanation({
+      executiveSummary: "Local spatial evaluator: " +
+        String(summary.actionableDeficitsCount) + " actionable finding(s), " +
+        String(summary.advisoryObservationsCount) + " advisory observation(s), and " +
+        String(summary.unassessedScopeCount) + " unassessed scope item(s).",
+      clinicalRiskNarrative: [
+        "Based only on the drafted floorplan, route and selected mobility profile.",
+        clearance === null ? "Minimum route clearance not measured." :
+          "Minimum computed route clearance: " + clearance.toFixed(1) + " cm.",
+        findings.length ? "Recorded findings: " +
+          findings.slice(0, 5).map((f) => f.title).join("; ") + "." :
+          "No evaluator findings were reported; this does not prove the space is safe.",
+      ].join(" "),
+      caregiverRecommendations: findings.slice(0, 4).map((f) =>
+        "Review " + f.title + ": " + f.description
+      ),
+      disclaimer: "Deterministic geometry analysis, not medical advice. Verify measurements on site.",
+      source: "local-evaluator",
+    });
+    setAiExplanationOpen(true);
+  };
 
   const handleGenerateAIExplanation = async () => {
     setAiExplainError(null);
     setAiExplaining(true);
     try {
-      if (!isCloudAccountsEnabled()) {
-        // No model is called. Every statement is derived from the evaluator.
-        const clearance = summary.minimumClearanceCm;
-        setAiExplanation({
-          executiveSummary: "Local spatial evaluator: " +
-            String(summary.actionableDeficitsCount) + " actionable finding(s), " +
-            String(summary.advisoryObservationsCount) + " advisory observation(s), and " +
-            String(summary.unassessedScopeCount) + " unassessed scope item(s).",
-          clinicalRiskNarrative: [
-            "Based only on the drafted floorplan, route and selected mobility profile.",
-            clearance === null ? "Minimum route clearance not measured." :
-              "Minimum computed route clearance: " + clearance.toFixed(1) + " cm.",
-            findings.length ? "Recorded findings: " +
-              findings.slice(0, 5).map((f) => f.title).join("; ") + "." :
-              "No evaluator findings were reported; this does not prove the space is safe.",
-          ].join(" "),
-          caregiverRecommendations: findings.slice(0, 4).map((f) =>
-            "Review " + f.title + ": " + f.description
-          ),
-          disclaimer: "Automated geometry analysis, not medical advice or a certified safety inspection. Verify measurements and recommendations on site.",
-        });
-        setAiExplanationOpen(true);
-        return;
-      }
-      const res = await fetch(`/api/v1/assessments/${assessmentId || "active"}/ai/explanation`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          userConsent: true,
-          assessmentName: assessmentMetadata?.name || "Floorplan Assessment",
-          profileLabel: activeProfile?.name || "Mobility Profile",
-          findings: findings.map((f) => ({
-            title: f.title,
-            severity: f.severity,
-            description: f.description,
-            evidence: f.evidence?.rawEvidenceString,
-          })),
-          metrics: {
-            actionableDeficitsCount: summary.actionableDeficitsCount,
-            minimumClearanceCm: summary.minimumClearanceCm,
-            routeFeasibility: summary.routeFeasibility,
-          },
-        }),
+      // First attempt Gemini AI explanation via gateway
+      const res = await requestFindingsExplanation({
+        userConsent: true,
+        assessmentName: assessmentMetadata?.name || "Floorplan Assessment",
+        profileLabel: activeProfile?.name || "Mobility Profile",
+        findings: findings.map((f) => ({
+          title: f.title,
+          severity: f.severity,
+          description: f.description,
+          evidence: f.evidence?.rawEvidenceString,
+        })),
+        metrics: {
+          actionableDeficitsCount: summary.actionableDeficitsCount,
+          minimumClearanceCm: summary.minimumClearanceCm,
+          routeFeasibility: summary.routeFeasibility,
+        },
+        // Send canonical geometry to the server evaluator first. User-provided
+        // metrics alone are NEVER classified as independently verified.
+        geometry: canonicalBoundary ? {
+          units: "cm", boundary: canonicalBoundary, furniture,
+          walls, waypoints: routeWaypoints, profile: activeProfile,
+        } : undefined,
       });
 
-      const data = await res.json();
-      if (!res.ok) {
-        throw new Error(data.error || "Explanation generation failed");
-      }
-
-      setAiExplanation(data.explanation);
+      setAiExplanation({
+        executiveSummary: res.explanation.executiveSummary,
+        clinicalRiskNarrative: res.explanation.clinicalRiskNarrative,
+        caregiverRecommendations: res.explanation.caregiverRecommendations,
+        disclaimer: res.explanation.disclaimer,
+        source: "gemini",
+        model: res.model,
+      });
       setAiExplanationOpen(true);
     } catch (err: unknown) {
-      setAiExplainError(err instanceof Error ? err.message : "Failed to generate explanation");
+      // Fallback truthfully to local deterministic evaluator summary
+      handleGenerateLocalSummary();
+      const errMsg = err instanceof Error ? err.message : "AI explanation unavailable";
+      setAiExplainError(`External Gemini AI offline (${errMsg}). Displaying deterministic local evidence summary.`);
     } finally {
       setAiExplaining(false);
     }
@@ -426,36 +443,62 @@ export function Stage4Analysis() {
 
           {/* AI Clinical Insights Section */}
           <div className="rounded-xl border border-teal-200 bg-white p-3.5 space-y-2.5 shadow-2xs">
-              <div className="flex items-center justify-between">
+              <div className="flex items-center justify-between flex-wrap gap-2">
                 <div className="flex items-center gap-1.5 text-xs font-bold text-[#0B514B]">
                   <Sparkles size={14} className="text-[#0B514B]" />
-                  <span>{isCloudAccountsEnabled() ? "AI evidence explanation" : "Local evidence summary"}</span>
+                  <span>
+                    {aiExplanation
+                      ? aiExplanation.source === "gemini"
+                        ? `AI Evidence Explanation (${aiExplanation.model || "gemini-3.1-flash-lite"})`
+                        : "Deterministic Local Summary"
+                      : "Evidence Explanation & Summary"}
+                  </span>
                 </div>
-                <button
-                  type="button"
-                  onClick={handleGenerateAIExplanation}
-                  disabled={aiExplaining}
-                  className="rounded-lg bg-teal-50 px-2.5 py-1 text-[11px] font-semibold text-[#0B514B] hover:bg-teal-100 transition disabled:opacity-50"
-                >
-                  {aiExplaining
-                    ? "Generating..."
-                    : aiExplanation
-                    ? "Regenerate"
-                    : isCloudAccountsEnabled() ? "Synthesize insights" : "Summarize findings"}
-                </button>
+                <div className="flex items-center gap-1.5">
+                  <button
+                    type="button"
+                    onClick={handleGenerateLocalSummary}
+                    className="rounded-lg bg-slate-100 px-2.5 py-1 text-[11px] font-semibold text-slate-700 hover:bg-slate-200 transition cursor-pointer"
+                  >
+                    Summarize findings
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setAiConsentModalOpen(true)}
+                    disabled={aiExplaining}
+                    className="rounded-lg bg-teal-50 px-2.5 py-1 text-[11px] font-semibold text-[#0B514B] hover:bg-teal-100 transition disabled:opacity-50 cursor-pointer"
+                  >
+                    {aiExplaining
+                      ? "Generating..."
+                      : aiExplanation && aiExplanation.source === "gemini"
+                      ? "Regenerate AI"
+                      : "Gemini AI Insights"}
+                  </button>
+                </div>
               </div>
 
               {aiExplainError && (
-                <div className="text-[11px] text-rose-700 bg-rose-50 border border-rose-200 rounded-lg p-2">
+                <div className="text-[11px] text-amber-800 bg-amber-50 border border-amber-200 rounded-lg p-2">
                   {aiExplainError}
                 </div>
               )}
 
               {aiExplanation && (
                 <div className="space-y-2 pt-1 border-t border-slate-100 text-xs text-[#17252B]">
-                  <p className="font-semibold text-[11px] text-[#647078] uppercase tracking-wider">
-                    Executive Summary
-                  </p>
+                  <div className="flex items-center justify-between">
+                    <p className="font-semibold text-[11px] text-[#647078] uppercase tracking-wider">
+                      Executive Summary
+                    </p>
+                    <span className={`text-[10px] px-2 py-0.5 rounded-full font-medium ${
+                      aiExplanation.source === "gemini"
+                        ? "bg-teal-100 text-[#0B514B]"
+                        : "bg-slate-100 text-slate-700"
+                    }`}>
+                      {aiExplanation.source === "gemini"
+                        ? `Gemini AI (${aiExplanation.model || "gemini-3.1-flash-lite"})`
+                        : "Deterministic Local Engine"}
+                    </span>
+                  </div>
                   <p className="text-slate-800 leading-relaxed text-[11px]">
                     {aiExplanation.executiveSummary}
                   </p>
@@ -509,6 +552,78 @@ export function Stage4Analysis() {
           </div>
         </aside>
       </div>
+
+      {aiConsentModalOpen && (
+        <div
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="ai-explain-consent-title"
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4 backdrop-blur-xs"
+        >
+          <div className="w-full max-w-md rounded-2xl bg-white p-6 shadow-2xl border border-[#E2E6E8] space-y-4">
+            <div className="flex items-start justify-between pb-3 border-b border-[#E2E6E8]">
+              <div className="flex items-center gap-2 text-[#0B514B]">
+                <Sparkles size={20} />
+                <h3 id="ai-explain-consent-title" className="text-sm font-bold text-[#17252B]">
+                  AI Evidence Explanation (Google Gemini)
+                </h3>
+              </div>
+              <button
+                type="button"
+                onClick={() => setAiConsentModalOpen(false)}
+                className="text-[#647078] hover:text-[#17252B] cursor-pointer"
+                aria-label="Close dialog"
+              >
+                <X size={18} />
+              </button>
+            </div>
+
+            <div className="text-xs text-[#647078] space-y-2 leading-relaxed">
+              <p>
+                SafeSpace will transmit the computed spatial findings, route clearance metrics, and mobility profile to Google Gemini (<code className="text-[11px] bg-slate-100 px-1 py-0.5 rounded">gemini-3.1-flash-lite</code>) to generate an empathetic clinical explanation.
+              </p>
+              <ul className="list-disc pl-4 space-y-1 text-slate-700">
+                <li>No account or personal health information is transmitted.</li>
+                <li>AI explanations are advisory translations and do not replace professional on-site occupational therapy audits.</li>
+              </ul>
+            </div>
+
+            <label className="flex items-start gap-2.5 text-xs text-[#17252B] cursor-pointer pt-2 border-t border-slate-100">
+              <input
+                type="checkbox"
+                checked={aiConsentGiven}
+                onChange={(e) => setAiConsentGiven(e.target.checked)}
+                className="mt-0.5 rounded border-slate-300 text-[#0B514B] focus:ring-[#0B514B]"
+              />
+              <span>
+                I consent to sending spatial findings and clearance metrics to Google Gemini for AI explanation.
+              </span>
+            </label>
+
+            <div className="flex items-center justify-end gap-2 pt-2">
+              <button
+                type="button"
+                onClick={() => setAiConsentModalOpen(false)}
+                className="px-3.5 py-1.5 rounded-xl border border-[#CBD5E1] text-xs font-semibold text-[#17252B] hover:bg-slate-50 transition cursor-pointer"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                disabled={!aiConsentGiven || aiExplaining}
+                onClick={async () => {
+                  setAiConsentModalOpen(false);
+                  await handleGenerateAIExplanation();
+                }}
+                className="px-4 py-1.5 rounded-xl bg-[#0B514B] text-white text-xs font-semibold hover:bg-[#073D38] transition disabled:opacity-50 cursor-pointer flex items-center gap-1.5"
+              >
+                <Sparkles size={14} />
+                <span>Consent & Generate Insights</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

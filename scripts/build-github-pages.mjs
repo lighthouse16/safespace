@@ -2,6 +2,8 @@
  * Produce a GitHub Pages artifact for the account-free SafeSpace client.
  * Runs Next.js in a disposable, separately installed static-only project.
  * GitHub Pages cannot host Next.js API routes; omit those only in staging.
+ *
+ * Usage: npm run build:pages
  */
 import { cp, copyFile, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { existsSync } from "node:fs";
@@ -14,11 +16,14 @@ const stage = await mkdtemp(join(tmpdir(), "safespace-pages-"));
 const artifact = resolve(root, "out");
 
 async function run(command, args, cwd) {
+  console.log("[pages] Running:", command, args.join(" "), "in", cwd);
   await new Promise((ok, fail) => {
+    const isWin = process.platform === "win32";
+    const isShell = isWin && (command.endsWith(".cmd") || command.endsWith(".bat"));
     const child = spawn(command, args, {
       cwd,
       stdio: "inherit",
-      shell: process.platform === "win32",
+      shell: isShell,
       env: {
         ...process.env,
         NEXT_PUBLIC_ENABLE_CLOUD_ACCOUNTS: "false",
