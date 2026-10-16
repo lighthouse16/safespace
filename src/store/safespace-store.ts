@@ -76,7 +76,7 @@ const {
 
 export type WorkflowStage = "layout" | "profile" | "routes" | "analysis" | "improve";
 
-export type EditorTool = "select" | "pan" | "furniture" | "hazard" | "measure";
+export type EditorTool = "select" | "pan" | "furniture" | "hazard" | "measure" | "door" | "window";
 
 export type AssessmentCreationResult = {
   success: boolean;
@@ -165,12 +165,14 @@ export interface SafeSpaceState {
   confirmAllRemaining: () => void;
   deleteFurniture: (id: string) => void;
   addFurniture: (category: SpatialFurniture["category"]) => void;
+  addWallOpening: (kind: "door" | "window", point: Point2D) => void;
   addCustomFurnitureBatch: (items: SpatialFurniture[]) => void;
   applyGeneratedPlan: (plan: {
     furniture: SpatialFurniture[];
     rooms: SpatialRoom[];
     walls: SpatialWall[];
     boundary: Polygon2D;
+    doors?: SpatialDoor[];
   }) => void;
   undo: () => void;
   redo: () => void;
@@ -727,6 +729,56 @@ export const useSafeSpaceStore = create<SafeSpaceState>((set, get) => ({
     persistUserMutation(get, set);
   },
 
+  addWallOpening: (kind, point) => {
+    const { walls, doors, canonicalBoundary } = get();
+    const segments = [
+      ...walls.map((wall) => ({ a: wall.start, b: wall.end })),
+      ...(canonicalBoundary ?? []).map((vertex, index, polygon) => ({
+        a: vertex,
+        b: polygon[(index + 1) % polygon.length],
+      })),
+    ];
+    let best: { a: Point2D; b: Point2D; distance: number; point: Point2D } | null = null;
+    for (const segment of segments) {
+      const dx = segment.b.x - segment.a.x;
+      const dy = segment.b.y - segment.a.y;
+      const length = Math.hypot(dx, dy);
+      if (length < 70) continue;
+      const t = Math.max(0, Math.min(1, ((point.x - segment.a.x) * dx + (point.y - segment.a.y) * dy) / (length * length)));
+      const projected = { x: segment.a.x + dx * t, y: segment.a.y + dy * t };
+      const distance = Math.hypot(point.x - projected.x, point.y - projected.y);
+      if (!best || distance < best.distance) best = { ...segment, distance, point: projected };
+    }
+    if (!best || best.distance > 80) {
+      set({ placementError: "Click on a wall to place a flat door or window." });
+      return;
+    }
+    const dx = best.b.x - best.a.x;
+    const dy = best.b.y - best.a.y;
+    const length = Math.hypot(dx, dy);
+    const span = Math.min(kind === "window" ? 120 : 90, length * 0.7);
+    const ux = dx / length;
+    const uy = dy / length;
+    const hinge = { x: best.point.x - ux * span / 2, y: best.point.y - uy * span / 2 };
+    const end = { x: best.point.x + ux * span / 2, y: best.point.y + uy * span / 2 };
+    set({
+      doors: [
+        ...doors,
+        {
+          id: `${kind}-${Date.now()}`,
+          roomId: "user-space",
+          name: kind === "window" ? "Window" : "Door",
+          position: end,
+          width: Math.round(span),
+          swingDeg: kind === "door" ? 90 : 0,
+          swingDirection: "inward-right",
+          hinge,
+        },
+      ],
+      placementError: null,
+    });
+  },
+
   addCustomFurnitureBatch: (items: SpatialFurniture[]) => {
     if (!items.length) return;
     const { furniture, history, rooms, activeProfile, routeWaypoints, walls, doors, canonicalBoundary } = get();
@@ -766,14 +818,14 @@ export const useSafeSpaceStore = create<SafeSpaceState>((set, get) => ({
       activeProfile,
       routeWaypoints,
       plan.walls,
-      [],
+      plan.doors ?? [],
       plan.boundary,
     );
     set({
       furniture: plan.furniture,
       rooms: plan.rooms,
       walls: plan.walls,
-      doors: [],
+      doors: plan.doors ?? [],
       canonicalBoundary: plan.boundary,
       selectedFurnitureId: plan.furniture[0]?.id ?? null,
       selectedHazardId: null,

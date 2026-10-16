@@ -382,8 +382,13 @@ export function Stage1Layout() {
               {/* Door */}
               <button
                 type="button"
+                onClick={() => setSelectedTool("door")}
                 aria-label="Door tool"
-                className="flex flex-col items-center justify-center w-11 py-1.5 rounded-lg text-[#647078] hover:bg-[#F7F8F8] hover:text-[#17252B] transition cursor-pointer"
+                className={`flex flex-col items-center justify-center w-11 py-1.5 rounded-lg transition cursor-pointer ${
+                  selectedTool === "door"
+                    ? "bg-[#E8F3F1] text-[#0B514B]"
+                    : "text-[#647078] hover:bg-[#F7F8F8] hover:text-[#17252B]"
+                }`}
               >
                 <svg className="w-4 h-4" viewBox="0 0 18 18" fill="none" stroke="currentColor" strokeWidth="1.6">
                   <path d="M4 2v14M4 2h10v14H4" />
@@ -395,8 +400,13 @@ export function Stage1Layout() {
               {/* Window */}
               <button
                 type="button"
+                onClick={() => setSelectedTool("window")}
                 aria-label="Window tool"
-                className="flex flex-col items-center justify-center w-11 py-1.5 rounded-lg text-[#647078] hover:bg-[#F7F8F8] hover:text-[#17252B] transition cursor-pointer"
+                className={`flex flex-col items-center justify-center w-11 py-1.5 rounded-lg transition cursor-pointer ${
+                  selectedTool === "window"
+                    ? "bg-[#E8F3F1] text-[#0B514B]"
+                    : "text-[#647078] hover:bg-[#F7F8F8] hover:text-[#17252B]"
+                }`}
               >
                 <svg className="w-4 h-4" viewBox="0 0 18 18" fill="none" stroke="currentColor" strokeWidth="1.6">
                   <path d="M3 3h12v12H3zM9 3v12M3 9h12" />

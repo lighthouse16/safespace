@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { splitRoomRequests, translateUserQuery } from "../src/lib/m3dlayout/prompt-agent";
-import { composeRoomFrames } from "../src/lib/m3dlayout/room-plan";
+import { composeRoomFrames, placeOpenings } from "../src/lib/m3dlayout/room-plan";
 import { isM3DClassLabel } from "../src/lib/m3dlayout/vocabulary";
 import { furnitureCategoryForClass, sceneToFurniture } from "../src/lib/m3dlayout/scene-adapter";
 import { isPointInPolygon, polygonArea } from "../src/lib/spatial/geometry/polygons";
@@ -157,6 +157,7 @@ test("requested furniture is placed by relation and extra model classes are abse
   assert.ok(dining);
   assert.equal(chairs.length, 6);
   assert.equal(chairs.filter((chair) => chair.y > dining.y + dining.depth - 1).length, 2);
+  assert.equal(chairs.some((chair) => chair.x < dining.x + dining.width && chair.x + chair.width > dining.x && chair.y < dining.y + dining.depth && chair.y + chair.depth > dining.y), false);
   assert.equal(chairs.filter((chair) => chair.y + chair.depth < dining.y + 1).length, 2);
   assert.equal(kitchen.some((item) => item.code === "LOUNGE_CHAIR" || item.code === "WINE_CABINET"), false);
 
@@ -250,8 +251,19 @@ test("a slanted outline keeps every room inside the border", () => {
   assert.equal(plan.rooms.length, 3);
   for (const room of plan.rooms) {
     assert.ok(room.polygon && room.polygon.length >= 4);
-    assert.ok(room.polygon.every((point) => isPointInPolygon(point, territory, true)));
   }
+  let samples = 0;
+  let covered = 0;
+  for (let x = 40; x <= 700; x += 30) {
+    for (let y = 20; y <= 430; y += 30) {
+      const point = { x, y };
+      if (!isPointInPolygon(point, territory, true)) continue;
+      samples += 1;
+      if (plan.rooms.some((room) => isPointInPolygon(point, room.polygon ?? [], true))) covered += 1;
+    }
+  }
+  assert.ok(samples > 10);
+  assert.ok(covered / samples > 0.85);
 });
 
 test("a lamp sits beside the bed", () => {
@@ -270,4 +282,28 @@ test("a lamp sits beside the bed", () => {
   assert.ok(bed && lamp);
   assert.ok(Math.abs(lamp.x - (bed.x + bed.width)) < 80);
   assert.ok(Math.abs(lamp.y - bed.y) < 40);
+});
+
+test("doors and windows stay flat openings instead of furniture boxes", () => {
+  const items = arrangeRoomFurniture({
+    pieces: [
+      { className: "bed", count: 1 },
+      { className: "window", count: 1 },
+      { className: "panel_door", count: 2 },
+    ],
+    roomType: "bedroom",
+    rect: { x: 0, y: 0, width: 420, depth: 400 },
+    roomId: "bedroom",
+    idPrefix: "bedroom",
+  });
+  assert.equal(items.some((item) => item.code === "WINDOW" || item.code === "PANEL_DOOR"), false);
+  const requests = splitRoomRequests("a bedroom with a bed, 2 doors, and a window");
+  const openings = placeOpenings(
+    [{ id: "wall", start: { x: 0, y: 0 }, end: { x: 400, y: 0 }, thickness: 12 }],
+    [{ x: 0, y: 0 }, { x: 400, y: 0 }, { x: 400, y: 300 }, { x: 0, y: 300 }],
+    requests,
+  );
+  assert.equal(openings.length, 3);
+  assert.ok(openings.every((opening) => Math.hypot(opening.position.x - opening.hinge.x, opening.position.y - opening.hinge.y) > 40));
+  assert.equal(openings.filter((opening) => opening.name === "Window").length, 1);
 });

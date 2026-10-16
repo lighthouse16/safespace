@@ -7,35 +7,35 @@ type Box = { x: number; y: number; width: number; depth: number };
 type Size = { width: number; depth: number; height: number };
 
 const DEFAULT_SIZE: Record<string, Size> = {
-  sofa: { width: 210, depth: 90, height: 80 },
+  sofa: { width: 218, depth: 88, height: 83 },
   l_shaped_sofa: { width: 250, depth: 160, height: 80 },
-  loveseat_sofa: { width: 150, depth: 85, height: 80 },
-  multi_seat_sofa: { width: 210, depth: 90, height: 80 },
-  coffee_table: { width: 110, depth: 60, height: 42 },
-  tv: { width: 130, depth: 18, height: 75 },
-  tv_stand: { width: 150, depth: 42, height: 50 },
-  tv_monitor: { width: 110, depth: 18, height: 65 },
-  rug: { width: 240, depth: 170, height: 2 },
-  armchair: { width: 80, depth: 80, height: 85 },
-  dining_table: { width: 160, depth: 90, height: 75 },
-  dining_chair: { width: 46, depth: 50, height: 92 },
-  counter: { width: 220, depth: 60, height: 90 },
-  beverage_fridge: { width: 70, depth: 70, height: 170 },
-  cabinet: { width: 90, depth: 45, height: 90 },
-  kitchen_cabinet: { width: 90, depth: 45, height: 90 },
-  toilet: { width: 40, depth: 68, height: 45 },
-  sink: { width: 60, depth: 48, height: 85 },
+  loveseat_sofa: { width: 148, depth: 88, height: 83 },
+  multi_seat_sofa: { width: 200, depth: 88, height: 83 },
+  coffee_table: { width: 90, depth: 55, height: 45 },
+  tv: { width: 120, depth: 8, height: 70 },
+  tv_stand: { width: 160, depth: 40, height: 48 },
+  tv_monitor: { width: 100, depth: 8, height: 60 },
+  rug: { width: 200, depth: 140, height: 2 },
+  armchair: { width: 78, depth: 80, height: 85 },
+  dining_table: { width: 180, depth: 90, height: 74 },
+  dining_chair: { width: 43, depth: 51, height: 95 },
+  counter: { width: 180, depth: 60, height: 90 },
+  beverage_fridge: { width: 60, depth: 61, height: 186 },
+  cabinet: { width: 80, depth: 40, height: 120 },
+  kitchen_cabinet: { width: 80, depth: 40, height: 90 },
+  toilet: { width: 38, depth: 68, height: 40 },
+  sink: { width: 60, depth: 45, height: 85 },
   bathtub: { width: 170, depth: 75, height: 58 },
-  nightstand: { width: 50, depth: 40, height: 55 },
-  floor_lamp: { width: 36, depth: 36, height: 150 },
-  desk_lamp: { width: 24, depth: 24, height: 45 },
-  ceiling_lamp: { width: 40, depth: 40, height: 20 },
-  pendant_lamp: { width: 30, depth: 30, height: 40 },
-  bed: { width: 160, depth: 210, height: 50 },
-  kids_bed: { width: 100, depth: 180, height: 50 },
-  wardrobe: { width: 120, depth: 60, height: 200 },
-  chair: { width: 50, depth: 52, height: 90 },
-  table: { width: 120, depth: 70, height: 75 },
+  nightstand: { width: 48, depth: 40, height: 55 },
+  floor_lamp: { width: 30, depth: 30, height: 150 },
+  desk_lamp: { width: 20, depth: 20, height: 42 },
+  ceiling_lamp: { width: 36, depth: 36, height: 18 },
+  pendant_lamp: { width: 28, depth: 28, height: 35 },
+  bed: { width: 160, depth: 200, height: 50 },
+  kids_bed: { width: 90, depth: 190, height: 50 },
+  wardrobe: { width: 150, depth: 58, height: 201 },
+  chair: { width: 43, depth: 51, height: 95 },
+  table: { width: 125, depth: 75, height: 74 },
 };
 
 function sizeOf(className: string): Size {
@@ -95,8 +95,45 @@ function clampBox(item: SpatialFurniture, box: Box): SpatialFurniture {
   };
 }
 
+function boxesOverlap(a: SpatialFurniture, b: SpatialFurniture, gap = 2): boolean {
+  return a.x < b.x + b.width + gap && a.x + a.width + gap > b.x && a.y < b.y + b.depth + gap && a.y + a.depth + gap > b.y;
+}
+
+function separateItems(items: SpatialFurniture[], box: Box): SpatialFurniture[] {
+  const next = items.map((item) => ({ ...item }));
+  for (let pass = 0; pass < 16; pass += 1) {
+    let moved = false;
+    for (let i = 0; i < next.length; i += 1) {
+      for (let j = i + 1; j < next.length; j += 1) {
+        const a = next[i];
+        const b = next[j];
+        if (!boxesOverlap(a, b, 1)) continue;
+        const overlapX = Math.min(a.x + a.width, b.x + b.width) - Math.max(a.x, b.x);
+        const overlapY = Math.min(a.y + a.depth, b.y + b.depth) - Math.max(a.y, b.y);
+        if (overlapX < overlapY) {
+          const dir = a.x + a.width / 2 <= b.x + b.width / 2 ? 1 : -1;
+          b.x += dir * (overlapX + 4);
+        } else {
+          const dir = a.y + a.depth / 2 <= b.y + b.depth / 2 ? 1 : -1;
+          b.y += dir * (overlapY + 4);
+        }
+        const clamped = clampBox(b, box);
+        b.x = clamped.x;
+        b.y = clamped.y;
+        moved = true;
+      }
+    }
+    if (!moved) break;
+  }
+  return next;
+}
+
+const OPENING_CLASSES = new Set(["window", "panel_door", "glass_panel_door", "lite_door", "louver_door"]);
+
 function expand(pieces: Piece[]): string[] {
-  return pieces.flatMap((piece) => Array.from({ length: Math.max(1, piece.count) }, () => piece.className));
+  return pieces
+    .filter((piece) => !OPENING_CLASSES.has(piece.className))
+    .flatMap((piece) => Array.from({ length: Math.max(1, piece.count) }, () => piece.className));
 }
 
 function take(pool: string[], names: string[]): string | undefined {
@@ -396,9 +433,15 @@ export function arrangeRoomFurniture(input: {
     depth: Math.max(80, input.rect.depth - 40),
   };
   const pool = expand(input.pieces);
-  if (input.roomType === "living room") return arrangeLiving(pool, box, input.roomId, input.idPrefix);
-  if (input.roomType === "kitchen" || input.roomType === "dining room") return arrangeKitchen(pool, box, input.roomId, input.idPrefix);
-  if (input.roomType === "bathroom") return arrangeBathroom(pool, box, input.roomId, input.idPrefix);
-  if (input.roomType === "bedroom") return arrangeBedroom(pool, box, input.roomId, input.idPrefix);
-  return arrangeGrid(pool, box, input.roomId, input.idPrefix);
+  const placed =
+    input.roomType === "living room"
+      ? arrangeLiving(pool, box, input.roomId, input.idPrefix)
+      : input.roomType === "kitchen" || input.roomType === "dining room"
+        ? arrangeKitchen(pool, box, input.roomId, input.idPrefix)
+        : input.roomType === "bathroom"
+          ? arrangeBathroom(pool, box, input.roomId, input.idPrefix)
+          : input.roomType === "bedroom"
+            ? arrangeBedroom(pool, box, input.roomId, input.idPrefix)
+            : arrangeGrid(pool, box, input.roomId, input.idPrefix);
+  return separateItems(placed, box);
 }

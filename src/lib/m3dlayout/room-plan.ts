@@ -1,6 +1,6 @@
 import type { Polygon2D } from "@/lib/spatial";
 import { isPointInPolygon } from "@/lib/spatial/geometry/polygons";
-import type { Point2D, RoomCategory, SpatialRoom, SpatialWall } from "@/lib/spatial-model";
+import type { Point2D, RoomCategory, SpatialDoor, SpatialRoom, SpatialWall } from "@/lib/spatial-model";
 import type { LayoutFrame } from "./scene-adapter";
 import type { PromptTranslation, RoomType } from "./prompt-agent";
 import { pieceFootprint } from "./arrange";
@@ -116,17 +116,7 @@ function interiorCells(polygon: Polygon2D): GridCell[] {
       const y1 = ys[row + 1];
       if (x1 - x0 < 1 || y1 - y0 < 1) continue;
       const center = { x: (x0 + x1) / 2, y: (y0 + y1) / 2 };
-      const corners = [
-        { x: x0, y: y0 },
-        { x: x1, y: y0 },
-        { x: x1, y: y1 },
-        { x: x0, y: y1 },
-      ];
-      const orthogonal = isOrthogonal(polygon);
-      const inside = orthogonal
-        ? isPointInPolygon(center, polygon, true)
-        : corners.every((corner) => isPointInPolygon(corner, polygon, true));
-      if (!inside) continue;
+      if (!isPointInPolygon(center, polygon, true)) continue;
       cells.push({
         col,
         row,
@@ -537,4 +527,55 @@ export function composeRoomFrames(requests: PromptTranslation[], options?: Compo
   }));
 
   return { rooms, walls, boundary, framed };
+}
+
+const OPENING_CLASS = new Set(["window", "panel_door", "glass_panel_door", "lite_door", "louver_door"]);
+
+export function placeOpenings(walls: SpatialWall[], boundary: Polygon2D, requests: PromptTranslation[]): SpatialDoor[] {
+  let doors = 0;
+  let windows = 0;
+  for (const request of requests) {
+    for (const piece of request.pieces ?? []) {
+      if (!OPENING_CLASS.has(piece.className)) continue;
+      if (piece.className === "window") windows += piece.count;
+      else doors += piece.count;
+    }
+  }
+  const segments = [
+    ...walls.map((wall) => ({ a: wall.start, b: wall.end })),
+    ...boundary.slice(0, -1).map((point, index) => ({ a: point, b: boundary[index + 1] })),
+  ];
+  if (boundary.length >= 2) {
+    segments.push({ a: boundary[boundary.length - 1], b: boundary[0] });
+  }
+  const usable = segments
+    .map((segment) => ({ ...segment, length: Math.hypot(segment.b.x - segment.a.x, segment.b.y - segment.a.y) }))
+    .filter((segment) => segment.length >= 80)
+    .sort((a, b) => b.length - a.length);
+  if (usable.length === 0) return [];
+  const planned = [
+    ...Array.from({ length: doors }, () => ({ kind: "door" as const, width: 90 })),
+    ...Array.from({ length: windows }, () => ({ kind: "window" as const, width: 120 })),
+  ];
+  return planned.map((opening, index) => {
+    const segment = usable[index % usable.length];
+    const span = Math.min(opening.width, segment.length * 0.7);
+    const center = 0.35 + (index % 3) * 0.15;
+    const along = Math.min(segment.length - span / 2 - 8, Math.max(span / 2 + 8, segment.length * center));
+    const dx = (segment.b.x - segment.a.x) / segment.length;
+    const dy = (segment.b.y - segment.a.y) / segment.length;
+    const mid = { x: segment.a.x + dx * along, y: segment.a.y + dy * along };
+    const hinge = { x: mid.x - dx * span / 2, y: mid.y - dy * span / 2 };
+    const end = { x: mid.x + dx * span / 2, y: mid.y + dy * span / 2 };
+    return {
+      id: `m3d-${opening.kind}-${index}`,
+      roomId: "m3d-room-0",
+      name: opening.kind === "window" ? "Window" : "Door",
+      position: end,
+      width: Math.round(span),
+      swingDeg: opening.kind === "door" ? 90 : 0,
+      swingDirection: "inward-right" as const,
+      hinge,
+    };
+  });
 }

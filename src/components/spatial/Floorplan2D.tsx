@@ -63,6 +63,7 @@ export function Floorplan2D({
     panOffset,
     setPanOffset,
     selectedTool,
+    addWallOpening,
     layerToggles,
     isWalkerAnimating,
     selectedWaypointId,
@@ -228,6 +229,10 @@ export function Floorplan2D({
   };
 
   const handleMouseDown = (e: React.MouseEvent) => {
+    if ((selectedTool === "door" || selectedTool === "window") && e.button === 0) {
+      addWallOpening(selectedTool, clientToSvgCoords(e.clientX, e.clientY));
+      return;
+    }
     if (selectedTool === "pan" || e.button === 1 || e.altKey) {
       setIsPanning(true);
       setPanStart({ x: e.clientX - panOffset.x, y: e.clientY - panOffset.y });
@@ -911,30 +916,47 @@ export function Floorplan2D({
         {/* 7. Doors & Door-swing Arcs */}
         <g id="doors-layer">
           {doors.map((door) => {
-            const hasSwing = door.swingDeg > 0;
+            const flat = door.position.x !== door.hinge.x || door.position.y !== door.hinge.y;
+            const end = flat ? door.position : { x: door.hinge.x, y: door.hinge.y + door.width };
+            const isWindow = /window/i.test(door.name);
+            const dx = end.x - door.hinge.x;
+            const dy = end.y - door.hinge.y;
+            const length = Math.hypot(dx, dy) || 1;
+            const px = (-dy / length) * 4;
+            const py = (dx / length) * 4;
             return (
               <g key={door.id}>
                 <line
                   x1={door.hinge.x}
                   y1={door.hinge.y}
-                  x2={door.hinge.x}
-                  y2={door.hinge.y + door.width}
-                  stroke="#475569"
-                  strokeWidth="2.5"
+                  x2={end.x}
+                  y2={end.y}
+                  stroke="#f8faf8"
+                  strokeWidth={isWindow ? 8 : 14}
+                  strokeLinecap="butt"
                 />
-                {hasSwing && (
-                  <path
-                    d={`M ${door.hinge.x + door.width} ${door.hinge.y} A ${door.width} ${door.width} 0 0 1 ${door.hinge.x} ${door.hinge.y + door.width}`}
-                    fill="none"
-                    stroke="#94a3b8"
-                    strokeWidth="1"
-                    strokeDasharray="3,3"
+                <line
+                  x1={door.hinge.x}
+                  y1={door.hinge.y}
+                  x2={end.x}
+                  y2={end.y}
+                  stroke={isWindow ? "#5f7f86" : "#0B514B"}
+                  strokeWidth={isWindow ? 2 : 2.5}
+                />
+                {isWindow && (
+                  <line
+                    x1={door.hinge.x + px}
+                    y1={door.hinge.y + py}
+                    x2={end.x + px}
+                    y2={end.y + py}
+                    stroke="#5f7f86"
+                    strokeWidth="1.5"
                   />
                 )}
                 {showDimensions && (
                   <text
-                    x={door.position.x + 6}
-                    y={door.position.y - 4}
+                    x={(door.hinge.x + end.x) / 2}
+                    y={(door.hinge.y + end.y) / 2 - 8}
                     fill="#64748b"
                     fontSize="8"
                     fontFamily="monospace"

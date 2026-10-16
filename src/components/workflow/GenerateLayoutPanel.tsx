@@ -5,11 +5,11 @@ import { Sparkles } from "lucide-react";
 import { useSafeSpaceStore } from "@/store/safespace-store";
 import { generateM3DLayout, readStoredApiBase, storeApiBase } from "@/lib/m3dlayout/client";
 import { splitRoomRequests } from "@/lib/m3dlayout/prompt-agent";
-import { composeRoomFrames, type GeneratedPlan } from "@/lib/m3dlayout/room-plan";
+import { composeRoomFrames, placeOpenings, type GeneratedPlan } from "@/lib/m3dlayout/room-plan";
 import { arrangeRoomFurniture } from "@/lib/m3dlayout/arrange";
-import type { SpatialFurniture } from "@/lib/spatial-model";
+import type { SpatialDoor, SpatialFurniture } from "@/lib/spatial-model";
 
-type PendingPlan = GeneratedPlan & { furniture: SpatialFurniture[] };
+type PendingPlan = GeneratedPlan & { furniture: SpatialFurniture[]; openings: SpatialDoor[] };
 
 export function GenerateLayoutPanel() {
   const applyGeneratedPlan = useSafeSpaceStore((state) => state.applyGeneratedPlan);
@@ -69,7 +69,8 @@ export function GenerateLayoutPanel() {
         setError("The model answered, but none of the boxes could be placed.");
         return;
       }
-      setPending({ ...plan, furniture });
+      const boundary = canonicalBoundary && canonicalBoundary.length >= 3 ? canonicalBoundary : plan.boundary;
+      setPending({ ...plan, furniture, openings: placeOpenings(plan.walls, boundary, requests) });
       setStatus(null);
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : "Layout generation failed.");
@@ -87,6 +88,7 @@ export function GenerateLayoutPanel() {
       rooms: pending.rooms,
       walls: outline ? pending.walls.filter((wall) => !wall.isExterior) : pending.walls,
       boundary: outline ?? pending.boundary,
+      doors: pending.openings,
     });
     setPending(null);
   };
@@ -96,7 +98,7 @@ export function GenerateLayoutPanel() {
       <div>
         <h2 className="text-xs font-bold text-[#0B514B] uppercase tracking-wider">Generate layout</h2>
         <p className="text-[11px] text-[#647078] leading-snug mt-1">
-          Rooms are built from the outline you traced. A room with more furniture gets a larger share of that outline, so the living room does not swallow the plan. A sofa sits in front of the television, chairs sit around the table, and the bathtub stays on the bathroom wall.
+          Rooms are built across the whole outline you traced. Furniture uses everyday sizes and is kept from overlapping: the sofa faces the television, and chairs stay around the table. Use Door and Window on the left to draw a flat opening on a wall.
         </p>
       </div>
 

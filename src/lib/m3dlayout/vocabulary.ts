@@ -87,6 +87,7 @@ export const FURNITURE_ALIASES: ReadonlyArray<{ phrase: string; className: M3DCl
   { phrase: "curtain", className: "curtain" },
   { phrase: "closet", className: "wardrobe" },
   { phrase: "window", className: "window" },
+  { phrase: "door", className: "panel_door" },
   { phrase: "carpet", className: "rug" },
   { phrase: "pillow", className: "cushion" },
   { phrase: "cushion", className: "cushion" },
