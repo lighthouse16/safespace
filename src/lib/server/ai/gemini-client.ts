@@ -21,17 +21,20 @@ export {
 export const GEMINI_MODEL = DEFAULT_TEXT_MODEL;
 
 /**
- * Returns initialized GoogleGenAI client if GEMINI_API_KEY is configured,
- * otherwise returns null. Strictly server-side.
+ * Only server-side environment variables may provide an API key.
+ * GEMINI_KEY is a compatible Vercel secret alias for the existing deployment.
+ * Prefer GEMINI_API_KEY if both are configured; never expose either in output.
  */
+function getServerGeminiKey(): string | null {
+  return process.env.GEMINI_API_KEY?.trim() ||
+    process.env.GEMINI_KEY?.trim() || null;
+}
+
 export function getGeminiClient(): GoogleGenAI | null {
-  const apiKey = process.env.GEMINI_API_KEY?.trim();
-  if (!apiKey) {
-    return null;
-  }
-  return new GoogleGenAI({ apiKey });
+  const apiKey = getServerGeminiKey();
+  return apiKey ? new GoogleGenAI({ apiKey }) : null;
 }
 
 export function isGeminiConfigured(): boolean {
-  return Boolean(process.env.GEMINI_API_KEY?.trim());
+  return getServerGeminiKey() !== null;
 }
