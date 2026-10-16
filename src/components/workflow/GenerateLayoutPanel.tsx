@@ -24,7 +24,8 @@ export function GenerateLayoutPanel() {
   const [pending, setPending] = useState<PendingPlan | null>(null);
 
   useEffect(() => {
-    setApiUrl(readStoredApiBase());
+    const timer = window.setTimeout(() => setApiUrl(readStoredApiBase()), 0);
+    return () => window.clearTimeout(timer);
   }, []);
 
   const requests = useMemo(() => splitRoomRequests(query), [query]);
