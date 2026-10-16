@@ -41,8 +41,10 @@ const browser = await chromium.launch({ channel: "chrome", headless: true, args:
 
 const viewports = [
   { name: "desktop-1440x900", width: 1440, height: 900 },
+  { name: "tablet-1024x768", width: 1024, height: 768 },
   { name: "tablet-768x1024", width: 768, height: 1024 },
   { name: "mobile-390x844", width: 390, height: 844 },
+  { name: "mobile-320x568", width: 320, height: 568 },
 ];
 
 for (const vp of viewports) {

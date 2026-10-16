@@ -6,10 +6,10 @@ import abstractFloorplan from "../../public/landing/abstract-floorplan@2x.png";
 
 export default function HomePage() {
   return (
-    <div className="min-h-screen bg-[#F7F8F8] text-[#17252B] flex items-center justify-center p-4 sm:p-6 lg:p-10">
+    <div className="min-h-screen bg-[#F7F8F8] text-[#17252B] flex items-center justify-center p-3 sm:p-6 lg:p-10">
       <main
         id="main-content"
-        className="relative w-full max-w-[1240px] rounded-[24px] sm:rounded-[32px] border border-[#E2E6E8] bg-white p-6 sm:p-10 lg:p-14 shadow-xs"
+        className="relative w-full max-w-[1240px] rounded-[24px] sm:rounded-[32px] border border-[#E2E6E8] bg-white p-6 sm:p-8 lg:p-10 xl:p-12 shadow-xs"
         role="main"
       >
         {/* Brand Logo & Wordmark - Top Left */}
@@ -27,19 +27,19 @@ export default function HomePage() {
         {/* Hero Section */}
         <section
           aria-labelledby="hero-title"
-          className="mt-8 sm:mt-12 lg:mt-14 grid grid-cols-1 items-center gap-8 lg:grid-cols-12 lg:gap-12"
+          className="mt-6 sm:mt-8 lg:mt-8 xl:mt-10 grid grid-cols-1 items-center gap-8 lg:grid-cols-12 lg:gap-8 xl:gap-12"
         >
           {/* Left Hero Content: Headline, Description & Single CTA */}
-          <div className="lg:col-span-5 flex flex-col items-start z-10">
+          <div className="lg:col-span-6 xl:col-span-5 flex flex-col items-start z-10">
             <h1
               id="hero-title"
-              className="text-4xl sm:text-5xl lg:text-[54px] font-bold tracking-tight leading-[1.08]"
+              className="text-3xl sm:text-5xl lg:text-4xl xl:text-[54px] font-bold tracking-tight leading-[1.08]"
             >
               <span className="block text-[#17252B]">Design safer</span>
-              <span className="block text-[#16736D] mt-1">movement paths</span>
+              <span className="block text-[#0B514B] mt-1 whitespace-nowrap">movement paths</span>
             </h1>
 
-            <p className="mt-5 sm:mt-6 text-base sm:text-lg leading-relaxed text-[#647078] max-w-md">
+            <p className="mt-5 sm:mt-6 text-base sm:text-lg leading-relaxed text-[#647078] max-w-[440px]">
               Review floorplans for accessibility and safety with clear, actionable spatial insight.
             </p>
 
@@ -56,7 +56,7 @@ export default function HomePage() {
           </div>
 
           {/* Right Hero Preview: Abstract Architectural Floorplan Illustration */}
-          <div className="lg:col-span-7 flex items-center justify-center lg:justify-end">
+          <div className="lg:col-span-6 xl:col-span-7 flex items-center justify-center lg:justify-end">
             <div className="relative w-full max-w-[580px] lg:max-w-none">
               <Image
                 src={abstractFloorplan}
