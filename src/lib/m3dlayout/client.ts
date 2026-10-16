@@ -24,6 +24,10 @@ export function storeApiBase(value: string): void {
 async function readError(response: Response): Promise<string> {
   try {
     const body = await response.text();
+    try {
+      const parsed = JSON.parse(body) as { error?: unknown };
+      if (typeof parsed.error === "string") return parsed.error.slice(0, 280);
+    } catch { /* Model services may return non-JSON errors. */ }
     return body.slice(0, 280) || response.statusText;
   } catch {
     return response.statusText;
@@ -35,28 +39,42 @@ export async function generateM3DLayout(
   prompt: string,
   seed: number,
 ): Promise<M3DGenerateResponse> {
-  const base = normalizeApiBase(apiBase);
+  const base = apiBase.trim() ? normalizeApiBase(apiBase) : null;
+  const target = base ? `${base}/generate` : "/api/v1/m3d/generate";
   let response: Response;
   try {
-    response = await fetch(`${base}/generate`, {
+    response = await fetch(target, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
-        "ngrok-skip-browser-warning": "true",
+        ...(base ? { "ngrok-skip-browser-warning": "true" } : {}),
       },
       body: JSON.stringify({ prompt, seed }),
       signal: AbortSignal.timeout(180_000),
     });
   } catch (error) {
     const message = error instanceof Error ? error.message : "Network request failed.";
-    throw new Error(`Could not reach the Colab API. Check that the notebook is still running. ${message}`);
+    throw new Error(`Could not reach the layout inference service. Check the backend connection. ${message}`);
   }
   if (!response.ok) {
-    throw new Error(`The layout model returned ${response.status}. ${await readError(response)}`);
+    throw new Error(`Layout generation failed (${response.status}): ${await readError(response)}`);
   }
   const data = (await response.json()) as M3DGenerateResponse;
   if (!Array.isArray(data.class_names) || !Array.isArray(data.translations) || !Array.isArray(data.sizes)) {
     throw new Error("The layout model returned a response without furniture boxes.");
   }
   return data;
+}
+
+
+export type ModelBackendStatus = { configured: boolean; reachable: boolean };
+
+export async function checkM3DBackend(): Promise<ModelBackendStatus> {
+  const response = await fetch("/api/v1/m3d/generate", { method: "GET", cache: "no-store" });
+  if (!response.ok) throw new Error("Backend status endpoint is unavailable.");
+  const value = await response.json() as Partial<ModelBackendStatus>;
+  if (typeof value.configured !== "boolean" || typeof value.reachable !== "boolean") {
+    throw new Error("Backend status response is invalid.");
+  }
+  return { configured: value.configured, reachable: value.reachable };
 }
