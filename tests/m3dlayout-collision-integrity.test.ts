@@ -1,7 +1,8 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { arrangeRoomFurniture } from "../src/lib/m3dlayout/arrange";
-import { resolveGeneratedFurniture } from "../src/lib/m3dlayout/collision-layout";
+import { resolveGeneratedFurniture, validateGeneratedPlanGeometry } from "../src/lib/m3dlayout/collision-layout";
+import { useSafeSpaceStore } from "../src/store/safespace-store";
 import { splitRoomRequests } from "../src/lib/m3dlayout/prompt-agent";
 import { composeRoomFrames, placeOpenings, type FramedRoom } from "../src/lib/m3dlayout/room-plan";
 import { furnitureToWorldFootprint, wallToObstacleFootprint, doorToObstacleFootprint } from "../src/lib/spatial/geometry/placement";
@@ -177,5 +178,50 @@ test("real Generate pipeline: demo living room and multi-room plan place ALL fur
         assert.equal(polygonIntersectsPolygon(furnitureToWorldFootprint(all[i]).footprint, furnitureToWorldFootprint(all[j]).footprint), false);
       }
     }
+  }
+});
+
+test("final store gate rejects an overlapping generated plan atomically", () => {
+  const before = useSafeSpaceStore.getState();
+  const saved = {
+    furniture: before.furniture, rooms: before.rooms, walls: before.walls,
+    doors: before.doors, canonicalBoundary: before.canonicalBoundary,
+    history: before.history, future: before.future,
+    structurePast: before.structurePast, structureFuture: before.structureFuture,
+    placementError: before.placementError,
+  };
+  const boundary = rect(600, 450);
+  const room = {
+    id: "generated-room", name: "Generated Room", category: "living" as const,
+    x: 0, y: 0, width: 600, depth: 450, color: "#fff", lightLevelLux: 320,
+  };
+  const overlapping = [
+    { ...piece("first", 100, 100, 140, 80), roomId: room.id },
+    { ...piece("second", 180, 120, 110, 70), roomId: room.id },
+  ];
+  const badPlan = { furniture: overlapping, rooms: [room], walls: [], boundary };
+  assert.match(validateGeneratedPlanGeometry(badPlan) || "", /objects overlap/);
+  try {
+    before.applyGeneratedPlan(badPlan);
+    const after = useSafeSpaceStore.getState();
+    assert.strictEqual(after.furniture, saved.furniture, "invalid plan must not replace furniture");
+    assert.strictEqual(after.rooms, saved.rooms, "invalid plan must not replace rooms");
+    assert.strictEqual(after.history, saved.history, "invalid plan must not enter Undo history");
+    assert.match(after.placementError || "", /objects overlap/);
+
+    const goodPlan = {
+      ...badPlan,
+      furniture: [
+        { ...piece("first", 100, 100, 140, 80), roomId: room.id },
+        { ...piece("second", 350, 250, 110, 70), roomId: room.id },
+      ],
+    };
+    assert.equal(validateGeneratedPlanGeometry(goodPlan), null);
+    before.applyGeneratedPlan(goodPlan);
+    const accepted = useSafeSpaceStore.getState();
+    assert.equal(accepted.furniture.length, 2);
+    assertNoOverlap(accepted.furniture, boundary);
+  } finally {
+    useSafeSpaceStore.setState(saved);
   }
 });
