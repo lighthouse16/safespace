@@ -1,12 +1,14 @@
 import type { Polygon2D } from "@/lib/spatial";
-import type { SpatialFurniture } from "@/lib/spatial-model";
+import type { SpatialFurniture, SpatialRoom, SpatialWall, SpatialDoor } from "@/lib/spatial-model";
 import {
   findFeasibleFootprintPlacement,
   furnitureToWorldFootprint,
   isValidFootprintPlacement,
+  wallToObstacleFootprint,
+  doorToObstacleFootprint,
   type ObstacleFootprint,
 } from "@/lib/spatial/geometry/placement";
-import { polygonIntersectsPolygon } from "@/lib/spatial/geometry/intersections";
+import { polygonIntersectsPolygon, isFootprintContainedInBoundary } from "@/lib/spatial/geometry/intersections";
 
 type Rect = { x: number; y: number; width: number; depth: number };
 
@@ -127,4 +129,57 @@ export function resolveGeneratedFurniture(
     furniture: proposed.map((item) => arrangedById.get(item.id)!),
     roomBoundary: boundary,
   };
+}
+
+/**
+ * Independent final safety gate at the workspace mutation boundary.
+ * Even if a future UI path bypasses the arrange() post-processor, an invalid
+ * generated plan must never overwrite the current workspace.
+ */
+export function validateGeneratedPlanGeometry(plan: {
+  furniture: readonly SpatialFurniture[];
+  rooms: readonly SpatialRoom[];
+  walls: readonly SpatialWall[];
+  doors?: readonly SpatialDoor[];
+  boundary: Polygon2D;
+}): string | null {
+  if (plan.boundary.length < 3 || !plan.rooms.length || !plan.furniture.length) {
+    return "Generated layout is incomplete and was not applied.";
+  }
+  const walls = plan.walls.map(wallToObstacleFootprint);
+  const doors = (plan.doors ?? []).filter((door) => door.name !== "Window").map(doorToObstacleFootprint);
+  const obstacles = [...walls, ...doors];
+  const footprints: Polygon2D[] = [];
+  const ids = new Set<string>();
+  for (const furniture of plan.furniture) {
+    if (ids.has(furniture.id)) return "Duplicate generated object identifiers. Nothing was applied.";
+    ids.add(furniture.id);
+    if (![furniture.x, furniture.y, furniture.width, furniture.depth, furniture.rotation].every(Number.isFinite) ||
+        furniture.width <= 0 || furniture.depth <= 0) {
+      return "Generated furniture contains invalid dimensions. Nothing was applied.";
+    }
+    const room = plan.rooms.find((candidate) => candidate.id === furniture.roomId);
+    if (!room) return "Generated furniture has no matching room. Nothing was applied.";
+    const roomOutline: Polygon2D = room.polygon && room.polygon.length >= 3 ? room.polygon : [
+      { x: room.x, y: room.y },
+      { x: room.x + room.width, y: room.y },
+      { x: room.x + room.width, y: room.y + room.depth },
+      { x: room.x, y: room.y + room.depth },
+    ];
+    const polygon = furnitureToWorldFootprint(furniture).footprint;
+    if (!isFootprintContainedInBoundary(polygon, roomOutline) ||
+        !isFootprintContainedInBoundary(polygon, plan.boundary)) {
+      return "Generated furniture extends beyond its room boundary. Nothing was applied.";
+    }
+    if (obstacles.some((obstacle) => polygonIntersectsPolygon(polygon, obstacle.footprint))) {
+      return "Generated furniture overlaps a wall or door. Nothing was applied.";
+    }
+    for (const prior of footprints) {
+      if (polygonIntersectsPolygon(polygon, prior)) {
+        return "Generated furniture objects overlap. Nothing was applied.";
+      }
+    }
+    footprints.push(polygon);
+  }
+  return null;
 }
