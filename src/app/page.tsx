@@ -8,8 +8,8 @@ import decorArc from "../../public/landing/decor-arc-bottom-left.png";
 export default function HomePage() {
   return (
     <div className="relative min-h-screen w-full bg-white text-[#17252B] overflow-x-hidden flex flex-col justify-between">
-      {/* Decorative ambient bottom-left architectural arc */}
-      <div className="pointer-events-none absolute bottom-0 left-0 w-[220px] sm:w-[300px] select-none z-0">
+      {/* Decorative ambient bottom-left architectural arc and dimension line */}
+      <div className="pointer-events-none absolute bottom-0 left-0 w-[280px] sm:w-[360px] lg:w-[440px] select-none z-0">
         <Image
           src={decorArc}
           alt=""
@@ -19,7 +19,7 @@ export default function HomePage() {
       </div>
 
       {/* Top Header with Brand Logo */}
-      <header className="w-full px-6 pt-8 sm:px-12 sm:pt-10 lg:px-16 lg:pt-12 z-20">
+      <header className="w-full px-8 sm:px-14 lg:px-20 xl:px-24 pt-10 sm:pt-12 lg:pt-14 z-20">
         <div className="max-w-7xl mx-auto flex items-center">
           <Link
             href="/"
@@ -35,7 +35,7 @@ export default function HomePage() {
       {/* Main Hero Section */}
       <main
         id="main-content"
-        className="w-full flex-1 flex items-center px-6 sm:px-12 lg:px-16 py-6 sm:py-10 z-10"
+        className="w-full flex-1 flex items-center px-8 sm:px-14 lg:px-20 xl:px-24 py-6 sm:py-10 z-10"
         role="main"
       >
         <div className="w-full max-w-7xl mx-auto grid grid-cols-1 items-center gap-10 lg:grid-cols-12 lg:gap-8">
@@ -43,13 +43,13 @@ export default function HomePage() {
           <div className="lg:col-span-5 flex flex-col items-start z-10">
             <h1
               id="hero-title"
-              className="text-4xl sm:text-5xl xl:text-6xl font-bold tracking-tight leading-[1.08]"
+              className="text-4xl sm:text-5xl lg:text-5xl xl:text-[56px] font-bold tracking-tight leading-[1.08]"
             >
               <span className="block text-[#17252B]">Design safer</span>
               <span className="block text-[#0B514B] mt-1 whitespace-nowrap">movement paths</span>
             </h1>
 
-            <p className="mt-6 text-base sm:text-lg leading-relaxed text-[#647078] max-w-md">
+            <p className="mt-5 sm:mt-6 text-base sm:text-lg leading-relaxed text-[#647078] max-w-md">
               Review floorplans for accessibility and safety with clear, actionable spatial insight.
             </p>
 
@@ -65,9 +65,9 @@ export default function HomePage() {
             </div>
           </div>
 
-          {/* Right Column: Abstract Architectural Floorplan Illustration */}
+          {/* Right Column: Isometric Architectural Floorplan Illustration */}
           <div className="lg:col-span-7 flex items-center justify-center lg:justify-end">
-            <div className="relative w-full max-w-[640px] lg:max-w-none">
+            <div className="relative w-full max-w-[620px] lg:max-w-none">
               <Image
                 src={abstractFloorplan}
                 alt="Abstract architectural floorplan illustration with movement paths"
