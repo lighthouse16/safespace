@@ -13,6 +13,7 @@ import {
   ChevronUp,
 } from "lucide-react";
 import type { SpatialFindingClassification } from "@/lib/spatial";
+import { isCloudAccountsEnabled } from "@/lib/cloud-mode";
 
 export function Stage4Analysis() {
   const {
@@ -51,6 +52,30 @@ export function Stage4Analysis() {
     setAiExplainError(null);
     setAiExplaining(true);
     try {
+      if (!isCloudAccountsEnabled()) {
+        // No model is called. Every statement is derived from the evaluator.
+        const clearance = summary.minimumClearanceCm;
+        setAiExplanation({
+          executiveSummary: "Local spatial evaluator: " +
+            String(summary.actionableDeficitsCount) + " actionable finding(s), " +
+            String(summary.advisoryObservationsCount) + " advisory observation(s), and " +
+            String(summary.unassessedScopeCount) + " unassessed scope item(s).",
+          clinicalRiskNarrative: [
+            "Based only on the drafted floorplan, route and selected mobility profile.",
+            clearance === null ? "Minimum route clearance not measured." :
+              "Minimum computed route clearance: " + clearance.toFixed(1) + " cm.",
+            findings.length ? "Recorded findings: " +
+              findings.slice(0, 5).map((f) => f.title).join("; ") + "." :
+              "No evaluator findings were reported; this does not prove the space is safe.",
+          ].join(" "),
+          caregiverRecommendations: findings.slice(0, 4).map((f) =>
+            "Review " + f.title + ": " + f.description
+          ),
+          disclaimer: "Automated geometry analysis, not medical advice or a certified safety inspection. Verify measurements and recommendations on site.",
+        });
+        setAiExplanationOpen(true);
+        return;
+      }
       const res = await fetch(`/api/v1/assessments/${assessmentId || "active"}/ai/explanation`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -404,7 +429,7 @@ export function Stage4Analysis() {
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-1.5 text-xs font-bold text-[#0B514B]">
                   <Sparkles size={14} className="text-[#0B514B]" />
-                  <span>Clinical Narrative (AI)</span>
+                  <span>{isCloudAccountsEnabled() ? "AI evidence explanation" : "Local evidence summary"}</span>
                 </div>
                 <button
                   type="button"
@@ -416,7 +441,7 @@ export function Stage4Analysis() {
                     ? "Generating..."
                     : aiExplanation
                     ? "Regenerate"
-                    : "Synthesize Insights"}
+                    : isCloudAccountsEnabled() ? "Synthesize insights" : "Summarize findings"}
                 </button>
               </div>
 
@@ -437,7 +462,7 @@ export function Stage4Analysis() {
                   {aiExplanationOpen && (
                     <>
                       <p className="font-semibold text-[11px] text-[#647078] uppercase tracking-wider pt-1">
-                        Mobility Risk Analysis
+                        Spatial Evidence Review
                       </p>
                       <p className="text-slate-800 leading-relaxed text-[11px]">
                         {aiExplanation.clinicalRiskNarrative}
@@ -464,7 +489,7 @@ export function Stage4Analysis() {
                     onClick={() => setAiExplanationOpen(!aiExplanationOpen)}
                     className="flex items-center gap-1 text-[11px] font-medium text-[#0B514B] hover:underline"
                   >
-                    <span>{aiExplanationOpen ? "Show less" : "Read full clinical analysis"}</span>
+                    <span>{aiExplanationOpen ? "Show less" : "Read full spatial evidence"}</span>
                     {aiExplanationOpen ? <ChevronUp size={12} /> : <ChevronDown size={12} />}
                   </button>
                 </div>

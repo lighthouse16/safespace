@@ -306,7 +306,7 @@ test("assessments dashboard renders truthful empty state without legacy clinic p
 
   // Must contain honest empty state for real assessments
   assert.match(html, /(No assessments saved yet|No custom assessments saved yet)/);
-  assert.match(html, /(Intake drafts exist only while the intake session remains open|Draft assessments stay in memory until finalized)/);
+  assert.match(html, /No account is needed. Create an assessment to draft your space and save it in this browser/);
   assert.match(html, /\+ Start an assessment/);
 
   // Must NOT claim local memory persistence on dashboard
@@ -450,7 +450,7 @@ test("assessments dashboard and new assessment do not render Harmony Elder Care 
   assert.doesNotMatch(dashHtml, /Harmony Elder Care Centre/);
   assert.doesNotMatch(dashHtml, /Data saved locally/);
   assert.match(dashHtml, /SafeSpace workspace/);
-  assert.match(dashHtml, /Storage not connected/);
+  assert.match(dashHtml, /Browser storage only/);
 
   const newHtml = renderToStaticMarkup(React.createElement(NewAssessmentPage));
   assert.doesNotMatch(newHtml, /Harmony Elder Care Centre/);

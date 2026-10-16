@@ -111,7 +111,7 @@ export function AssessmentDetailsStep({
               required
             />
             <p className="mt-1 text-[11px] text-[#647078]">
-              The specific space or area within the facility (optional).
+              Name the specific space or area within the facility.
             </p>
           </div>
 

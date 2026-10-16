@@ -12,6 +12,7 @@ import {
 } from "@/lib/storage/persistence";
 import { useSafeSpaceStore } from "@/store/safespace-store";
 import { serverAssessmentService, type RemoteAssessmentSummary } from "@/lib/services/server-assessment-repository";
+import { isCloudAccountsEnabled } from "@/lib/cloud-mode";
 
 function useSafeRouter() {
   try {
@@ -47,7 +48,7 @@ export default function AssessmentsPage() {
       setSavedAssessment(null);
     }
 
-    serverAssessmentService.listAssessments().then((res) => {
+    if (isCloudAccountsEnabled()) serverAssessmentService.listAssessments().then((res) => {
       if (res.success && res.assessments) {
         setRemoteAssessments(res.assessments);
       }
@@ -138,7 +139,7 @@ export default function AssessmentsPage() {
               </p>
               <span className="text-xs text-[#647078]">·</span>
               <span className="text-xs text-[#647078]">
-                {savedAssessment ? "Saved on this device" : "Storage not connected"}
+                {savedAssessment ? "Saved on this device" : "Browser storage only"}
               </span>
             </div>
             <h1 className="mt-1 text-2xl font-semibold tracking-tight text-[#17252B] sm:text-3xl">
@@ -252,7 +253,7 @@ export default function AssessmentsPage() {
                 id="saved-assessment-heading"
                 className="text-xs font-semibold uppercase tracking-wider text-[#0B514B]"
               >
-                Confirmed User Assessment
+                Saved assessment
               </h2>
               <span className="text-[11px] text-emerald-700 font-medium">
                 Saved on this device
@@ -373,7 +374,7 @@ export default function AssessmentsPage() {
               No custom assessments saved yet
             </h2>
             <p className="mt-1 text-xs text-[#647078] max-w-md mx-auto">
-              Draft assessments stay in memory until finalized. Start a new assessment to measure your space and save it to this device.
+              No account is needed. Create an assessment to draft your space and save it in this browser. Data does not automatically transfer to other devices.
             </p>
             <div className="mt-4">
               <Link

@@ -5,6 +5,7 @@ import { useState, useEffect, useCallback, useSyncExternalStore, type ReactNode 
 import { BrandMark } from "@/components/brand/brand-mark";
 import { Home, FileText, User as UserIcon, LogOut } from "lucide-react";
 import { AuthModal } from "@/components/auth/AuthModal";
+import { isCloudAccountsEnabled } from "@/lib/cloud-mode";
 
 export type AppShellProps = {
   children?: ReactNode;
@@ -37,6 +38,7 @@ export function AppShell({
   fullHeight = false,
 }: AppShellProps) {
   const isAssessmentsActive = activePath.startsWith("/assessments");
+  const cloudEnabled = isCloudAccountsEnabled();
   const mounted = useSyncExternalStore(
     () => () => {},
     () => true,
@@ -49,6 +51,7 @@ export function AppShell({
   });
 
   const checkSession = useCallback(async () => {
+    if (!cloudEnabled) return;
     try {
       const res = await fetch("/api/v1/auth/session");
       if (res.ok) {
@@ -56,9 +59,10 @@ export function AppShell({
         setSession(data);
       }
     } catch {}
-  }, []);
+  }, [cloudEnabled]);
 
   useEffect(() => {
+    if (!cloudEnabled) return;
     let ignore = false;
     fetch("/api/v1/auth/session")
       .then((res) => (res.ok ? res.json() : null))
@@ -71,7 +75,7 @@ export function AppShell({
     return () => {
       ignore = true;
     };
-  }, []);
+  }, [cloudEnabled]);
 
   async function handleSignOut() {
     try {
@@ -99,6 +103,14 @@ export function AppShell({
         {/* Client-only auth controls: preserves zero-button SSR assertion */}
         {mounted ? (
           <div className="flex items-center gap-2.5">
+            {!cloudEnabled && (
+              <span className="rounded-lg bg-[#F0F3F4] px-3 py-1.5 text-xs font-medium text-[#647078]"
+                    title="This workspace saves on this device; no account is required">
+                On this device
+              </span>
+            )}
+            {cloudEnabled && (
+              <>
             {session.authenticated && session.user ? (
               <div className="flex items-center gap-2">
                 <div className="flex items-center gap-1.5 rounded-full bg-[#F0F3F4] py-1 px-3 text-xs font-medium text-[#17252B]">
@@ -129,6 +141,8 @@ export function AppShell({
               onClose={() => setAuthModalOpen(false)}
               onSuccess={checkSession}
             />
+              </>
+            )}
           </div>
         ) : null}
       </header>

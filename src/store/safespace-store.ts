@@ -47,6 +47,7 @@ import type { PersistedFloorplanImage } from "@/lib/storage/image-db";
 import type { DeletionResult } from "@/lib/storage/coordinated-storage";
 import { browserAssessmentRepository } from "@/lib/services/assessment-repository";
 import { serverAssessmentService } from "@/lib/services/server-assessment-repository";
+import { isCloudAccountsEnabled } from "@/lib/cloud-mode";
 
 
 
@@ -388,8 +389,10 @@ function persistUserMutation(
 
     const saveRes = savePersistedAssessment(payload);
     if (saveRes.success) {
-      set({ storageStatus: "saved", storageError: null, hasFloorplanImage });
-      if (typeof window !== "undefined" && state.assessmentMetadata?.id) {
+      set({ storageStatus: "saved", storageError: null, hasFloorplanImage,
+        ...(!isCloudAccountsEnabled() ? { remoteSyncStatus: "idle" as const, remoteSyncError: null } : {}),
+      });
+      if (isCloudAccountsEnabled() && typeof window !== "undefined" && state.assessmentMetadata?.id) {
         const currentSeq = ++remoteSyncSequence;
         set({ remoteSyncStatus: "pending", remoteSyncError: null });
         serverAssessmentService
@@ -478,6 +481,9 @@ export const useSafeSpaceStore = create<SafeSpaceState>((set, get) => ({
   mediaCleanupWarning: null,
   clearMediaCleanupWarning: () => set({ mediaCleanupWarning: null }),
   retryRemoteSync: async () => {
+    if (!isCloudAccountsEnabled()) {
+      return { success: false, error: "Cloud accounts are disabled; this assessment remains on this device." };
+    }
     const state = get();
     if (state.assessmentType !== "user" || !state.assessmentMetadata?.id) {
       return { success: false, error: "No active user assessment to sync" };
@@ -1809,13 +1815,15 @@ export const useSafeSpaceStore = create<SafeSpaceState>((set, get) => ({
       baselineFurnitureSnapshot: null,
       storageStatus: "saved",
       storageError: null,
+      remoteSyncStatus: "idle",
+      remoteSyncError: null,
       placementError: null,
       mediaCleanupWarning: previousMediaCleanupFailed
         ? (cleanupWarning || "Previous floorplan image could not be cleaned up from browser storage.")
         : null,
     });
 
-    if (typeof window !== "undefined") {
+    if (isCloudAccountsEnabled() && typeof window !== "undefined") {
       const currentSeq = ++remoteSyncSequence;
       set({ remoteSyncStatus: "pending", remoteSyncError: null });
       serverAssessmentService

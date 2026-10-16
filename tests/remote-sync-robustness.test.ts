@@ -58,6 +58,8 @@ test("Remote Sync Robustness: state transitions, media failure rejection, sequen
   const originalCreate = serverAssessmentService.createAssessment;
   const originalSave = serverAssessmentService.saveAssessment;
   const originalUpload = serverAssessmentService.uploadMedia;
+  const previousCloudMode = process.env.NEXT_PUBLIC_ENABLE_CLOUD_ACCOUNTS;
+  process.env.NEXT_PUBLIC_ENABLE_CLOUD_ACCOUNTS = "true";
 
   try {
     await t.test("1. Media upload failure results in failed sync, never synced", async () => {
@@ -126,7 +128,74 @@ test("Remote Sync Robustness: state transitions, media failure rejection, sequen
     serverAssessmentService.createAssessment = originalCreate;
     serverAssessmentService.saveAssessment = originalSave;
     serverAssessmentService.uploadMedia = originalUpload;
+    if (previousCloudMode === undefined) delete process.env.NEXT_PUBLIC_ENABLE_CLOUD_ACCOUNTS;
+    else process.env.NEXT_PUBLIC_ENABLE_CLOUD_ACCOUNTS = previousCloudMode;
     globalThis.window = previousWindow;
+    useSafeSpaceStore.getState().resetToDemo();
+  }
+});
+
+test("Guest local-first: create, edit, persist and reopen without Supabase or auth", async () => {
+  const originalCreate = serverAssessmentService.createAssessment;
+  const originalSave = serverAssessmentService.saveAssessment;
+  const originalUpload = serverAssessmentService.uploadMedia;
+  const originalMode = process.env.NEXT_PUBLIC_ENABLE_CLOUD_ACCOUNTS;
+  delete process.env.NEXT_PUBLIC_ENABLE_CLOUD_ACCOUNTS;
+  let networkCalls = 0;
+  serverAssessmentService.createAssessment = async () => {
+    networkCalls++;
+    throw new Error("Guest session attempted remote create");
+  };
+  serverAssessmentService.saveAssessment = async () => {
+    networkCalls++;
+    throw new Error("Guest session attempted remote save");
+  };
+  serverAssessmentService.uploadMedia = async () => {
+    networkCalls++;
+    throw new Error("Guest session attempted remote upload");
+  };
+  try {
+    const id = "guest-local-no-account";
+    const now = new Date().toISOString();
+    const result = await useSafeSpaceStore.getState().createAndLoadUserAssessment({
+      metadata: {
+        id,
+        name: "Guest Accessible Room",
+        facilityName: "Local Facility",
+        spaceName: "Room A",
+        environmentType: "residential",
+        createdAt: now,
+        updatedAt: now,
+      },
+      boundaryCm: [
+        { x: 0, y: 0 }, { x: 400, y: 0 }, { x: 400, y: 400 }, { x: 0, y: 400 },
+      ],
+      calibration: {
+        pixelsPerCm: 1, pixelDistance: 100, realLength: 100,
+        unit: "cm", originPolicy: "canvas-origin-0-0",
+      },
+    });
+    assert.equal(result.success, true);
+    assert.equal(useSafeSpaceStore.getState().storageStatus, "saved");
+    assert.equal(useSafeSpaceStore.getState().remoteSyncStatus, "idle");
+    const add = useSafeSpaceStore.getState().addManualHazard;
+    add({ x: 135, y: 140 });
+    assert.equal(useSafeSpaceStore.getState().storageStatus, "saved");
+    assert.equal(useSafeSpaceStore.getState().remoteSyncStatus, "idle");
+    useSafeSpaceStore.getState().hydrateFromStorage();
+    assert.equal(useSafeSpaceStore.getState().assessmentMetadata?.id, id);
+    assert.equal(useSafeSpaceStore.getState().hazards.length, 1);
+    assert.equal(networkCalls, 0, "Guest usage must not call authenticated cloud APIs");
+    const retry = await useSafeSpaceStore.getState().retryRemoteSync();
+    assert.equal(retry.success, false);
+    assert.match(retry.error || "", /cloud accounts are disabled/i);
+    assert.equal(networkCalls, 0);
+  } finally {
+    serverAssessmentService.createAssessment = originalCreate;
+    serverAssessmentService.saveAssessment = originalSave;
+    serverAssessmentService.uploadMedia = originalUpload;
+    if (originalMode === undefined) delete process.env.NEXT_PUBLIC_ENABLE_CLOUD_ACCOUNTS;
+    else process.env.NEXT_PUBLIC_ENABLE_CLOUD_ACCOUNTS = originalMode;
     useSafeSpaceStore.getState().resetToDemo();
   }
 });

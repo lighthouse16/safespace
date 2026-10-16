@@ -38,6 +38,8 @@ jobs:
         run: npx tsx --test tests/frontend-v2-cad-recovery.test.ts tests/spatial-parity.test.ts
       - name: Build Next.js server app
         run: npm run build
+      - name: Browser guest end-to-end smoke (Chrome)
+        run: npm run test:browser:guest
 
 # No deploy job: the prior static GitHub Pages deployment is not compatible
 # with authenticated full-stack server routes.

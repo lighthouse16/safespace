@@ -64,8 +64,10 @@ export function BoundaryDraftCanvas({
   onBack,
   onContinue,
 }: BoundaryDraftCanvasProps) {
+  // The first tab instructs users to select two calibration points; make the
+  // initial canvas tool match that instruction rather than silently selecting.
   const [activeTool, setActiveTool] = useState<"calibrate" | "boundary" | "select" | "pan" | "zoom">(
-    "select"
+    "calibrate"
   );
   const [activeSubTab, setActiveSubTab] = useState<"scale" | "boundary" | "review">(
     "scale"
