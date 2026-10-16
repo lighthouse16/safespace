@@ -6,7 +6,8 @@ import { useSafeSpaceStore } from "@/store/safespace-store";
 import { generateM3DLayout, readStoredApiBase, storeApiBase } from "@/lib/m3dlayout/client";
 import { splitRoomRequests } from "@/lib/m3dlayout/prompt-agent";
 import { composeRoomFrames, placeOpenings, type GeneratedPlan } from "@/lib/m3dlayout/room-plan";
-import { arrangeRoomFurniture } from "@/lib/m3dlayout/arrange";
+import { sceneToFurniture } from "@/lib/m3dlayout/scene-adapter";
+import { placeModelFurniture } from "@/lib/m3dlayout/placement-policy";
 import type { SpatialDoor, SpatialFurniture } from "@/lib/spatial-model";
 
 type PendingPlan = GeneratedPlan & { furniture: SpatialFurniture[]; openings: SpatialDoor[] };
@@ -21,6 +22,7 @@ export function GenerateLayoutPanel() {
   const [status, setStatus] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [pending, setPending] = useState<PendingPlan | null>(null);
+  const [placementNote, setPlacementNote] = useState<string | null>(null);
 
   useEffect(() => {
     setApiUrl(readStoredApiBase());
@@ -32,6 +34,7 @@ export function GenerateLayoutPanel() {
   const onGenerate = async () => {
     setError(null);
     setPending(null);
+    setPlacementNote(null);
     if (!ready) {
       setError(requests[0]?.note || "Name each room and its furniture.");
       return;
@@ -52,18 +55,15 @@ export function GenerateLayoutPanel() {
         const room = plan.framed[index];
         setStatus(`Generating ${room.name} (${index + 1} of ${plan.framed.length})…`);
         const scene = await generateM3DLayout(apiUrl, room.prompt, seed + index);
-        const requested = requests[index]?.pieces ?? [];
-        const arranged = arrangeRoomFurniture({
-          pieces: requested,
-          roomType: room.roomType,
-          rect: room.rect,
-          roomId: room.id,
-          idPrefix: room.id,
-        });
-        if (arranged.length === 0 && scene.class_names?.length) {
-          setError(`${room.name} did not include furniture that could be placed.`);
+        const modeled = sceneToFurniture(scene, room.frame, room.id);
+        if (modeled.length === 0) {
+          throw new Error(`Colab returned no usable furniture boxes for ${room.name}. The plan was not changed.`);
         }
-        furniture.push(...arranged);
+        const placed = placeModelFurniture(modeled, room.frame);
+        if (placed.unplaced.length > 0) {
+          throw new Error(`${room.name}: ${placed.unplaced.length} of ${modeled.length} model objects cannot fit without overlap. Nothing was applied. Try fewer items or a larger room.`);
+        }
+        furniture.push(...placed.furniture);
       }
       if (furniture.length === 0) {
         setError("The model answered, but none of the boxes could be placed.");
@@ -71,6 +71,7 @@ export function GenerateLayoutPanel() {
       }
       const boundary = canonicalBoundary && canonicalBoundary.length >= 3 ? canonicalBoundary : plan.boundary;
       setPending({ ...plan, furniture, openings: placeOpenings(plan.walls, boundary, requests) });
+      setPlacementNote("Colab model positions were used and validated for collisions. Review the generated rooms before applying.");
       setStatus(null);
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : "Layout generation failed.");
@@ -98,7 +99,7 @@ export function GenerateLayoutPanel() {
       <div>
         <h2 className="text-xs font-bold text-[#0B514B] uppercase tracking-wider">Generate layout</h2>
         <p className="text-[11px] text-[#647078] leading-snug mt-1">
-          Rooms are built across the whole outline you traced. Furniture uses everyday sizes and is kept from overlapping: the sofa faces the television, and chairs stay around the table. Use Door and Window on the left to draw a flat opening on a wall.
+          Rooms use your traced outline. Furniture positions come from the Colab model and are checked for overlap before they can be applied. If the model cannot fit every object, no layout is applied. Review all positions manually before safety analysis.
         </p>
       </div>
 
@@ -151,6 +152,8 @@ export function GenerateLayoutPanel() {
         <Sparkles className="w-3.5 h-3.5" />
         {busy ? status || "Generating on Colab…" : "Generate layout"}
       </button>
+
+      {placementNote && <p className="text-[11px] text-[#0B514B]">{placementNote}</p>}
 
       {pending && (
         <div className="rounded-lg border border-[#E2E6E8] bg-white p-2 space-y-2">
