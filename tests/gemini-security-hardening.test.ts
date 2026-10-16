@@ -145,6 +145,11 @@ test("Security P1: Origin check strictly rejects unapproved origins and wildcard
 
   // Exact whitelisted origins
   assert.equal(validateOrigin(new Request("http://localhost", { headers: { origin: "https://lighthouse16.github.io" } })).allowed, true);
+  assert.equal(validateOrigin(new Request("https://safespace-gateway.vercel.app/api/gemini/interpretation", { headers: { origin: "https://safespace-gateway.vercel.app" } })).allowed, true);
+  assert.equal(validateOrigin(new Request("http://localhost", { headers: { origin: "https://safespace-gateway.vercel.app.evil.example" } })).allowed, false);
+  const prodPreflight = handleCorsPreflight(new Request("https://safespace-gateway.vercel.app/api/gemini/interpretation", { method: "OPTIONS", headers: { origin: "https://safespace-gateway.vercel.app", "access-control-request-method": "POST" } }));
+  assert.equal(prodPreflight.status, 204);
+  assert.equal(prodPreflight.headers.get("Access-Control-Allow-Origin"), "https://safespace-gateway.vercel.app");
   assert.equal(validateOrigin(new Request("http://localhost", { headers: { origin: "http://localhost:3000" } })).allowed, true);
   assert.equal(validateOrigin(new Request("http://localhost", { headers: { origin: "http://127.0.0.1:3000" } })).allowed, true);
 

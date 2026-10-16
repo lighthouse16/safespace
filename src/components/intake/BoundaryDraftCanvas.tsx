@@ -74,7 +74,8 @@ export function BoundaryDraftCanvas({
     () => !calibration.isCalibrated ? "scale" : boundary.isClosed ? "review" : "boundary"
   );
   const [zoomLevel, setZoomLevel] = useState(100);
-  const [showGrid, setShowGrid] = useState(true);
+  // Architectural grid is a visual aid; tracing an uploaded drawing is freehand by default.
+  const [showGrid, setShowGrid] = useState(false);
   const [pointerPos, setPointerPos] = useState<Point2D | null>(null);
   const [draggingVertexIdx, setDraggingVertexIdx] = useState<number | null>(null);
   const [panOffset, setPanOffset] = useState<Point2D>({ x: 0, y: 0 });
@@ -177,6 +178,7 @@ export function BoundaryDraftCanvas({
         const dist = Math.hypot(pt.x - v0.x, pt.y - v0.y);
         if (dist <= 22) {
           onUpdateBoundary(closeBoundary(boundary));
+          setActiveTool("select");
           return;
         }
       }
@@ -215,7 +217,15 @@ export function BoundaryDraftCanvas({
 
   const handleVertexPointerDown = (index: number, e: React.PointerEvent) => {
     e.stopPropagation();
-    if (!boundary.isClosed) return;
+    // Vertex markers intercept SVG pointer events. Explicitly close when
+    // clicking the FIRST marker, otherwise the canvas handler never runs.
+    if (!boundary.isClosed) {
+      if (index === 0 && activeTool === "boundary" && canCloseBoundary(boundary.vertices)) {
+        onUpdateBoundary(closeBoundary(boundary));
+        setActiveTool("select");
+      }
+      return;
+    }
     setDraggingVertexIdx(index);
     try {
       (e.currentTarget as Element).setPointerCapture(e.pointerId);
@@ -244,6 +254,7 @@ export function BoundaryDraftCanvas({
   const handleCloseBoundary = () => {
     if (canCloseBoundary(boundary.vertices)) {
       onUpdateBoundary(closeBoundary(boundary));
+      setActiveTool("select");
     }
   };
 
@@ -421,7 +432,7 @@ export function BoundaryDraftCanvas({
                     <h3 className="text-sm font-bold text-[#17252B]">Draw boundary</h3>
                     <p className="mt-1 text-xs text-[#647078] leading-relaxed">
                       {!boundary.isClosed
-                        ? "Click corners along the room perimeter. Place at least 3 points, then click the start point or close button to complete."
+                        ? "Click anywhere along the real room outline (freehand by default). Place at least 3 corners, then click the first point or select Close Boundary. Grid snap is optional."
                         : "Boundary outline completed. Drag any corner handle to adjust alignment."}
                     </p>
                   </div>
@@ -650,6 +661,17 @@ export function BoundaryDraftCanvas({
                   <Square size={16} />
                 )}
                 <span>Show grid</span>
+              </button>
+              <button
+                type="button"
+                role="switch"
+                aria-checked={boundary.gridSnap}
+                onClick={() => onUpdateBoundary({ ...boundary, gridSnap: !boundary.gridSnap })}
+                className={`flex items-center gap-1.5 rounded-md px-2 py-1 font-medium cursor-pointer ${boundary.gridSnap ? "text-[#0B514B] bg-[#E6F0EE]" : "text-[#647078] hover:text-[#17252B]"}`}
+                title="Optional 20-pixel grid snapping; leave off for precise tracing"
+              >
+                {boundary.gridSnap ? <CheckSquare size={16} /> : <Square size={16} />}
+                <span>Snap to grid</span>
               </button>
 
               <div className="h-4 w-px bg-[#E2E6E8]" />
