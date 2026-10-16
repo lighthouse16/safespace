@@ -7,6 +7,7 @@ import { furnitureCategoryForClass, sceneToFurniture } from "../src/lib/m3dlayou
 import { isPointInPolygon, polygonArea } from "../src/lib/spatial/geometry/polygons";
 import { arrangeRoomFurniture } from "../src/lib/m3dlayout/arrange";
 import { normalizeApiBase } from "../src/lib/m3dlayout/client";
+import type { SpatialRoom } from "../src/lib/spatial-model";
 
 test("a multi-room sentence becomes one model prompt per room", () => {
   const query =
@@ -201,7 +202,7 @@ test("rooms fill the traced outline instead of a rectangle around it", () => {
     for (let row = 0; row < ys.length - 1; row += 1) {
       const center = { x: (xs[col] + xs[col + 1]) / 2, y: (ys[row] + ys[row + 1]) / 2 };
       if (!isPointInPolygon(center, territory, true)) continue;
-      const owners = plan.rooms.filter((room) => isPointInPolygon(center, room.polygon ?? [], true));
+      const owners: SpatialRoom[] = plan.rooms.filter((room) => isPointInPolygon(center, room.polygon ?? [], true));
       assert.equal(owners.length, 1);
       covered += 1;
     }

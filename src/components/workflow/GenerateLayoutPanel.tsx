@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useMemo, useState } from "react";
 import { Sparkles } from "lucide-react";
 import { useSafeSpaceStore } from "@/store/safespace-store";
 import { generateM3DLayout, readStoredApiBase, storeApiBase } from "@/lib/m3dlayout/client";
@@ -14,17 +14,13 @@ type PendingPlan = GeneratedPlan & { furniture: SpatialFurniture[] };
 export function GenerateLayoutPanel() {
   const applyGeneratedPlan = useSafeSpaceStore((state) => state.applyGeneratedPlan);
   const canonicalBoundary = useSafeSpaceStore((state) => state.canonicalBoundary);
-  const [apiUrl, setApiUrl] = useState("");
+  const [apiUrl, setApiUrl] = useState(() => readStoredApiBase());
   const [query, setQuery] = useState("a living room with a sofa, a coffee table, and a television");
   const [seed, setSeed] = useState(0);
   const [busy, setBusy] = useState(false);
   const [status, setStatus] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [pending, setPending] = useState<PendingPlan | null>(null);
-
-  useEffect(() => {
-    setApiUrl(readStoredApiBase());
-  }, []);
 
   const requests = useMemo(() => splitRoomRequests(query), [query]);
   const ready = requests.every((request) => request.ready);
