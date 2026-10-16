@@ -73,7 +73,7 @@ export default function NewAssessmentPage({
     vertices: [],
     isClosed: false,
     selectedVertexIndex: null,
-    gridSnap: true,
+    gridSnap: false,
   });
 
   // Track active and candidate blob URLs for single-point ownership and lifecycle safety
@@ -289,7 +289,7 @@ export default function NewAssessmentPage({
       vertices: [],
       isClosed: false,
       selectedVertexIndex: null,
-      gridSnap: true,
+      gridSnap: false,
     });
     setCurrentStep("details");
   };

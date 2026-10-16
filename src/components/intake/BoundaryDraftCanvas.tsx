@@ -7,8 +7,6 @@ import {
   Share2,
   Hand,
   Search,
-  CheckSquare,
-  Square,
   Minus,
   Plus,
   ChevronLeft,
@@ -49,7 +47,6 @@ export type BoundaryDraftCanvasProps = {
 
 const CANVAS_WIDTH = 800;
 const CANVAS_HEIGHT = 600;
-const GRID_SIZE = 20;
 
 export function BoundaryDraftCanvas({
   source,
@@ -71,7 +68,6 @@ export function BoundaryDraftCanvas({
     "scale"
   );
   const [zoomLevel, setZoomLevel] = useState(100);
-  const [showGrid, setShowGrid] = useState(true);
   const [pointerPos, setPointerPos] = useState<Point2D | null>(null);
   const [draggingVertexIdx, setDraggingVertexIdx] = useState<number | null>(null);
   const [panOffset, setPanOffset] = useState<Point2D>({ x: 0, y: 0 });
@@ -98,17 +94,6 @@ export function BoundaryDraftCanvas({
     return { x: 0, y: 0 };
   }, []);
 
-  const snapPoint = useCallback(
-    (pt: Point2D): Point2D => {
-      if (!boundary.gridSnap) return pt;
-      return {
-        x: Math.round(pt.x / GRID_SIZE) * GRID_SIZE,
-        y: Math.round(pt.y / GRID_SIZE) * GRID_SIZE,
-      };
-    },
-    [boundary.gridSnap]
-  );
-
   const handlePointerMove = (e: React.PointerEvent<SVGSVGElement>) => {
     if (isPanning) {
       setPanOffset({
@@ -118,8 +103,7 @@ export function BoundaryDraftCanvas({
       return;
     }
 
-    const rawPt = getSvgCoordinates(e);
-    const pt = snapPoint(rawPt);
+    const pt = getSvgCoordinates(e);
     setPointerPos(pt);
 
     if (draggingVertexIdx !== null && boundary.isClosed) {
@@ -143,8 +127,7 @@ export function BoundaryDraftCanvas({
 
   const handleCanvasClick = (e: React.PointerEvent<SVGSVGElement>) => {
     if (draggingVertexIdx !== null || isPanning) return;
-    const rawPt = getSvgCoordinates(e);
-    const pt = snapPoint(rawPt);
+    const pt = getSvgCoordinates(e);
 
     if (activeTool === "calibrate") {
       if (!calibration.p1) {
@@ -634,23 +617,7 @@ export function BoundaryDraftCanvas({
               </button>
             </div>
 
-            {/* Grid & Zoom Controls */}
             <div className="flex items-center gap-3">
-              <button
-                type="button"
-                onClick={() => setShowGrid(!showGrid)}
-                className="flex items-center gap-1.5 text-[#647078] hover:text-[#17252B] cursor-pointer"
-              >
-                {showGrid ? (
-                  <CheckSquare size={16} className="text-[#0B514B]" />
-                ) : (
-                  <Square size={16} />
-                )}
-                <span>Show grid</span>
-              </button>
-
-              <div className="h-4 w-px bg-[#E2E6E8]" />
-
               <div className="flex items-center rounded-lg border border-[#E2E6E8] bg-white">
                 <button
                   type="button"
@@ -694,40 +661,8 @@ export function BoundaryDraftCanvas({
               onPointerDown={handleCanvasPointerDown}
               onPointerUp={handleCanvasPointerUp}
             >
-              <defs>
-                {/* Architectural Coordinate Grid */}
-                <pattern
-                  id="architectural-grid"
-                  width={GRID_SIZE}
-                  height={GRID_SIZE}
-                  patternUnits="userSpaceOnUse"
-                >
-                  <path
-                    d={`M ${GRID_SIZE} 0 L 0 0 0 ${GRID_SIZE}`}
-                    fill="none"
-                    stroke="#E5EAE8"
-                    strokeWidth="0.8"
-                  />
-                </pattern>
-                <pattern
-                  id="architectural-major-grid"
-                  width={GRID_SIZE * 5}
-                  height={GRID_SIZE * 5}
-                  patternUnits="userSpaceOnUse"
-                >
-                  <path
-                    d={`M ${GRID_SIZE * 5} 0 L 0 0 0 ${GRID_SIZE * 5}`}
-                    fill="none"
-                    stroke="#D5DEDC"
-                    strokeWidth="1.2"
-                  />
-                </pattern>
-              </defs>
-
-              {/* Background */}
               <rect width={CANVAS_WIDTH} height={CANVAS_HEIGHT} fill="#FFFFFF" />
 
-              {/* Image Floorplan */}
               {source === "upload" && uploadedFile?.previewAvailable && (
                 <image
                   href={uploadedFile.objectUrl}
@@ -738,14 +673,6 @@ export function BoundaryDraftCanvas({
                   preserveAspectRatio="xMidYMid meet"
                   opacity="0.95"
                 />
-              )}
-
-              {/* Grid Overlay */}
-              {showGrid && (
-                <>
-                  <rect width={CANVAS_WIDTH} height={CANVAS_HEIGHT} fill="url(#architectural-grid)" />
-                  <rect width={CANVAS_WIDTH} height={CANVAS_HEIGHT} fill="url(#architectural-major-grid)" />
-                </>
               )}
 
               {/* Calibration Line matching 04-calibration-and-boundary.png */}

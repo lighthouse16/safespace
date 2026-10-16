@@ -93,8 +93,20 @@ function isOrthogonal(polygon: Polygon2D): boolean {
 }
 
 function interiorCells(polygon: Polygon2D): GridCell[] {
-  const xs = uniqueSorted(polygon.map((point) => point.x));
-  const ys = uniqueSorted(polygon.map((point) => point.y));
+  const boundsX = uniqueSorted(polygon.map((point) => point.x));
+  const boundsY = uniqueSorted(polygon.map((point) => point.y));
+  const minX = boundsX[0];
+  const maxX = boundsX[boundsX.length - 1];
+  const minY = boundsY[0];
+  const maxY = boundsY[boundsY.length - 1];
+  const span = Math.max(maxX - minX, maxY - minY);
+  const step = Math.max(24, Math.min(80, span / 12));
+  const xs = isOrthogonal(polygon)
+    ? boundsX
+    : Array.from({ length: Math.ceil((maxX - minX) / step) + 1 }, (_, index) => Math.min(maxX, minX + index * step));
+  const ys = isOrthogonal(polygon)
+    ? boundsY
+    : Array.from({ length: Math.ceil((maxY - minY) / step) + 1 }, (_, index) => Math.min(maxY, minY + index * step));
   const cells: GridCell[] = [];
   for (let col = 0; col < xs.length - 1; col += 1) {
     for (let row = 0; row < ys.length - 1; row += 1) {
@@ -102,10 +114,30 @@ function interiorCells(polygon: Polygon2D): GridCell[] {
       const x1 = xs[col + 1];
       const y0 = ys[row];
       const y1 = ys[row + 1];
-      const cx = (x0 + x1) / 2;
-      const cy = (y0 + y1) / 2;
-      if (!isPointInPolygon({ x: cx, y: cy }, polygon, true)) continue;
-      cells.push({ col, row, x0, y0, x1, y1, cx, cy, area: (x1 - x0) * (y1 - y0) });
+      if (x1 - x0 < 1 || y1 - y0 < 1) continue;
+      const center = { x: (x0 + x1) / 2, y: (y0 + y1) / 2 };
+      const corners = [
+        { x: x0, y: y0 },
+        { x: x1, y: y0 },
+        { x: x1, y: y1 },
+        { x: x0, y: y1 },
+      ];
+      const orthogonal = isOrthogonal(polygon);
+      const inside = orthogonal
+        ? isPointInPolygon(center, polygon, true)
+        : corners.every((corner) => isPointInPolygon(corner, polygon, true));
+      if (!inside) continue;
+      cells.push({
+        col,
+        row,
+        x0,
+        y0,
+        x1,
+        y1,
+        cx: center.x,
+        cy: center.y,
+        area: (x1 - x0) * (y1 - y0),
+      });
     }
   }
   return cells;
@@ -396,8 +428,9 @@ export function composeRoomFrames(requests: PromptTranslation[], options?: Compo
   if (ready.length === 0) return null;
 
   const specs = ready.map((request) => ROOM_SPEC[request.roomType as RoomType] ?? ROOM_SPEC["living room"]);
-  if (options?.polygon && options.polygon.length >= 3 && isOrthogonal(options.polygon)) {
-    return composeInsidePolygon(ready, specs, options.polygon);
+  if (options?.polygon && options.polygon.length >= 3) {
+    const inside = composeInsidePolygon(ready, specs, options.polygon);
+    if (inside) return inside;
   }
   const outer = options?.bounds;
   const primary = specs[0];

@@ -26,6 +26,14 @@ const DEFAULT_SIZE: Record<string, Size> = {
   toilet: { width: 40, depth: 68, height: 45 },
   sink: { width: 60, depth: 48, height: 85 },
   bathtub: { width: 170, depth: 75, height: 58 },
+  nightstand: { width: 50, depth: 40, height: 55 },
+  floor_lamp: { width: 36, depth: 36, height: 150 },
+  desk_lamp: { width: 24, depth: 24, height: 45 },
+  ceiling_lamp: { width: 40, depth: 40, height: 20 },
+  pendant_lamp: { width: 30, depth: 30, height: 40 },
+  bed: { width: 160, depth: 210, height: 50 },
+  kids_bed: { width: 100, depth: 180, height: 50 },
+  wardrobe: { width: 120, depth: 60, height: 200 },
   chair: { width: 50, depth: 52, height: 90 },
   table: { width: 120, depth: 70, height: 75 },
 };
@@ -314,6 +322,53 @@ function arrangeBathroom(pool: string[], box: Box, roomId: string, idPrefix: str
   return placed;
 }
 
+function arrangeBedroom(pool: string[], box: Box, roomId: string, idPrefix: string): SpatialFurniture[] {
+  const placed: SpatialFurniture[] = [];
+  const bedName = take(pool, ["bed", "kids_bed"]);
+  const night = take(pool, ["nightstand"]);
+  const lamp = take(pool, ["floor_lamp", "desk_lamp", "ceiling_lamp", "pendant_lamp"]);
+  const wardrobe = take(pool, ["wardrobe"]);
+  const margin = 16;
+  if (bedName) {
+    const size = fit(sizeOf(bedName), box);
+    const bed = makeItem(bedName, box, size, 0, roomId, `${idPrefix}-bed`);
+    bed.x = box.x + (box.width - size.width) / 2;
+    bed.y = box.y + box.depth - size.depth - margin;
+    placed.push(clampBox(bed, box));
+    let sideX = bed.x + bed.width + 12;
+    if (night) {
+      const nightSize = fit(sizeOf(night), box);
+      const item = makeItem(night, box, nightSize, 0, roomId, `${idPrefix}-nightstand`);
+      item.x = sideX;
+      item.y = bed.y;
+      placed.push(clampBox(item, box));
+      sideX = item.x + item.width + 10;
+    }
+    if (lamp) {
+      const lampSize = fit(sizeOf(lamp), box);
+      const item = makeItem(lamp, box, lampSize, 0, roomId, `${idPrefix}-lamp`);
+      item.x = sideX;
+      item.y = bed.y;
+      placed.push(clampBox(item, box));
+    }
+  }
+  if (wardrobe) {
+    const size = fit(sizeOf(wardrobe), box);
+    const item = makeItem(wardrobe, box, size, 0, roomId, `${idPrefix}-wardrobe`);
+    item.x = box.x + margin;
+    item.y = box.y + margin;
+    placed.push(clampBox(item, box));
+  }
+  pool.forEach((className, index) => {
+    const size = fit(sizeOf(className), box);
+    const item = makeItem(className, box, size, 0, roomId, `${idPrefix}-extra-${index}`);
+    item.x = box.x + margin;
+    item.y = box.y + margin + index * (size.depth + 12);
+    placed.push(clampBox(item, box));
+  });
+  return placed;
+}
+
 function arrangeGrid(pool: string[], box: Box, roomId: string, idPrefix: string): SpatialFurniture[] {
   const columns = Math.max(1, Math.ceil(Math.sqrt(pool.length)));
   return pool.map((className, index) => {
@@ -344,5 +399,6 @@ export function arrangeRoomFurniture(input: {
   if (input.roomType === "living room") return arrangeLiving(pool, box, input.roomId, input.idPrefix);
   if (input.roomType === "kitchen" || input.roomType === "dining room") return arrangeKitchen(pool, box, input.roomId, input.idPrefix);
   if (input.roomType === "bathroom") return arrangeBathroom(pool, box, input.roomId, input.idPrefix);
+  if (input.roomType === "bedroom") return arrangeBedroom(pool, box, input.roomId, input.idPrefix);
   return arrangeGrid(pool, box, input.roomId, input.idPrefix);
 }

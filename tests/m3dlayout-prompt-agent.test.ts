@@ -232,3 +232,42 @@ test("rooms fill the traced outline instead of a rectangle around it", () => {
     assert.ok(corners.every((corner) => isPointInPolygon(corner, living.polygon ?? [], true)));
   }
 });
+
+test("a slanted outline keeps every room inside the border", () => {
+  const territory = [
+    { x: 40, y: 120 },
+    { x: 260, y: 20 },
+    { x: 640, y: 70 },
+    { x: 700, y: 360 },
+    { x: 420, y: 430 },
+    { x: 80, y: 340 },
+  ];
+  const requests = splitRoomRequests(
+    "a living room with a sofa and a television, a kitchen with a table and 4 chairs, a bathroom with a toilet and a bathtub",
+  );
+  const plan = composeRoomFrames(requests, { polygon: territory });
+  assert.ok(plan);
+  assert.equal(plan.rooms.length, 3);
+  for (const room of plan.rooms) {
+    assert.ok(room.polygon && room.polygon.length >= 4);
+    assert.ok(room.polygon.every((point) => isPointInPolygon(point, territory, true)));
+  }
+});
+
+test("a lamp sits beside the bed", () => {
+  const items = arrangeRoomFurniture({
+    pieces: [
+      { className: "bed", count: 1 },
+      { className: "floor_lamp", count: 1 },
+    ],
+    roomType: "bedroom",
+    rect: { x: 0, y: 0, width: 420, depth: 400 },
+    roomId: "bedroom",
+    idPrefix: "bedroom",
+  });
+  const bed = items.find((item) => item.code === "BED");
+  const lamp = items.find((item) => item.code === "FLOOR_LAMP");
+  assert.ok(bed && lamp);
+  assert.ok(Math.abs(lamp.x - (bed.x + bed.width)) < 80);
+  assert.ok(Math.abs(lamp.y - bed.y) < 40);
+});
