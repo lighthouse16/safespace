@@ -46,6 +46,7 @@ import type { PersistedFloorplanImage } from "@/lib/storage/image-db";
 import type { DeletionResult } from "@/lib/storage/coordinated-storage";
 import { browserAssessmentRepository } from "@/lib/services/assessment-repository";
 import { serverAssessmentService } from "@/lib/services/server-assessment-repository";
+import { validateGeneratedPlanGeometry } from "@/lib/m3dlayout/collision-layout";
 
 
 
@@ -801,6 +802,11 @@ export const useSafeSpaceStore = create<SafeSpaceState>((set, get) => ({
   applyGeneratedPlan: (plan) => {
     if (plan.furniture.length === 0 || plan.rooms.length === 0) {
       set({ placementError: "The layout model returned no rooms to place." });
+      return;
+    }
+    const geometryError = validateGeneratedPlanGeometry(plan);
+    if (geometryError) {
+      set({ placementError: geometryError });
       return;
     }
     const { furniture, history, structurePast, rooms, walls, doors, canonicalBoundary, activeProfile, routeWaypoints } = get();

@@ -202,8 +202,8 @@ test("rooms fill the traced outline instead of a rectangle around it", () => {
     for (let row = 0; row < ys.length - 1; row += 1) {
       const center = { x: (xs[col] + xs[col + 1]) / 2, y: (ys[row] + ys[row + 1]) / 2 };
       if (!isPointInPolygon(center, territory, true)) continue;
-      const owners = plan.rooms.filter((room) => isPointInPolygon(center, room.polygon ?? [], true));
-      assert.equal(owners.length, 1);
+      const ownerCount: number = plan.rooms.filter((room) => isPointInPolygon(center, room.polygon ?? [], true)).length;
+      assert.equal(ownerCount, 1);
       covered += 1;
     }
   }

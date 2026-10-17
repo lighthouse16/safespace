@@ -7,6 +7,7 @@ import { generateM3DLayout, readStoredApiBase, storeApiBase } from "@/lib/m3dlay
 import { splitRoomRequests } from "@/lib/m3dlayout/prompt-agent";
 import { composeRoomFrames, placeOpenings, type GeneratedPlan } from "@/lib/m3dlayout/room-plan";
 import { arrangeRoomFurniture } from "@/lib/m3dlayout/arrange";
+import { doorToObstacleFootprint, wallToObstacleFootprint } from "@/lib/spatial/geometry/placement";
 import type { SpatialDoor, SpatialFurniture } from "@/lib/spatial-model";
 
 type PendingPlan = GeneratedPlan & { furniture: SpatialFurniture[]; openings: SpatialDoor[] };
@@ -23,7 +24,8 @@ export function GenerateLayoutPanel() {
   const [pending, setPending] = useState<PendingPlan | null>(null);
 
   useEffect(() => {
-    setApiUrl(readStoredApiBase());
+    const timer = window.setTimeout(() => setApiUrl(readStoredApiBase()), 0);
+    return () => window.clearTimeout(timer);
   }, []);
 
   const requests = useMemo(() => splitRoomRequests(query), [query]);
@@ -48,6 +50,12 @@ export function GenerateLayoutPanel() {
     try {
       storeApiBase(apiUrl);
       const furniture: SpatialFurniture[] = [];
+      const boundary = canonicalBoundary && canonicalBoundary.length >= 3 ? canonicalBoundary : plan.boundary;
+      const openings = placeOpenings(plan.walls, boundary, requests);
+      const obstacles = [
+        ...plan.walls.map(wallToObstacleFootprint),
+        ...openings.filter((opening) => opening.name !== "Window").map(doorToObstacleFootprint),
+      ];
       for (let index = 0; index < plan.framed.length; index += 1) {
         const room = plan.framed[index];
         setStatus(`Generating ${room.name} (${index + 1} of ${plan.framed.length})…`);
@@ -59,6 +67,8 @@ export function GenerateLayoutPanel() {
           rect: room.rect,
           roomId: room.id,
           idPrefix: room.id,
+          roomBoundary: plan.rooms.find((candidate) => candidate.id === room.id)?.polygon,
+          obstacles,
         });
         if (arranged.length === 0 && scene.class_names?.length) {
           setError(`${room.name} did not include furniture that could be placed.`);
@@ -69,8 +79,7 @@ export function GenerateLayoutPanel() {
         setError("The model answered, but none of the boxes could be placed.");
         return;
       }
-      const boundary = canonicalBoundary && canonicalBoundary.length >= 3 ? canonicalBoundary : plan.boundary;
-      setPending({ ...plan, furniture, openings: placeOpenings(plan.walls, boundary, requests) });
+      setPending({ ...plan, furniture, openings });
       setStatus(null);
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : "Layout generation failed.");
@@ -98,7 +107,7 @@ export function GenerateLayoutPanel() {
       <div>
         <h2 className="text-xs font-bold text-[#0B514B] uppercase tracking-wider">Generate layout</h2>
         <p className="text-[11px] text-[#647078] leading-snug mt-1">
-          Rooms are built across the whole outline you traced. Furniture uses everyday sizes and is kept from overlapping: the sofa faces the television, and chairs stay around the table. Use Door and Window on the left to draw a flat opening on a wall.
+          Rooms follow the outline you traced. Generated objects are checked against each other, room boundaries, walls and doors. If they cannot fit without overlap, nothing is applied. You can freely place boundary corners without a grid.
         </p>
       </div>
 

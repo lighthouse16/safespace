@@ -1,0 +1,185 @@
+import type { Polygon2D } from "@/lib/spatial";
+import type { SpatialFurniture, SpatialRoom, SpatialWall, SpatialDoor } from "@/lib/spatial-model";
+import {
+  findFeasibleFootprintPlacement,
+  furnitureToWorldFootprint,
+  isValidFootprintPlacement,
+  wallToObstacleFootprint,
+  doorToObstacleFootprint,
+  type ObstacleFootprint,
+} from "@/lib/spatial/geometry/placement";
+import { polygonIntersectsPolygon, isFootprintContainedInBoundary } from "@/lib/spatial/geometry/intersections";
+
+type Rect = { x: number; y: number; width: number; depth: number };
+
+export type CollisionFreeLayout = {
+  furniture: SpatialFurniture[];
+  roomBoundary: Polygon2D;
+};
+
+/**
+ * Fail-closed spatial post-processor for ALL generated room furniture.
+ * Every item must fit. Nothing is silently clipped, deleted, or stacked.
+ * Uses the same rotated footprints as the SafeSpace geometry engine.
+ * The solver's sampling grid is internal — the UI's freehand calibration is unchanged.
+ */
+export function resolveGeneratedFurniture(
+  proposed: readonly SpatialFurniture[],
+  options: {
+    rect: Rect;
+    roomBoundary?: Polygon2D;
+    obstacles?: readonly ObstacleFootprint[];
+    clearanceCm?: number;
+  },
+): CollisionFreeLayout {
+  const rect = options.rect;
+  const margin = 12;
+  const clearanceCm = Math.max(0, options.clearanceCm ?? 3);
+
+  if (![rect.x, rect.y, rect.width, rect.depth].every(Number.isFinite) ||
+      rect.width <= margin * 2 || rect.depth <= margin * 2) {
+    throw new Error("The room is too small to place furniture.");
+  }
+  const rectangle: Polygon2D = [
+    { x: rect.x + margin, y: rect.y + margin },
+    { x: rect.x + rect.width - margin, y: rect.y + margin },
+    { x: rect.x + rect.width - margin, y: rect.y + rect.depth - margin },
+    { x: rect.x + margin, y: rect.y + rect.depth - margin },
+  ];
+  const boundary = options.roomBoundary && options.roomBoundary.length >= 3
+    ? options.roomBoundary : rectangle;
+  if (proposed.length > 100) {
+    throw new Error("Too many objects in one room. Split the room into smaller requests.");
+  }
+
+  const invalid = proposed.find((item) =>
+    ![item.x, item.y, item.width, item.depth, item.rotation].every(Number.isFinite) ||
+    item.width <= 0 || item.depth <= 0,
+  );
+  if (invalid) throw new Error(`Invalid dimensions for ${invalid.name}. The layout was not applied.`);
+
+  // Large items first, but preserve output order after placement. Deterministic
+  // fallback order avoids random layouts when the user repeats the same request.
+  const ranked = proposed
+    .map((item, originalIndex) => ({ item, originalIndex }))
+    .sort((a, b) => (b.item.width * b.item.depth) - (a.item.width * a.item.depth) ||
+      a.originalIndex - b.originalIndex);
+  const accepted: SpatialFurniture[] = [];
+  const occupied: ObstacleFootprint[] = [...(options.obstacles ?? [])];
+
+  for (const { item } of ranked) {
+    const desired = { x: item.x + item.width / 2, y: item.y + item.depth / 2 };
+    const dims = { width: item.width, depth: item.depth };
+    const rotations = [item.rotation];
+    const placement = findFeasibleFootprintPlacement(dims, boundary, occupied, {
+      preferredPoint: desired,
+      rotations,
+      stepCm: 7,
+    });
+    if (!placement) {
+      throw new Error(`Cannot fit ${item.name} without overlapping another item, a wall, or the room boundary. Use fewer objects or enlarge the room. No layout was applied.`);
+    }
+    const next: SpatialFurniture = {
+      ...item,
+      x: placement.position.x - item.width / 2,
+      y: placement.position.y - item.depth / 2,
+      rotation: placement.rotationDeg,
+    };
+
+    // Check the full footprint one final time; not just the axis-aligned
+    // view box. Rotation is important in 2D and 3D.
+    const candidate = { position: placement.position, dimensionsCm: dims, rotationDeg: next.rotation };
+    if (!isValidFootprintPlacement(candidate, boundary, occupied)) {
+      throw new Error("Could not validate the generated furniture position. No layout was applied.");
+    }
+    accepted.push(next);
+
+    // Padding also prevents edge-touching and visible model clipping. The
+    // padded AABB is deliberately conservative for rotated furniture.
+    const footprint = furnitureToWorldFootprint(next).footprint;
+    const minX = Math.min(...footprint.map((point) => point.x)) - clearanceCm;
+    const minY = Math.min(...footprint.map((point) => point.y)) - clearanceCm;
+    const maxX = Math.max(...footprint.map((point) => point.x)) + clearanceCm;
+    const maxY = Math.max(...footprint.map((point) => point.y)) + clearanceCm;
+    occupied.push({
+      id: next.id,
+      footprint: [
+        { x: minX, y: minY }, { x: maxX, y: minY },
+        { x: maxX, y: maxY }, { x: minX, y: maxY },
+      ],
+    });
+  }
+
+  // Explicit pairwise audit before returning, independent of greedy search.
+  for (let a = 0; a < accepted.length; a++) {
+    for (let b = a + 1; b < accepted.length; b++) {
+      const left = furnitureToWorldFootprint(accepted[a]).footprint;
+      const right = furnitureToWorldFootprint(accepted[b]).footprint;
+      if (polygonIntersectsPolygon(left, right)) {
+        throw new Error("Collision remained after layout generation. No layout was applied.");
+      }
+    }
+  }
+
+  const arrangedById = new Map(accepted.map((item) => [item.id, item]));
+  if (arrangedById.size !== proposed.length) {
+    throw new Error("Duplicate furniture IDs; cannot safely generate this layout.");
+  }
+  return {
+    furniture: proposed.map((item) => arrangedById.get(item.id)!),
+    roomBoundary: boundary,
+  };
+}
+
+/**
+ * Independent final safety gate at the workspace mutation boundary.
+ * Even if a future UI path bypasses the arrange() post-processor, an invalid
+ * generated plan must never overwrite the current workspace.
+ */
+export function validateGeneratedPlanGeometry(plan: {
+  furniture: readonly SpatialFurniture[];
+  rooms: readonly SpatialRoom[];
+  walls: readonly SpatialWall[];
+  doors?: readonly SpatialDoor[];
+  boundary: Polygon2D;
+}): string | null {
+  if (plan.boundary.length < 3 || !plan.rooms.length || !plan.furniture.length) {
+    return "Generated layout is incomplete and was not applied.";
+  }
+  const walls = plan.walls.map(wallToObstacleFootprint);
+  const doors = (plan.doors ?? []).filter((door) => door.name !== "Window").map(doorToObstacleFootprint);
+  const obstacles = [...walls, ...doors];
+  const footprints: Polygon2D[] = [];
+  const ids = new Set<string>();
+  for (const furniture of plan.furniture) {
+    if (ids.has(furniture.id)) return "Duplicate generated object identifiers. Nothing was applied.";
+    ids.add(furniture.id);
+    if (![furniture.x, furniture.y, furniture.width, furniture.depth, furniture.rotation].every(Number.isFinite) ||
+        furniture.width <= 0 || furniture.depth <= 0) {
+      return "Generated furniture contains invalid dimensions. Nothing was applied.";
+    }
+    const room = plan.rooms.find((candidate) => candidate.id === furniture.roomId);
+    if (!room) return "Generated furniture has no matching room. Nothing was applied.";
+    const roomOutline: Polygon2D = room.polygon && room.polygon.length >= 3 ? room.polygon : [
+      { x: room.x, y: room.y },
+      { x: room.x + room.width, y: room.y },
+      { x: room.x + room.width, y: room.y + room.depth },
+      { x: room.x, y: room.y + room.depth },
+    ];
+    const polygon = furnitureToWorldFootprint(furniture).footprint;
+    if (!isFootprintContainedInBoundary(polygon, roomOutline) ||
+        !isFootprintContainedInBoundary(polygon, plan.boundary)) {
+      return "Generated furniture extends beyond its room boundary. Nothing was applied.";
+    }
+    if (obstacles.some((obstacle) => polygonIntersectsPolygon(polygon, obstacle.footprint))) {
+      return "Generated furniture overlaps a wall or door. Nothing was applied.";
+    }
+    for (const prior of footprints) {
+      if (polygonIntersectsPolygon(polygon, prior)) {
+        return "Generated furniture objects overlap. Nothing was applied.";
+      }
+    }
+    footprints.push(polygon);
+  }
+  return null;
+}

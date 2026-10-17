@@ -1,4 +1,7 @@
 import type { SpatialFurniture } from "@/lib/spatial-model";
+import type { Polygon2D } from "@/lib/spatial";
+import type { ObstacleFootprint } from "@/lib/spatial/geometry/placement";
+import { resolveGeneratedFurniture } from "./collision-layout";
 import { titleNameForClass } from "./vocabulary";
 import { furnitureCategoryForClass } from "./scene-adapter";
 
@@ -93,39 +96,6 @@ function clampBox(item: SpatialFurniture, box: Box): SpatialFurniture {
     x: Math.min(Math.max(item.x, box.x), box.x + box.width - item.width),
     y: Math.min(Math.max(item.y, box.y), box.y + box.depth - item.depth),
   };
-}
-
-function boxesOverlap(a: SpatialFurniture, b: SpatialFurniture, gap = 2): boolean {
-  return a.x < b.x + b.width + gap && a.x + a.width + gap > b.x && a.y < b.y + b.depth + gap && a.y + a.depth + gap > b.y;
-}
-
-function separateItems(items: SpatialFurniture[], box: Box): SpatialFurniture[] {
-  const next = items.map((item) => ({ ...item }));
-  for (let pass = 0; pass < 16; pass += 1) {
-    let moved = false;
-    for (let i = 0; i < next.length; i += 1) {
-      for (let j = i + 1; j < next.length; j += 1) {
-        const a = next[i];
-        const b = next[j];
-        if (!boxesOverlap(a, b, 1)) continue;
-        const overlapX = Math.min(a.x + a.width, b.x + b.width) - Math.max(a.x, b.x);
-        const overlapY = Math.min(a.y + a.depth, b.y + b.depth) - Math.max(a.y, b.y);
-        if (overlapX < overlapY) {
-          const dir = a.x + a.width / 2 <= b.x + b.width / 2 ? 1 : -1;
-          b.x += dir * (overlapX + 4);
-        } else {
-          const dir = a.y + a.depth / 2 <= b.y + b.depth / 2 ? 1 : -1;
-          b.y += dir * (overlapY + 4);
-        }
-        const clamped = clampBox(b, box);
-        b.x = clamped.x;
-        b.y = clamped.y;
-        moved = true;
-      }
-    }
-    if (!moved) break;
-  }
-  return next;
 }
 
 const OPENING_CLASSES = new Set(["window", "panel_door", "glass_panel_door", "lite_door", "louver_door"]);
@@ -425,6 +395,8 @@ export function arrangeRoomFurniture(input: {
   rect: Box;
   roomId: string;
   idPrefix: string;
+  roomBoundary?: Polygon2D;
+  obstacles?: readonly ObstacleFootprint[];
 }): SpatialFurniture[] {
   const box: Box = {
     x: input.rect.x + 20,
@@ -443,5 +415,9 @@ export function arrangeRoomFurniture(input: {
           : input.roomType === "bedroom"
             ? arrangeBedroom(pool, box, input.roomId, input.idPrefix)
             : arrangeGrid(pool, box, input.roomId, input.idPrefix);
-  return separateItems(placed, box);
+  return resolveGeneratedFurniture(placed, {
+    rect: box,
+    roomBoundary: input.roomBoundary,
+    obstacles: input.obstacles,
+  }).furniture;
 }
